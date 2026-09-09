@@ -12,10 +12,13 @@ import { RequestWithUser } from '../interfaces/RequestWithUser.interface';
 import { JwtService } from '@nestjs/jwt';
 import { JwtPayload } from '../dto/jwt-payload.dto';
 import { UsersService } from 'src/modules/users/users.service';
+import { PermissionKey } from 'src/common/constants/PermissionKey.enum';
+import { Permission } from 'src/modules/rbac/entities/permission.entity';
+import { RoleKey } from 'src/common/constants/RoleKey.enum';
 
 @Injectable()
 export class JwtGuard implements CanActivate {
-  private logger = new Logger(JwtGuard.name);
+  private readonly logger = new Logger(JwtGuard.name);
 
   constructor(
     private readonly reflector: Reflector,
@@ -38,17 +41,27 @@ export class JwtGuard implements CanActivate {
       const payload = this.jwt.verify<JwtPayload>(token);
 
       if (payload.type !== 'access') throw new UnauthorizedException();
-      const user = await this.userService.findOne({ id: payload.id });
+      const user = await this.userService.findOne(
+        { id: payload.id },
+        { withRole: true },
+      );
       if (!user) throw new NotFoundException('User not found');
 
       request.user = {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role,
+        role: user.role
+          ? { id: user.role.id, key: String(user.role.key) as RoleKey }
+          : null,
+        permissions: (user.role?.permissions as Permission[])?.map(
+          (p) => p.key as PermissionKey,
+        ),
       };
-    } catch (error) {
-      this.logger.error(error);
+    } catch (error: unknown) {
+      this.logger.error(
+        error instanceof Error ? error.message : 'Unknown error',
+      );
       throw new UnauthorizedException('Invalid token');
     }
     return true;

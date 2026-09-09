@@ -7,6 +7,10 @@ const buildEnv = (): IENV => ({
     port: Number(process.env.APP_PORT),
     apiPrefix: process.env.API_PREFIX!,
     apiVersion: process.env.API_VERSION!,
+    bootstrapStoreOwnerEmail:
+      process.env.BOOTSTRAP_STORE_OWNER_EMAIL || undefined,
+    bootstrapSuperAdminEmail:
+      process.env.BOOTSTRAP_SUPER_ADMIN_EMAIL || undefined,
   },
   db: {
     name: process.env.DB_NAME!,

@@ -3,11 +3,13 @@ import {
   CreateDateColumn,
   Entity,
   Index,
+  JoinColumn,
+  ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { Exclude } from 'class-transformer';
-import { RolesType } from 'src/common/constants/Roles.enum';
+import { Role } from 'src/modules/rbac/entities/role.entity';
 
 @Entity()
 export class User {
@@ -25,8 +27,12 @@ export class User {
   @Exclude()
   password: string;
 
-  @Column({ enum: RolesType, default: RolesType.USER })
-  role: RolesType;
+  @ManyToOne(() => Role, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'roleId' })
+  role?: Role;
+
+  @Column({ type: 'int', nullable: true })
+  roleId?: number;
 
   @Column({ default: false })
   emailVerified: boolean;

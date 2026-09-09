@@ -1,4 +1,4 @@
 import { Reflector } from '@nestjs/core';
-import { RolesType } from 'src/common/constants/Roles.enum';
+import { RoleKey } from 'src/common/constants/RoleKey.enum';
 
-export const Roles = Reflector.createDecorator<RolesType[]>();
+export const Roles = Reflector.createDecorator<RoleKey[]>();

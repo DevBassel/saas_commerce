@@ -1,5 +1,4 @@
-import { IsEmail, IsEnum, IsString, Length } from 'class-validator';
-import { RolesType } from 'src/common/constants/Roles.enum';
+import { IsEmail, IsString, Length } from 'class-validator';
 
 export class LoginUserDto {
   @IsEmail()
@@ -8,7 +7,4 @@ export class LoginUserDto {
   @IsString()
   @Length(8, 16)
   password: string;
-
-  @IsEnum(RolesType)
-  type: RolesType;
 }

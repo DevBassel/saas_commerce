@@ -11,6 +11,7 @@ import { User } from '../users/entities/user.entity';
 import { ConfigService } from '@nestjs/config';
 import { IENV, IJWT } from '../../common/config/env.interface';
 import { JwtPayload } from './dto/jwt-payload.dto';
+import { RoleKey } from 'src/common/constants/RoleKey.enum';
 import { randomUUID } from 'crypto';
 import { compare } from 'bcrypt';
 
@@ -23,6 +24,10 @@ export class AuthService {
   ) {}
   register(userData: CreateUserDto) {
     return this.userService.create(userData);
+  }
+
+  registerStore(userData: CreateUserDto) {
+    return this.userService.create(userData, RoleKey.STORE_OWNER);
   }
 
   async login(loginData: LoginUserDto) {
@@ -51,7 +56,7 @@ export class AuthService {
   async returnUserCredential(user: User) {
     const payload = {
       id: user.id,
-      role: user.role,
+      role: user.role?.key ?? RoleKey.CUSTOMER,
     };
     const jti = randomUUID();
     const { accessExpiresIn, refreshExpiresIn } =

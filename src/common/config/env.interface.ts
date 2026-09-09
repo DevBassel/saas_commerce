@@ -21,6 +21,8 @@ export interface IAPP {
   port: number;
   apiPrefix: string;
   apiVersion: string;
+  bootstrapStoreOwnerEmail?: string;
+  bootstrapSuperAdminEmail?: string;
 }
 
 export interface IDB {

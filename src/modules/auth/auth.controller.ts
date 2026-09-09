@@ -14,6 +14,11 @@ export class AuthController {
     return this.authService.register(registerData);
   }
 
+  @Post('register-store')
+  registerStore(@Body() registerData: CreateUserDto) {
+    return this.authService.registerStore(registerData);
+  }
+
   @Post('login')
   @HttpCode(HttpStatus.OK)
   login(@Body() loginData: LoginUserDto) {
