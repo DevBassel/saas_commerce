@@ -13,6 +13,14 @@ export interface IENV {
 
   files: IFiles;
   cors: ICORS;
+  admin: IADMIN;
+}
+
+export interface IADMIN {
+  rootPath: string;
+  cookieName: string;
+  cookiePassword: string;
+  sessionSecret: string;
 }
 
 export interface IAPP {
@@ -23,6 +31,7 @@ export interface IAPP {
   apiVersion: string;
   bootstrapStoreOwnerEmail?: string;
   bootstrapSuperAdminEmail?: string;
+  rootDomain?: string;
 }
 
 export interface IDB {
@@ -34,6 +43,7 @@ export interface IDB {
   synchronize: boolean;
   logging: boolean;
   ssl: boolean;
+  tenantPoolSize?: number;
 }
 
 export interface IJWT {

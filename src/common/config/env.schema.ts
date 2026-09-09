@@ -9,6 +9,7 @@ export const EnvSchema = joi.object({
   API_VERSION: joi.string().required(),
   BOOTSTRAP_STORE_OWNER_EMAIL: joi.string().email().optional(),
   BOOTSTRAP_SUPER_ADMIN_EMAIL: joi.string().email().optional(),
+  APP_ROOT_DOMAIN: joi.string().required(),
   // DB
   DB_NAME: joi.string().required(),
   DB_HOST: joi.string().required(),
@@ -18,6 +19,7 @@ export const EnvSchema = joi.object({
   DB_SYNCHRONIZE: joi.boolean().required(),
   DB_LOGGING: joi.boolean().required(),
   DB_SSL: joi.boolean().required(),
+  TENANT_POOL_SIZE: joi.number().required(),
   // JWT
   JWT_ACCESS_SECRET: joi.string().required(),
   JWT_ACCESS_EXPIRES_IN: joi.string().required(),
@@ -54,4 +56,9 @@ export const EnvSchema = joi.object({
   // CORS
   CORS_ORIGIN: joi.string().required(),
   CORS_CREDENTIALS: joi.boolean().required(),
+  // AdminJS
+  ADMINJS_ROOT_PATH: joi.string().optional(),
+  ADMINJS_COOKIE_NAME: joi.string().optional(),
+  ADMINJS_COOKIE_PASSWORD: joi.string().required(),
+  ADMINJS_SESSION_SECRET: joi.string().required(),
 });

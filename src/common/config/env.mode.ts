@@ -11,6 +11,7 @@ const buildEnv = (): IENV => ({
       process.env.BOOTSTRAP_STORE_OWNER_EMAIL || undefined,
     bootstrapSuperAdminEmail:
       process.env.BOOTSTRAP_SUPER_ADMIN_EMAIL || undefined,
+    rootDomain: process.env.APP_ROOT_DOMAIN || undefined,
   },
   db: {
     name: process.env.DB_NAME!,
@@ -22,6 +23,9 @@ const buildEnv = (): IENV => ({
       String(process.env.DB_SYNCHRONIZE).toLocaleLowerCase() === 'true',
     logging: String(process.env.DB_LOGGING).toLocaleLowerCase() === 'true',
     ssl: String(process.env.DB_SSL).toLocaleLowerCase() === 'true',
+    tenantPoolSize: process.env.TENANT_POOL_SIZE
+      ? Number(process.env.TENANT_POOL_SIZE)
+      : undefined,
   },
   jwt: {
     accessSecret: process.env.JWT_ACCESS_SECRET!,
@@ -68,6 +72,12 @@ const buildEnv = (): IENV => ({
     origin: process.env.CORS_ORIGIN!,
     credentials:
       String(process.env.CORS_CREDENTIALS).toLocaleLowerCase() === 'true',
+  },
+  admin: {
+    rootPath: process.env.ADMINJS_ROOT_PATH || '/admin',
+    cookieName: process.env.ADMINJS_COOKIE_NAME || 'saas_admin',
+    cookiePassword: process.env.ADMINJS_COOKIE_PASSWORD!,
+    sessionSecret: process.env.ADMINJS_SESSION_SECRET!,
   },
 });
 

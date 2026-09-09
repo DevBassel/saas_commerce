@@ -11,6 +11,7 @@ import {
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { AssignRoleDto } from './dto/assign-role.dto';
+import { AssignPermissionsDto } from './dto/assign-permissions.dto';
 import { Permissions } from '../auth/decorators/permissions.decorator';
 import { UserPermissionKey } from './constants/user-permissions.enum';
 import { RoleKey } from '../../common/constants/RoleKey.enum';
@@ -28,7 +29,10 @@ export class UsersController {
   @Get('profile/:id')
   @Permissions([UserPermissionKey.READ])
   findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.usersService.findOne({ id });
+    return this.usersService.findOne(
+      { id },
+      { withPermissions: true, withRole: true },
+    );
   }
 
   @Get()
@@ -46,6 +50,12 @@ export class UsersController {
     return this.usersService.update(id, updateUserDto);
   }
 
+  @Delete(':id')
+  @Permissions([UserPermissionKey.DELETE])
+  remove(@Param('id', ParseIntPipe) id: number) {
+    return this.usersService.remove(id);
+  }
+
   @Patch(':id/role')
   @Permissions([UserPermissionKey.ASSIGN_ROLE])
   assignRole(
@@ -60,9 +70,42 @@ export class UsersController {
     );
   }
 
-  @Delete(':id')
-  @Permissions([UserPermissionKey.DELETE])
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.usersService.remove(id);
+  @Delete(':id/role')
+  @Permissions([UserPermissionKey.ASSIGN_ROLE])
+  deassignRole(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() request: RequestWithUser,
+  ) {
+    return this.usersService.deassignRole(
+      id,
+      request.user.role?.key ?? RoleKey.CUSTOMER,
+    );
+  }
+
+  @Patch(':id/permissions')
+  @Permissions([UserPermissionKey.ASSIGN_PERMISSIONS])
+  assignPermissions(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() assignPermissionsDto: AssignPermissionsDto,
+    @Req() request: RequestWithUser,
+  ) {
+    return this.usersService.assignPermissions(
+      id,
+      assignPermissionsDto.permissionIds,
+      request.user.role?.key ?? RoleKey.CUSTOMER,
+      request.user.permissions,
+    );
+  }
+
+  @Delete(':id/permissions')
+  @Permissions([UserPermissionKey.ASSIGN_PERMISSIONS])
+  clearPermissions(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() request: RequestWithUser,
+  ) {
+    return this.usersService.clearPermissions(
+      id,
+      request.user.role?.key ?? RoleKey.CUSTOMER,
+    );
   }
 }

@@ -33,11 +33,19 @@ NestJS 10 + TypeORM + Postgres + JWT RBAC SaaS store API.
 
 ## Permission split
 Per-module enums:
-- `modules/users/constants/user-permissions.enum.ts` — `UserPermissionKey` users:read/update/delete/assign_role
+- `modules/users/constants/user-permissions.enum.ts` — `UserPermissionKey` users:read/update/delete/assign_role/assign_permissions
 - `modules/rbac/constants/rbac-permissions.enum.ts` — `RbacPermissionKey` roles:* permissions:*
 - `common/constants/PermissionKey.enum.ts` — type-only union `UserPermissionKey | RbacPermissionKey`
 - Seed ALL_PERMISSIONS = spread both enums.
 - New module permission → own enum + union update.
+
+## Direct user role/perms assignment
+- `PATCH /users/:id/role` (users:assign_role) sets role; `DELETE /users/:id/role` clears it (roleId null).
+- `PATCH /users/:id/permissions` (users:assign_permissions) replaces `user.permissions` set (body `{permissionIds:number[]}`); `DELETE /users/:id/permissions` clears all.
+- User entity ManyToMany Permission via `user_permissions` join table. `roleId` column nullable (`number | null`).
+- Guard merges role perms + direct perms, deduped. Live next request (fresh load).
+- Escalation guard `assertCanAssignToUser`: actor rank > target rank (SUPER_ADMIN: >=). Non-super cannot grant perm they don't own.
+- Role perms still seeded/overwritten per boot. Direct perms persist until changed.
 
 ## Tenant (partial)
 - SUPER_ADMIN = platform. Manages all stores via `GET /api/v1/platform/stores`, `GET /api/v1/platform/stores/:id`.
@@ -46,7 +54,7 @@ Per-module enums:
 
 ## Endpoints
 Auth (public): `POST /auth/register`, `POST /auth/register-store`, `POST /auth/login`
-Users: `GET /users/profile` (self), `GET /users/profile/:id` (users:read), `GET /users` (users:read), `PATCH /users/:id` (users:update), `PATCH /users/:id/role` (users:assign_role), `DELETE /users/:id` (users:delete)
+Users: `GET /users/profile` (self), `GET /users/profile/:id` (users:read), `GET /users` (users:read), `PATCH /users/:id` (users:update), `DELETE /users/:id` (users:delete), `PATCH /users/:id/role` (users:assign_role), `DELETE /users/:id/role` (users:assign_role), `PATCH /users/:id/permissions` (users:assign_permissions), `DELETE /users/:id/permissions` (users:assign_permissions)
 Roles: CRUD `/roles` (+/:id) — ROLES_*
 Permissions: CRUD `/permissions` (+/:id) — PERMISSIONS_*
 Platform: `GET /platform/stores`, `GET /platform/stores/:id` — @Roles([SUPER_ADMIN])
@@ -57,11 +65,11 @@ Platform: `GET /platform/stores`, `GET /platform/stores/:id` — @Roles([SUPER_A
 - JWT access/refresh secrets + expiry; `DB_SYNCHRONIZE=true` dev
 
 ## Known quirks / past bugs
-- TypeORM `save({...user, roleId})` w/ loaded `role` relation recomputes roleId from stale relation → silent no-op. Use `repo.update({id}, {...})` then refetch. (users.service assignRole/update)
+- TypeORM `save({...user, roleId})` w/ loaded `role` relation recomputes roleId from stale relation → silent no-op. Use `repo.update({id}, {...})` then refetch. (users.service create)
 - Guard ORDER matters: JwtGuard BEFORE PermissionGuard (user must exist first). Old RoleGuard ran first → always 403.
 - `user.role` nullable (FK `onDelete SET NULL`, legacy rows). Always `user.role?.x` or ternary — never raw deref (TS18048).
 - Role seed overwrites system role perms each boot (idempotent reset).
 - PowerShell curl/array parsing unreliable → use node fetch smoke scripts.
 
 ## Postman
-`postman/saas_store.postman_collection.json` — 17 requests, auth auto-stores tokens. Folder auth = Bearer {{access_token}}.
+`postman/saas_store.postman_collection.json` — 23 requests, auth auto-stores tokens. Folder auth = Bearer {{access_token}}.

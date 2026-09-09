@@ -13,7 +13,6 @@ import { JwtService } from '@nestjs/jwt';
 import { JwtPayload } from '../dto/jwt-payload.dto';
 import { UsersService } from 'src/modules/users/users.service';
 import { PermissionKey } from 'src/common/constants/PermissionKey.enum';
-import { Permission } from 'src/modules/rbac/entities/permission.entity';
 import { RoleKey } from 'src/common/constants/RoleKey.enum';
 
 @Injectable()
@@ -43,9 +42,14 @@ export class JwtGuard implements CanActivate {
       if (payload.type !== 'access') throw new UnauthorizedException();
       const user = await this.userService.findOne(
         { id: payload.id },
-        { withRole: true },
+        { withRole: true, withPermissions: true },
       );
       if (!user) throw new NotFoundException('User not found');
+
+      const rolePerms =
+        user.role?.permissions?.map((p) => p.key as PermissionKey) ?? [];
+      const directPerms =
+        user.permissions?.map((p) => p.key as PermissionKey) ?? [];
 
       request.user = {
         id: user.id,
@@ -54,9 +58,7 @@ export class JwtGuard implements CanActivate {
         role: user.role
           ? { id: user.role.id, key: String(user.role.key) as RoleKey }
           : null,
-        permissions: (user.role?.permissions as Permission[])?.map(
-          (p) => p.key as PermissionKey,
-        ),
+        permissions: [...new Set([...rolePerms, ...directPerms])],
       };
     } catch (error: unknown) {
       this.logger.error(

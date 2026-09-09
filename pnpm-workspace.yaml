@@ -2,4 +2,20 @@ allowBuilds:
   '@nestjs/core': true
   '@scarf/scarf': true
   bcrypt: true
+  esbuild: true
   unrs-resolver: true
+overrides:
+  '@tiptap/extension-blockquote': 2.1.13
+  '@tiptap/extension-bold': 2.1.13
+  '@tiptap/extension-bullet-list': 2.1.13
+  '@tiptap/extension-code-block': 2.1.13
+  '@tiptap/extension-dropcursor': 2.1.13
+  '@tiptap/extension-gapcursor': 2.1.13
+  '@tiptap/extension-hard-break': 2.1.13
+  '@tiptap/extension-history': 2.1.13
+  '@tiptap/extension-horizontal-rule': 2.1.13
+  '@tiptap/extension-italic': 2.1.13
+  '@tiptap/extension-list-item': 2.1.13
+  '@tiptap/extension-ordered-list': 2.1.13
+  '@tiptap/extension-paragraph': 2.1.13
+  '@tiptap/extension-strike': 2.1.13

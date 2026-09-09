@@ -34,6 +34,11 @@ export const SEED_PERMISSIONS: {
     description: 'Change role of any user',
   },
   {
+    key: UserPermissionKey.ASSIGN_PERMISSIONS,
+    name: 'Assign user permissions',
+    description: 'Grant direct permissions to any user',
+  },
+  {
     key: RbacPermissionKey.ROLES_CREATE,
     name: 'Create roles',
     description: 'Create custom roles',
@@ -103,6 +108,7 @@ export const SEED_ROLES: {
       UserPermissionKey.READ,
       UserPermissionKey.UPDATE,
       UserPermissionKey.ASSIGN_ROLE,
+      UserPermissionKey.ASSIGN_PERMISSIONS,
       RbacPermissionKey.ROLES_READ,
       RbacPermissionKey.PERMISSIONS_READ,
     ],

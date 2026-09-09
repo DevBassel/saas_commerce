@@ -1,18 +1,22 @@
 import {
+  BaseEntity,
   Column,
   CreateDateColumn,
   Entity,
   Index,
   JoinColumn,
+  JoinTable,
+  ManyToMany,
   ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { Exclude } from 'class-transformer';
 import { Role } from 'src/modules/rbac/entities/role.entity';
+import { Permission } from 'src/modules/rbac/entities/permission.entity';
 
 @Entity()
-export class User {
+export class User extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -32,7 +36,11 @@ export class User {
   role?: Role;
 
   @Column({ type: 'int', nullable: true })
-  roleId?: number;
+  roleId?: number | null;
+
+  @ManyToMany(() => Permission)
+  @JoinTable({ name: 'user_permissions' })
+  permissions?: Permission[];
 
   @Column({ default: false })
   emailVerified: boolean;
