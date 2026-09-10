@@ -31,6 +31,8 @@ export interface IAPP {
   apiVersion: string;
   bootstrapStoreOwnerEmail?: string;
   bootstrapSuperAdminEmail?: string;
+  bootstrapSuperAdminPassword?: string;
+  bootstrapSuperAdminName?: string;
   rootDomain?: string;
 }
 

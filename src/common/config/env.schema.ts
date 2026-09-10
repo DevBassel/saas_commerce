@@ -9,6 +9,8 @@ export const EnvSchema = joi.object({
   API_VERSION: joi.string().required(),
   BOOTSTRAP_STORE_OWNER_EMAIL: joi.string().email().optional(),
   BOOTSTRAP_SUPER_ADMIN_EMAIL: joi.string().email().optional(),
+  BOOTSTRAP_SUPER_ADMIN_PASSWORD: joi.string().optional(),
+  BOOTSTRAP_SUPER_ADMIN_NAME: joi.string().optional(),
   APP_ROOT_DOMAIN: joi.string().required(),
   // DB
   DB_NAME: joi.string().required(),

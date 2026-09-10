@@ -275,9 +275,9 @@
           "response": []
         },
         {
-          "name": "Assign Permissions To User",
+          "name": "Grant Permissions To User",
           "request": {
-            "method": "PATCH",
+            "method": "POST",
             "header": [
               {
                 "key": "Content-Type",
@@ -297,10 +297,19 @@
           "response": []
         },
         {
-          "name": "Clear Permissions From User",
+          "name": "Revoke Permissions From User",
           "request": {
             "method": "DELETE",
-            "header": [],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"permissionIds\": [\n    {{permission_id}}\n  ]\n}"
+            },
             "url": {
               "raw": "{{base_url}}/users/{{user_id}}/permissions",
               "host": ["{{base_url}}"],
@@ -376,7 +385,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"key\": \"MANAGER\",\n  \"name\": \"Manager\",\n  \"description\": \"Store manager\",\n  \"permissionKeys\": [\n    \"users:read\"\n  ]\n}"
+              "raw": "{\n  \"key\": \"MANAGER\",\n  \"name\": \"Manager\",\n  \"description\": \"Store manager\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/roles",
@@ -398,7 +407,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Senior Manager\",\n  \"permissionKeys\": [\n    \"users:read\",\n    \"users:update\"\n  ]\n}"
+              "raw": "{\n  \"name\": \"Senior Manager\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/roles/{{role_id}}",

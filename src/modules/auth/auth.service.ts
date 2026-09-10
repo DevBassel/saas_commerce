@@ -22,12 +22,14 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService<IENV>,
   ) {}
-  register(userData: CreateUserDto) {
-    return this.userService.create(userData);
+  async register(userData: CreateUserDto) {
+    await this.userService.create(userData);
+    return { success: true, msg: 'register success' };
   }
 
-  registerStore(userData: CreateUserDto) {
-    return this.userService.create(userData, RoleKey.STORE_OWNER);
+  async registerStore(userData: CreateUserDto) {
+    await this.userService.create(userData, RoleKey.STORE_OWNER);
+    return { success: true, msg: 'store owner registered successfully' };
   }
 
   async login(loginData: LoginUserDto) {

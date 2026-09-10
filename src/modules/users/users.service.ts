@@ -74,7 +74,7 @@ export class UsersService {
     options: FindOneOptions = {},
   ) {
     const relations = {
-      role: { permissions: true },
+      role: true,
       ...(options.withPermissions ? { permissions: true } : {}),
     };
 
@@ -115,7 +115,7 @@ export class UsersService {
     return this.findOne({ id }, { withRole: true });
   }
 
-  async assignPermissions(
+  async grantPermissions(
     id: number,
     permissionIds: number[],
     actorRoleKey: RoleKey,
@@ -148,13 +148,20 @@ export class UsersService {
     });
     if (!loaded) throw new NotFoundException('User not found');
 
-    loaded.permissions = permissions;
+    const merged = new Map<number, Permission>();
+    for (const p of loaded.permissions ?? []) merged.set(p.id, p);
+    for (const p of permissions) merged.set(p.id, p);
+    loaded.permissions = [...merged.values()];
     await this.userRepo.save(loaded);
 
     return this.findOne({ id }, { withRole: true, withPermissions: true });
   }
 
-  async clearPermissions(id: number, actorRoleKey: RoleKey) {
+  async revokePermissions(
+    id: number,
+    permissionIds: number[],
+    actorRoleKey: RoleKey,
+  ) {
     const user = await this.findOne({ id }, { withRole: true });
     if (!user) throw new NotFoundException('User not found');
 
@@ -167,7 +174,10 @@ export class UsersService {
     });
     if (!loaded) throw new NotFoundException('User not found');
 
-    loaded.permissions = [];
+    const remove = new Set(permissionIds);
+    loaded.permissions = permissionIds.length
+      ? (loaded.permissions ?? []).filter((p) => !remove.has(p.id))
+      : [];
     await this.userRepo.save(loaded);
 
     return this.findOne({ id }, { withRole: true, withPermissions: true });

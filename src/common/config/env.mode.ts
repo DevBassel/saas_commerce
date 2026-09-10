@@ -11,6 +11,10 @@ const buildEnv = (): IENV => ({
       process.env.BOOTSTRAP_STORE_OWNER_EMAIL || undefined,
     bootstrapSuperAdminEmail:
       process.env.BOOTSTRAP_SUPER_ADMIN_EMAIL || undefined,
+    bootstrapSuperAdminPassword:
+      process.env.BOOTSTRAP_SUPER_ADMIN_PASSWORD || undefined,
+    bootstrapSuperAdminName:
+      process.env.BOOTSTRAP_SUPER_ADMIN_NAME || undefined,
     rootDomain: process.env.APP_ROOT_DOMAIN || undefined,
   },
   db: {

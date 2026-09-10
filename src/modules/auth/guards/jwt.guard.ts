@@ -46,9 +46,7 @@ export class JwtGuard implements CanActivate {
       );
       if (!user) throw new NotFoundException('User not found');
 
-      const rolePerms =
-        user.role?.permissions?.map((p) => p.key as PermissionKey) ?? [];
-      const directPerms =
+      const permissions =
         user.permissions?.map((p) => p.key as PermissionKey) ?? [];
 
       request.user = {
@@ -58,7 +56,7 @@ export class JwtGuard implements CanActivate {
         role: user.role
           ? { id: user.role.id, key: String(user.role.key) as RoleKey }
           : null,
-        permissions: [...new Set([...rolePerms, ...directPerms])],
+        permissions: [...new Set(permissions)],
       };
     } catch (error: unknown) {
       this.logger.error(

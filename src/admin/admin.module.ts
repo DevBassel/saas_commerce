@@ -15,14 +15,18 @@ const buildAuthenticate = (dataSource: DataSource) => {
       .getRepository(User)
       .findOne({ where: { email }, relations: { role: true } });
 
-    if (!user?.role || user.role.key !== RoleKey.SUPER_ADMIN) return null;
+    if (!user?.role || (user.role.key as RoleKey) !== RoleKey.SUPER_ADMIN)
+      return null;
 
     const match = await bcrypt.compare(password, user.password);
     return match ? { email: user.email, title: 'Super Admin' } : null;
   };
 };
 
-const adminJsOptions = (config: ConfigService<IENV>, dataSource: DataSource) => {
+const adminJsOptions = (
+  config: ConfigService<IENV>,
+  dataSource: DataSource,
+) => {
   const admin = config.getOrThrow<IADMIN>('admin');
   return {
     adminJsOptions: {

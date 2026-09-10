@@ -9,21 +9,21 @@ NestJS 10 + TypeORM + Postgres + JWT RBAC SaaS store API.
 - run prod: `node dist/main.js` (from `dist/`, DB must run)
 - boot smoke: start proc, run `node <temp>\smoke*.mjs`, kill proc
 - DB check: `node C:\Users\bassel\AppData\Local\Temp\opencode\dbcheck.cjs`
-- tests: none
+- tests: none exist
 
 ## Module map
 - `modules/users` — User entity, UsersController, PlatformController, UsersService, dto
 - `modules/auth` — JwtGuard + PermissionGuard (global), decorators Roles/Permissions/Public, AuthService/Controller, RequestWithUser
 - `modules/rbac` — Role + Permission entities, RbacService (seed), RolesController, PermissionsController, dto, constants
 - `common/constants` — RoleKey.enum + ROLE_RANK, PermissionKey.enum (type-only union)
-- DB: `synchronize=true`, no migrations, seed boot idempotent
+- DB: `synchronize=true`, no migrations, seed on boot idempotent
 
 ## Roles (RBAC)
 `RoleKey`: SUPER_ADMIN(5) > STORE_OWNER(4) > ADMIN(3) > MANAGER(2) > EMPLOYEE(1) > CUSTOMER(0)
 
-- Seed: SUPER_ADMIN + STORE_OWNER + ADMIN + MANAGER + EMPLOYEE + CUSTOMER. Roles carry NO perms (label/rank only). Perms on users.
+- Seed: SUPER_ADMIN + STORE_OWNER + ADMIN + MANAGER + EMPLOYEE + CUSTOMER. Roles carry NO permissions (label/rank only). Perms live on users.
 - Guard bypass: SUPER_ADMIN bypass ALL. STORE_OWNER bypass ALL EXCEPT routes `@Roles([SUPER_ADMIN])`.
-- Non-bypass: own every `@Permissions` key; `@Roles` coarse gate first.
+- Non-bypass: must own every `@Permissions` key; `@Roles` coarse gate first.
 - Registration default role: CUSTOMER.
 - Custom roles CRUD via admin endpoints; system roles undeletable.
 
@@ -36,14 +36,15 @@ Per-module enums:
 - `modules/users/constants/user-permissions.enum.ts` — `UserPermissionKey` users:read/update/delete/assign_role/assign_permissions
 - `modules/rbac/constants/rbac-permissions.enum.ts` — `RbacPermissionKey` roles:* permissions:*
 - `common/constants/PermissionKey.enum.ts` — type-only union `UserPermissionKey | RbacPermissionKey`
+- Seed ALL_PERMISSIONS = spread both enums.
 - New module permission → own enum + union update.
 
 ## Direct user role/perms assignment
-- `PATCH /users/:id/role` (users:assign_role) sets role; `DELETE /users/:id/role` clears (roleId null).
-- `POST /users/:id/permissions` (users:assign_permissions) grants perms (union, deduped, body `{permissionIds:number[]}`); `DELETE /users/:id/permissions` revokes listed (body `{permissionIds?:number[]}`), empty/omitted clears all.
-- User entity ManyToMany Permission via `user_permissions` join table. `roleId` nullable (`number | null`).
+- `PATCH /users/:id/role` (users:assign_role) sets role; `DELETE /users/:id/role` clears it (roleId null).
+- `POST /users/:id/permissions` (users:assign_permissions) grants perms (union, deduped, body `{permissionIds:number[]}`); `DELETE /users/:id/permissions` revokes listed perms (body `{permissionIds?:number[]}`), empty/omitted clears all.
+- User entity ManyToMany Permission via `user_permissions` join table. `roleId` column nullable (`number | null`).
 - Guard uses direct user perms only (role = label). Live next request (fresh load).
-- Escalation guard `assertCanAssignToUser`: actor rank > target rank (SUPER_ADMIN: >=). Non-super cannot grant unowned perm.
+- Escalation guard `assertCanAssignToUser`: actor rank > target rank (SUPER_ADMIN: >=). Non-super cannot grant perm they don't own.
 
 ## Tenant (partial)
 - SUPER_ADMIN = platform. Manages all stores via `GET /api/v1/platform/stores`, `GET /api/v1/platform/stores/:id`.

@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Patch,
+  Post,
   Param,
   Delete,
   ParseIntPipe,
@@ -12,6 +13,7 @@ import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { AssignRoleDto } from './dto/assign-role.dto';
 import { AssignPermissionsDto } from './dto/assign-permissions.dto';
+import { RevokePermissionsDto } from './dto/revoke-permissions.dto';
 import { Permissions } from '../auth/decorators/permissions.decorator';
 import { UserPermissionKey } from './constants/user-permissions.enum';
 import { RoleKey } from '../../common/constants/RoleKey.enum';
@@ -82,14 +84,14 @@ export class UsersController {
     );
   }
 
-  @Patch(':id/permissions')
+  @Post(':id/permissions')
   @Permissions([UserPermissionKey.ASSIGN_PERMISSIONS])
-  assignPermissions(
+  grantPermissions(
     @Param('id', ParseIntPipe) id: number,
     @Body() assignPermissionsDto: AssignPermissionsDto,
     @Req() request: RequestWithUser,
   ) {
-    return this.usersService.assignPermissions(
+    return this.usersService.grantPermissions(
       id,
       assignPermissionsDto.permissionIds,
       request.user.role?.key ?? RoleKey.CUSTOMER,
@@ -99,12 +101,14 @@ export class UsersController {
 
   @Delete(':id/permissions')
   @Permissions([UserPermissionKey.ASSIGN_PERMISSIONS])
-  clearPermissions(
+  revokePermissions(
     @Param('id', ParseIntPipe) id: number,
+    @Body() revokePermissionsDto: RevokePermissionsDto,
     @Req() request: RequestWithUser,
   ) {
-    return this.usersService.clearPermissions(
+    return this.usersService.revokePermissions(
       id,
+      revokePermissionsDto.permissionIds ?? [],
       request.user.role?.key ?? RoleKey.CUSTOMER,
     );
   }
