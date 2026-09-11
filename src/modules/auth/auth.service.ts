@@ -19,11 +19,7 @@ import { compare } from 'bcrypt';
 import { TenantService } from '../tenants/tenant.service';
 import { TenantProvisionerService } from '../tenants/tenant-provisioner.service';
 import { getTenantContext } from './tenant-context';
-
-interface TenantIdentity {
-  id: number;
-  schemaName: string;
-}
+import { TenantRef, tenantRefFromPayload } from './tenant-ref.util';
 
 @Injectable()
 export class AuthService {
@@ -114,7 +110,7 @@ export class AuthService {
     if (verifyToken.type != 'refresh')
       throw new UnauthorizedException('token not valid');
 
-    const tenant = this.tenantFromToken(verifyToken);
+    const tenant = tenantRefFromPayload(verifyToken);
 
     const user = await this.userService.findOne(
       { id: verifyToken.id },
@@ -129,7 +125,7 @@ export class AuthService {
     return this.returnUserCredential(user, tenant);
   }
 
-  async returnUserCredential(user: User, tenant?: TenantIdentity) {
+  async returnUserCredential(user: User, tenant?: TenantRef) {
     const payload = {
       id: user.id,
       role: user.role?.key ?? RoleKey.CUSTOMER,
@@ -177,14 +173,9 @@ export class AuthService {
     };
   }
 
-  private requireTenant(): TenantIdentity {
+  private requireTenant(): TenantRef {
     const ctx = getTenantContext();
     if (!ctx) throw new BadRequestException('Tenant context is required');
     return ctx.tenant;
-  }
-
-  private tenantFromToken(payload: JwtPayload): TenantIdentity | undefined {
-    if (!payload.tenantId || !payload.tenantSchema) return undefined;
-    return { id: payload.tenantId, schemaName: payload.tenantSchema };
   }
 }

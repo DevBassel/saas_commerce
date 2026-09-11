@@ -19,11 +19,7 @@ import { PermissionKey } from 'src/common/constants/PermissionKey.enum';
 import { RoleKey } from 'src/common/constants/RoleKey.enum';
 import { getTenantContext } from '../tenant-context';
 import { IENV, IJWT } from 'src/common/config/env.interface';
-
-interface TenantRef {
-  id: number;
-  schemaName: string;
-}
+import { tenantRefFromPayload } from '../tenant-ref.util';
 
 @Injectable()
 export class JwtGuard implements CanActivate {
@@ -70,7 +66,7 @@ export class JwtGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
-    const tenant = this.tenantFromToken(payload);
+    const tenant = tenantRefFromPayload(payload);
     const resolved = request.tenant ?? getTenantContext()?.tenant;
 
     if (isPlatform) {
@@ -113,10 +109,5 @@ export class JwtGuard implements CanActivate {
     if (tenant) request.tenant = resolved ?? request.tenant;
 
     return true;
-  }
-
-  private tenantFromToken(payload: JwtPayload): TenantRef | undefined {
-    if (!payload.tenantId || !payload.tenantSchema) return undefined;
-    return { id: payload.tenantId, schemaName: payload.tenantSchema };
   }
 }

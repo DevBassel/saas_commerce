@@ -32,8 +32,8 @@ export class Tenant extends BaseEntity {
   @Column({ type: 'enum', enum: TenantStatus, default: TenantStatus.ACTIVE })
   status: TenantStatus;
 
-  @Column()
-  ownerUserId: number;
+  @Column({ type: 'int', nullable: true })
+  ownerUserId?: number | null;
 
   @CreateDateColumn()
   createdAt: Date;

@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Saas Store API",
-    "description": "Schema-per-tenant RBAC API. Flow: run `Login Platform` first (sets {{platform_token}}), then `Register Store` (platform-admin only, Bearer {{platform_token}}, auto-sets tenant_slug + owner tokens). Set `tenant_slug` to target a tenant; Users/Roles/Permissions folders auto-send `x-tenant-slug`. Login stores access_token/refresh_token. List Users/Roles/Permissions/Tenants auto-set user_id/role_id/permission_id/tenant_id. Users/Roles/Permissions folders use Bearer {{access_token}}; Platform folder uses Bearer {{platform_token}} (tenant tokens are rejected on platform routes with 403). Custom role keys must match ^[a-z][a-z0-9_-]*$ ; uppercase keys are reserved system roles (create/rename to them -> 409, rename/delete of system roles -> 409). Create Permission key must be a valid permission key (409 if already seeded).",
+    "description": "Schema-per-tenant RBAC API. Flow: run `Register Store` first (public self-serve signup, auto-sets tenant_slug + owner tokens), or `Login Platform` to get {{platform_token}} for the Platform folder. Set `tenant_slug` to target a tenant; Users/Roles/Permissions folders auto-send `x-tenant-slug`. Login stores access_token/refresh_token; Refresh rotates them (old refresh token is revoked). List Users/Roles/Permissions/Tenants auto-set user_id/role_id/permission_id/tenant_id. Users/Roles/Permissions folders use Bearer {{access_token}}; Platform folder uses Bearer {{platform_token}} (tenant tokens are rejected on platform routes with 403). Custom role keys must match ^[a-z][a-z0-9_-]*$ ; uppercase keys are reserved system roles (create/rename to them -> 409, rename/delete of system roles -> 409). Create Permission key must be a valid permission key (409 if already seeded).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -142,11 +142,6 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
-              },
-              {
-                "key": "Authorization",
-                "value": "Bearer {{platform_token}}",
-                "type": "text"
               }
             ],
             "body": {

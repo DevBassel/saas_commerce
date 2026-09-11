@@ -6,7 +6,6 @@ import { Tenant } from '../src/modules/tenants/entities/tenant.entity';
 import { TenantManagerService } from '../src/modules/tenants/tenant-manager.service';
 
 const SLUG = 'verify-regstore-guard';
-const SLUG_TENANT = 'verify-regstore-tenant';
 
 const assert = (cond: unknown, msg: string): void => {
   if (!cond) throw new Error(`ASSERT FAILED: ${msg}`);
@@ -35,69 +34,45 @@ async function main(): Promise<void> {
   const base = `${await app.getUrl()}/api/v1`;
 
   const cleanup = async (): Promise<void> => {
-    for (const slug of [SLUG, SLUG_TENANT]) {
-      const schema = `tenant_${slug}`.replace(/[^a-z0-9_]/g, '_');
-      await manager.release({ schemaName: schema });
-      await publicDs.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
-    }
-    await publicDs
-      .getRepository(Tenant)
-      .delete([{ slug: SLUG }, { slug: SLUG_TENANT }]);
+    const schema = `tenant_${SLUG}`.replace(/[^a-z0-9_]/g, '_');
+    await manager.release({ schemaName: schema });
+    await publicDs.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+    await publicDs.getRepository(Tenant).delete([{ slug: SLUG }]);
   };
 
   try {
     await cleanup();
 
-    const anonymous = await fetch(`${base}/auth/register-store`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(storePayload(SLUG)),
-    });
-    assert(anonymous.status === 401, `anonymous register-store -> 401`);
-
-    const platformEmail = process.env.BOOTSTRAP_SUPER_ADMIN_EMAIL;
-    const platformPassword = process.env.BOOTSTRAP_SUPER_ADMIN_PASSWORD;
-    assert(Boolean(platformEmail && platformPassword), 'bootstrap creds set');
-
-    const platformLogin = await fetch(`${base}/auth/login/platform`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        email: platformEmail,
-        password: platformPassword,
-      }),
-    });
-    const platformBody = (await platformLogin.json()) as {
-      access_token?: string;
-    };
-    assert(platformLogin.status === 200, 'platform login -> 200');
-    const platformToken = platformBody.access_token as string;
-
     const created = await fetch(`${base}/auth/register-store`, {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${platformToken}`,
-      },
+      headers: { 'content-type': 'application/json' },
       body: JSON.stringify(storePayload(SLUG)),
     });
-    const createdBody = (await created.json()) as { access_token?: string };
+    const createdBody = (await created.json()) as {
+      access_token?: string;
+    };
     if (created.status !== 201)
       console.log('  register-store response:', created.status, createdBody);
-    assert(created.status === 201, 'platform register-store -> 201');
-    const tenantOwnerToken = createdBody.access_token as string;
+    assert(
+      created.status === 201,
+      'anonymous register-store (self-serve) -> 201',
+    );
+    const ownerToken = createdBody.access_token as string;
 
-    const tenantAttempt = await fetch(`${base}/auth/register-store`, {
-      method: 'POST',
+    const profile = await fetch(`${base}/users/profile`, {
       headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${tenantOwnerToken}`,
+        'x-tenant-slug': SLUG,
+        authorization: `Bearer ${ownerToken}`,
       },
-      body: JSON.stringify(storePayload(SLUG_TENANT)),
+    });
+    assert(profile.status === 200, 'owner token reads tenant profile -> 200');
+
+    const platformRoute = await fetch(`${base}/platform/tenants`, {
+      headers: { authorization: `Bearer ${ownerToken}` },
     });
     assert(
-      tenantAttempt.status === 403,
-      `tenant STORE_OWNER register-store -> 403`,
+      platformRoute.status === 403,
+      'tenant owner token on platform route -> 403',
     );
 
     console.log('VERIFY REGISTER-STORE GUARD: PASS');
