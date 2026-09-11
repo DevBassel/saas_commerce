@@ -36,6 +36,7 @@ Each boots the app, exercises flows, cleans up.
 npx ts-node -r tsconfig-paths/register test/verify-tenant-provision.ts  # schema + RBAC seed
 npx ts-node -r tsconfig-paths/register test/verify-tenant-guard.ts      # cross-tenant 403
 npx ts-node -r tsconfig-paths/register test/verify-tenant-lifecycle.ts  # full tenant CRUD + isolation
+npx ts-node -r tsconfig-paths/register test/verify-register-store-guard.ts  # self-serve signup + guard isolation
 ```
 
 ## Commands
