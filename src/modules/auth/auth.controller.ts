@@ -3,6 +3,7 @@ import { AuthService } from './auth.service';
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import { RegisterStoreDto } from './dto/register-store.dto';
 import { LoginUserDto } from './dto/login-user.dto';
+import { RefreshTokenDto } from './dto/refreshtoken.dto';
 import { Public } from './decorators/isPublic.decorator';
 import { Platform } from './decorators/isPlatform.decorator';
 
@@ -36,5 +37,13 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   loginPlatform(@Body() loginData: LoginUserDto) {
     return this.authService.loginPlatform(loginData);
+  }
+
+  @Public()
+  @Platform()
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  refresh(@Body() refreshData: RefreshTokenDto) {
+    return this.authService.refresh_user_credentials(refreshData.refresh_token);
   }
 }

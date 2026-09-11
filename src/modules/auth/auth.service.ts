@@ -123,6 +123,9 @@ export class AuthService {
     );
     if (!user) throw new NotFoundException();
 
+    if (!verifyToken.jti || verifyToken.jti !== user.jti)
+      throw new UnauthorizedException('Token revoked');
+
     return this.returnUserCredential(user, tenant);
   }
 

@@ -53,6 +53,7 @@ pnpm start:dev      # watch mode
 - `POST /api/v1/auth/register` — create CUSTOMER in resolved tenant (needs tenant header/subdomain)
 - `POST /api/v1/auth/login` — tenant-scoped login
 - `POST /api/v1/auth/login/platform` — public SUPER_ADMIN login
+- `POST /api/v1/auth/refresh` — rotate token pair; validates stored `jti`, old refresh token is revoked on each use
 - `GET /api/v1/platform/tenants`, `GET /api/v1/platform/tenants/:id` — SUPER_ADMIN only
 - Users / Roles / Permissions CRUD — tenant-scoped via header/subdomain + Bearer token
 

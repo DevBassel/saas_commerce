@@ -29,7 +29,11 @@ describe('AuthService token secrets', () => {
     {} as never,
   );
 
-  const user = { id: 1, role: { key: RoleKey.STORE_OWNER } } as unknown as User;
+  const user = {
+    id: 1,
+    jti: 'abc',
+    role: { key: RoleKey.STORE_OWNER },
+  } as unknown as User;
 
   beforeEach(() => jest.clearAllMocks());
 
@@ -98,8 +102,9 @@ describe('AuthService token secrets', () => {
     );
   });
 
-  it('accepts a valid refresh token', async () => {
+  it('accepts a valid refresh token and rotates the session jti', async () => {
     userService.findOne.mockResolvedValue(user);
+    userService.updateSession.mockClear();
     const refreshToken = jwt.sign(
       { type: 'refresh', jti: 'abc', id: 1, role: RoleKey.STORE_OWNER },
       {
@@ -113,5 +118,46 @@ describe('AuthService token secrets', () => {
     const result = await service.refresh_user_credentials(refreshToken);
     expect(result.access_token).toEqual(expect.any(String));
     expect(result.refresh_token).toEqual(expect.any(String));
+    expect(userService.updateSession).toHaveBeenCalledWith(
+      1,
+      expect.any(String),
+      undefined,
+    );
+    const calledJti = userService.updateSession.mock.calls[0][1];
+    expect(calledJti).not.toBe('abc');
+  });
+
+  it('rejects a refresh token whose jti does not match the stored session', async () => {
+    userService.findOne.mockResolvedValue({ ...user, jti: 'different' });
+    const refreshToken = jwt.sign(
+      { type: 'refresh', jti: 'abc', id: 1, role: RoleKey.STORE_OWNER },
+      {
+        secret: jwtConfig.refreshSecret,
+        expiresIn: '7d',
+        issuer: jwtConfig.issuer,
+        audience: jwtConfig.audience,
+      },
+    );
+
+    await expect(
+      service.refresh_user_credentials(refreshToken),
+    ).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('rejects a refresh token without a jti claim', async () => {
+    userService.findOne.mockResolvedValue(user);
+    const refreshToken = jwt.sign(
+      { type: 'refresh', id: 1, role: RoleKey.STORE_OWNER },
+      {
+        secret: jwtConfig.refreshSecret,
+        expiresIn: '7d',
+        issuer: jwtConfig.issuer,
+        audience: jwtConfig.audience,
+      },
+    );
+
+    await expect(
+      service.refresh_user_credentials(refreshToken),
+    ).rejects.toThrow(UnauthorizedException);
   });
 });

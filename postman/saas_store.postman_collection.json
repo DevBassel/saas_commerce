@@ -225,6 +225,48 @@
             }
           ],
           "response": []
+        },
+        {
+          "name": "Refresh",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/refresh",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "refresh"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"refresh ok\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "if (json.access_token) {",
+                  "    pm.collectionVariables.set(\"access_token\", json.access_token);",
+                  "}",
+                  "if (json.refresh_token) {",
+                  "    pm.collectionVariables.set(\"refresh_token\", json.refresh_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
         }
       ],
       "event": []
