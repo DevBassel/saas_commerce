@@ -45,6 +45,6 @@ async function bootstrap() {
   app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
   app.setGlobalPrefix(`${apiPrefix}/${apiVersion}`);
 
-  await app.listen(port || 4000);
+  await app.listen(port);
 }
 void bootstrap();

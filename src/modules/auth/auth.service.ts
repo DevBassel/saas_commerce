@@ -42,10 +42,6 @@ export class AuthService {
   }
 
   async registerStore(userData: RegisterStoreDto) {
-    console.log(
-      '🚀 ~ auth.service.ts:2 ~ AuthService ~ registerStore ~ registerStore:',
-      userData,
-    );
     const tenant = await this.tenantService.create({
       name: userData.storeName,
       slug: userData.storeSlug,

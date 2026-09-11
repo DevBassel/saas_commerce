@@ -42,8 +42,6 @@ const baseEnv = (overrides: Record<string, unknown> = {}) => ({
   MAX_FILES: 20,
   CORS_ORIGIN: 'http://localhost:3000',
   CORS_CREDENTIALS: true,
-  ADMINJS_COOKIE_PASSWORD: 'cookie_secret',
-  ADMINJS_SESSION_SECRET: 'session_secret',
   ...overrides,
 });
 
