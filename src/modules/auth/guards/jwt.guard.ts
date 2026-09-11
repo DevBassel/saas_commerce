@@ -67,7 +67,8 @@ export class JwtGuard implements CanActivate {
       context.getClass(),
     ]);
     const tenant = tenantRefFromPayload(payload);
-    const resolved = request.tenant ?? getTenantContext()?.tenant;
+    const ctx = getTenantContext();
+    const resolved = request.tenant ?? ctx?.tenant;
 
     if (isPlatform) {
       if (tenant) {
