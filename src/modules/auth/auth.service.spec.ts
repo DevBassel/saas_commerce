@@ -123,8 +123,10 @@ describe('AuthService token secrets', () => {
       expect.any(String),
       undefined,
     );
-    const calledJti = userService.updateSession.mock.calls[0][1];
-    expect(calledJti).not.toBe('abc');
+    const calls = userService.updateSession.mock.calls as unknown as Array<
+      [number, string, unknown]
+    >;
+    expect(calls[0][1]).not.toBe('abc');
   });
 
   it('rejects a refresh token whose jti does not match the stored session', async () => {
