@@ -174,16 +174,6 @@ export class AuthService {
     };
   }
 
-  validateToken(token: string) {
-    const { accessSecret, issuer, audience } =
-      this.config.getOrThrow<IJWT>('jwt');
-    return this.jwt.verify<JwtPayload>(token, {
-      secret: accessSecret,
-      issuer,
-      audience,
-    });
-  }
-
   private requireTenant(): TenantIdentity {
     const ctx = getTenantContext();
     if (!ctx) throw new BadRequestException('Tenant context is required');

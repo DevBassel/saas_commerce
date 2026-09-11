@@ -6,7 +6,6 @@ import { CreateTenantDto } from './dto/create-tenant.dto';
 import { buildSchemaName } from './tenant.utils';
 import { TenantManagerService } from './tenant-manager.service';
 import { User } from '../users/entities/user.entity';
-import { TenantStatus } from './enums/tenantStatus.enum';
 
 @Injectable()
 export class TenantService {
@@ -71,8 +70,5 @@ export class TenantService {
 
   async setOwnerUserId(id: number, ownerUserId: number): Promise<void> {
     await this.tenantRepo.update({ id }, { ownerUserId });
-  }
-  async deactivate(id: number): Promise<void> {
-    await this.tenantRepo.update({ id }, { status: TenantStatus.INACTIVE });
   }
 }

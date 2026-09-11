@@ -104,27 +104,6 @@ export class UsersService {
     return userRepo.find({ relations: { role: true } });
   }
 
-  async findAllStoreOwners(tenant?: TenantRef) {
-    const { userRepo } = await this.repos(tenant);
-    return userRepo
-      .createQueryBuilder('user')
-      .leftJoinAndSelect('user.role', 'role')
-      .where('role.key = :key', { key: RoleKey.STORE_OWNER })
-      .getMany();
-  }
-
-  async findStoreOwnerById(id: number, tenant?: TenantRef) {
-    const { userRepo } = await this.repos(tenant);
-    const user = await userRepo
-      .createQueryBuilder('user')
-      .leftJoinAndSelect('user.role', 'role')
-      .where('user.id = :id', { id })
-      .andWhere('role.key = :key', { key: RoleKey.STORE_OWNER })
-      .getOne();
-    if (!user) throw new NotFoundException('Store not found');
-    return user;
-  }
-
   async findOne(
     { id, email }: { id?: number; email?: string },
     options: FindOneOptions = {},
