@@ -4,9 +4,12 @@ import {
   CreateDateColumn,
   Entity,
   Index,
+  JoinTable,
+  ManyToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { Permission } from './permission.entity';
 
 @Entity('roles')
 export class Role extends BaseEntity {
@@ -22,6 +25,13 @@ export class Role extends BaseEntity {
 
   @Column({ type: 'varchar', nullable: true })
   description?: string;
+
+  @Column({ default: false })
+  isSystem: boolean;
+
+  @ManyToMany(() => Permission)
+  @JoinTable({ name: 'role_permissions' })
+  permissions?: Permission[];
 
   @CreateDateColumn()
   createdAt: Date;

@@ -90,7 +90,7 @@ export const SEED_ROLES: {
     key: RoleKey.STORE_OWNER,
     name: 'Store Owner',
     description:
-      'Full access. Bypasses every permission check. Can assign any role including ADMIN and STORE_OWNER.',
+      'Full store access through explicitly granted permissions. Can assign any role including ADMIN and STORE_OWNER.',
   },
   {
     key: RoleKey.ADMIN,
@@ -113,3 +113,26 @@ export const SEED_ROLES: {
     description: 'Default registered customer',
   },
 ];
+
+const ALL_PERMISSION_KEYS: PermissionKey[] = SEED_PERMISSIONS.map((p) => p.key);
+
+export const SEED_ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
+  [RoleKey.SUPER_ADMIN]: ALL_PERMISSION_KEYS,
+  [RoleKey.STORE_OWNER]: ALL_PERMISSION_KEYS,
+  [RoleKey.ADMIN]: [
+    UserPermissionKey.READ,
+    UserPermissionKey.UPDATE,
+    UserPermissionKey.DELETE,
+    UserPermissionKey.ASSIGN_ROLE,
+    UserPermissionKey.ASSIGN_PERMISSIONS,
+    RbacPermissionKey.ROLES_READ,
+    RbacPermissionKey.PERMISSIONS_READ,
+  ],
+  [RoleKey.MANAGER]: [
+    UserPermissionKey.READ,
+    UserPermissionKey.UPDATE,
+    RbacPermissionKey.ROLES_READ,
+  ],
+  [RoleKey.EMPLOYEE]: [UserPermissionKey.READ],
+  [RoleKey.CUSTOMER]: [],
+};

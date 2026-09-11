@@ -41,7 +41,6 @@ export class PermissionGuard implements CanActivate {
     }
 
     if (isSuper) return true;
-    if (user.role?.key === RoleKey.STORE_OWNER) return true;
 
     if (requiredRoles?.length) {
       const roleOk = requiredRoles.includes(user.role?.key as RoleKey);

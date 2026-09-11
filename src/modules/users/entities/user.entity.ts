@@ -46,6 +46,7 @@ export class User extends BaseEntity {
   emailVerified: boolean;
 
   @Column({ default: null, nullable: true })
+  @Exclude()
   jti: string;
 
   @CreateDateColumn()

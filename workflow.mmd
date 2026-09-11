@@ -1,0 +1,47 @@
+---
+id: d93c32ba-290a-455e-a989-99eb33dc3390
+---
+flowchart TD
+A[Client Request<br/>Tenant.platform.com/api/v1/users] --> B[main.ts<br/>global prefix /api/v1]
+
+    B --> C{TenantMiddleware}
+
+    C -->|Platform route or non-API| P[Skip tenant resolution]
+    C -->|Tenant API route| D{Resolve Tenant}
+
+    D -->|Tenant ID header| E1[TenantService.findById]
+    D -->|Tenant slug header| E2[TenantService.findBySlug]
+    D -->|Host subdomain| E3[TenantService.findBySubdomain]
+
+    E1 --> F{Tenant found}
+    E2 --> F
+    E3 --> F
+
+    F -->|No| G[No tenant context]
+    F -->|Yes| H[Set req.tenant<br/>Tenant AsyncLocalStorage]
+
+    H --> I[JwtGuard]
+
+    I -->|Public route| J[Skip authentication]
+    I -->|No token| K[401 No token provided]
+    I -->|Invalid token| L[401 Invalid token]
+    I -->|Valid token| M{Route type}
+
+    M -->|Platform route| N{Token has tenant}
+    N -->|Yes| O[403 Platform token required]
+    N -->|No| Q[Load platform user<br/>from public schema]
+
+    M -->|Tenant route| R{Token tenant matches<br/>resolved tenant}
+    R -->|No| S[403 Token does not belong to tenant]
+    R -->|Yes| T[Load tenant user<br/>role and permissions]
+
+    Q --> U{PermissionGuard}
+    T --> U
+
+    U -->|Missing permission| V[403 Forbidden]
+    U -->|Permission granted| W[Controller]
+
+    W --> X[TenantManagerService<br/>getDataSource]
+
+    X --> Y[(Tenant PostgreSQL schema)]
+    Y --> Z[Response]

@@ -4,9 +4,9 @@ import { JwtModule } from '@nestjs/jwt';
 import { EnvSchema } from './common/config/env.schema';
 import { ConfigEnv } from './common/config/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { IDB, IENV, IJWT } from './common/config/env.interface';
+import { IENV, IJWT } from './common/config/env.interface';
 import { AppLoggerModule } from './common/logger/logger.module';
-import { TypeOrmDailyLogger } from './common/logger/typeorm-daily.logger';
+import { buildDataSourceOptions } from './common/config/data-source.factory';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -18,19 +18,9 @@ import { TypeOrmDailyLogger } from './common/logger/typeorm-daily.logger';
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService<IENV>) => {
-        const { name, host, port, username, password, synchronize } =
-          config.getOrThrow<IDB>('db');
         return {
-          type: 'postgres',
-          host,
-          port,
-          username,
-          password: password,
-          database: name,
+          ...buildDataSourceOptions(config),
           autoLoadEntities: true,
-          synchronize: synchronize,
-          logging: 'all',
-          logger: new TypeOrmDailyLogger('all'),
           entities: [__dirname + '/**/*.entity.{js,ts}'],
         };
       },

@@ -1,11 +1,11 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { In, Not, Repository } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Role } from './entities/role.entity';
 import { Permission } from './entities/permission.entity';
 import { User } from '../users/entities/user.entity';
-import { SEED_PERMISSIONS, SEED_ROLES } from './constants/seed-data';
+import { seedRbac } from './rbac.seed';
 import { RoleKey } from 'src/common/constants/RoleKey.enum';
 import { IAPP, IENV } from 'src/common/config/env.interface';
 import bcrypt from 'bcrypt';
@@ -19,6 +19,7 @@ export class RbacSeedService implements OnApplicationBootstrap {
     @InjectRepository(Permission)
     private readonly permissionRepo: Repository<Permission>,
     @InjectRepository(User) private readonly userRepo: Repository<User>,
+    @InjectDataSource() private readonly dataSource: DataSource,
     private readonly config: ConfigService<IENV>,
   ) {}
 
@@ -27,34 +28,8 @@ export class RbacSeedService implements OnApplicationBootstrap {
   }
 
   async seed(): Promise<void> {
-    for (const perm of SEED_PERMISSIONS) {
-      const entity = await this.permissionRepo.findOneBy({ key: perm.key });
-      if (!entity) {
-        await this.permissionRepo.save(this.permissionRepo.create(perm));
-      }
-    }
-    this.logger.log(`Seeded ${SEED_PERMISSIONS.length} permissions`);
-
-    for (const roleSeed of SEED_ROLES) {
-      let role = await this.roleRepo.findOneBy({ key: roleSeed.key });
-      if (!role) {
-        role = this.roleRepo.create({
-          key: roleSeed.key,
-          name: roleSeed.name,
-          description: roleSeed.description,
-        });
-      } else {
-        role.name = roleSeed.name;
-        role.description = roleSeed.description;
-      }
-      await this.roleRepo.save(role);
-    }
-    this.logger.log(`Seeded ${SEED_ROLES.length} roles`);
-
-    await this.normalizeUsersToSystemRole();
-    await this.purgeStaleRoles();
+    await seedRbac(this.dataSource, { roles: [RoleKey.SUPER_ADMIN] });
     await this.ensureSuperAdmin();
-    await this.bootstrapStoreOwner();
   }
 
   private async ensureSuperAdmin(): Promise<void> {
@@ -137,76 +112,6 @@ export class RbacSeedService implements OnApplicationBootstrap {
 
     this.logger.log(
       `Created bootstrap SUPER_ADMIN ${created.email} with ${permissions.length} permissions`,
-    );
-  }
-
-  private async normalizeUsersToSystemRole(): Promise<void> {
-    const customerRole = await this.roleRepo.findOneBy({
-      key: RoleKey.CUSTOMER,
-    });
-    if (!customerRole) return;
-
-    const activeKeys = Object.values(RoleKey);
-
-    const stale = await this.userRepo
-      .createQueryBuilder('user')
-      .leftJoin('user.role', 'role')
-      .where('user.roleId IS NULL')
-      .orWhere('role.key NOT IN (:...activeKeys)', { activeKeys })
-      .getMany();
-
-    if (!stale.length) return;
-
-    await this.userRepo.update(
-      { id: In(stale.map((u) => u.id)) },
-      { roleId: customerRole.id },
-    );
-    this.logger.log(`Assigned CUSTOMER role to ${stale.length} stale users`);
-  }
-
-  private async purgeStaleRoles(): Promise<void> {
-    const activeKeys = Object.values(RoleKey);
-
-    const staleRoles = await this.roleRepo.findBy({
-      key: Not(In(activeKeys)),
-    });
-
-    if (!staleRoles.length) return;
-
-    const staleIds = staleRoles.map((r) => r.id);
-    const stillReferenced = await this.userRepo.countBy({
-      roleId: In(staleIds),
-    });
-    if (stillReferenced > 0) {
-      this.logger.warn(
-        `Skip purge: ${stillReferenced} user(s) still reference stale roles`,
-      );
-      return;
-    }
-
-    await this.roleRepo.delete({ id: In(staleIds) });
-    this.logger.log(`Purged ${staleRoles.length} stale roles`);
-  }
-
-  private async bootstrapStoreOwner(): Promise<void> {
-    const { bootstrapStoreOwnerEmail } = this.config.getOrThrow<IAPP>('app');
-    if (!bootstrapStoreOwnerEmail) return;
-
-    const ownerRole = await this.roleRepo.findOneBy({
-      key: RoleKey.STORE_OWNER,
-    });
-    if (!ownerRole) return;
-
-    const user = await this.userRepo.findOneBy({
-      email: bootstrapStoreOwnerEmail,
-    });
-    if (!user) return;
-
-    if (user.roleId === ownerRole.id) return;
-
-    await this.userRepo.update({ id: user.id }, { roleId: ownerRole.id });
-    this.logger.log(
-      `Granted STORE_OWNER role to bootstrap user ${bootstrapStoreOwnerEmail}`,
     );
   }
 }

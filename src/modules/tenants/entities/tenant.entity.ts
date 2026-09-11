@@ -7,6 +7,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { TenantStatus } from '../enums/tenantStatus.enum';
 
 @Entity('tenants')
 export class Tenant extends BaseEntity {
@@ -28,11 +29,11 @@ export class Tenant extends BaseEntity {
   @Index({ unique: true })
   subdomain: string;
 
-  @Column({ default: 'active' })
-  status: string;
+  @Column({ default: TenantStatus.ACTIVE, enum: TenantStatus })
+  status: TenantStatus;
 
-  @Column({ type: 'int', nullable: true })
-  ownerUserId?: number;
+  @Column()
+  ownerUserId: number;
 
   @CreateDateColumn()
   createdAt: Date;

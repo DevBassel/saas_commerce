@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Saas Store API",
-    "description": "RBAC enabled API. Login stores access_token into collection variables. Protected folders use Bearer {{access_token}}.",
+    "description": "Schema-per-tenant RBAC API. Flow: run `Login Platform` first (sets {{platform_token}}), then `Register Store` (platform-admin only, Bearer {{platform_token}}, auto-sets tenant_slug + owner tokens). Set `tenant_slug` to target a tenant; Users/Roles/Permissions folders auto-send `x-tenant-slug`. Login stores access_token/refresh_token. List Users/Roles/Permissions/Tenants auto-set user_id/role_id/permission_id/tenant_id. Users/Roles/Permissions folders use Bearer {{access_token}}; Platform folder uses Bearer {{platform_token}} (tenant tokens are rejected on platform routes with 403). Custom role keys must match ^[a-z][a-z0-9_-]*$ ; uppercase keys are reserved system roles (create/rename to them -> 409, rename/delete of system roles -> 409). Create Permission key must be a valid permission key (409 if already seeded).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -17,6 +17,11 @@
     },
     {
       "key": "refresh_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "platform_token",
       "value": "",
       "type": "string"
     },
@@ -58,6 +63,11 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "x-tenant-slug",
+                "value": "{{tenant_slug}}",
+                "type": "text"
               }
             ],
             "body": {
@@ -86,7 +96,7 @@
           "response": []
         },
         {
-          "name": "Register Store",
+          "name": "Login Platform",
           "request": {
             "method": "POST",
             "header": [
@@ -97,7 +107,51 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Store Owner\",\n  \"email\": \"owner@example.com\",\n  \"password\": \"password123\"\n}"
+              "raw": "{\n  \"email\": \"platform@example.com\",\n  \"password\": \"ChangeMe_123456\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login/platform",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login", "platform"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"login platform ok\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "if (json.access_token) {",
+                  "    pm.collectionVariables.set(\"platform_token\", json.access_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Register Store",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{platform_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Store Owner\",\n  \"email\": \"owner@example.com\",\n  \"password\": \"password123\",\n  \"storeName\": \"My Store\",\n  \"storeSlug\": \"my-store\",\n  \"subdomain\": \"my-store\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/auth/register-store",
@@ -113,7 +167,12 @@
                 "exec": [
                   "pm.test(\"register store success\", function () {",
                   "    pm.response.to.have.status(201);",
-                  "});"
+                  "});",
+                  "if (pm.response.code === 201) {",
+                  "    pm.collectionVariables.set(\"tenant_slug\", \"my-store\");",
+                  "    pm.collectionVariables.set(\"access_token\", pm.response.json().access_token);",
+                  "    pm.collectionVariables.set(\"refresh_token\", pm.response.json().refresh_token);",
+                  "}"
                 ]
               }
             }
@@ -128,6 +187,11 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "x-tenant-slug",
+                "value": "{{tenant_slug}}",
+                "type": "text"
               }
             ],
             "body": {
@@ -215,6 +279,23 @@
               "path": ["users"]
             }
           },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"list users ok\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const users = pm.response.json();",
+                  "if (Array.isArray(users) && users.length) {",
+                  "    pm.collectionVariables.set(\"user_id\", users[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
           "response": []
         },
         {
@@ -332,7 +413,17 @@
           "response": []
         }
       ],
-      "event": []
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.request.headers.upsert({ key: \"x-tenant-slug\", value: pm.collectionVariables.get(\"tenant_slug\") });"
+            ]
+          }
+        }
+      ]
     },
     {
       "name": "Roles",
@@ -358,6 +449,23 @@
               "path": ["roles"]
             }
           },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"list roles ok\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const roles = pm.response.json();",
+                  "if (Array.isArray(roles) && roles.length) {",
+                  "    pm.collectionVariables.set(\"role_id\", roles[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
           "response": []
         },
         {
@@ -385,7 +493,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"key\": \"MANAGER\",\n  \"name\": \"Manager\",\n  \"description\": \"Store manager\"\n}"
+              "raw": "{\n  \"key\": \"auditor\",\n  \"name\": \"Auditor\",\n  \"description\": \"Read-only auditor\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/roles",
@@ -393,6 +501,23 @@
               "path": ["roles"]
             }
           },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"create role ok\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "const role = pm.response.json();",
+                  "if (role && role.id) {",
+                  "    pm.collectionVariables.set(\"role_id\", role.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
           "response": []
         },
         {
@@ -407,7 +532,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Senior Manager\"\n}"
+              "raw": "{\n  \"name\": \"Senior Auditor\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/roles/{{role_id}}",
@@ -431,7 +556,17 @@
           "response": []
         }
       ],
-      "event": []
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.request.headers.upsert({ key: \"x-tenant-slug\", value: pm.collectionVariables.get(\"tenant_slug\") });"
+            ]
+          }
+        }
+      ]
     },
     {
       "name": "Permissions",
@@ -457,6 +592,23 @@
               "path": ["permissions"]
             }
           },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"list permissions ok\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const perms = pm.response.json();",
+                  "if (Array.isArray(perms) && perms.length) {",
+                  "    pm.collectionVariables.set(\"permission_id\", perms[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
           "response": []
         },
         {
@@ -471,7 +623,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"key\": \"products:read\",\n  \"name\": \"Read products\",\n  \"description\": \"View products\"\n}"
+              "raw": "{\n  \"key\": \"permissions:read\",\n  \"name\": \"Read permissions\",\n  \"description\": \"List and view permissions\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/permissions",
@@ -479,6 +631,23 @@
               "path": ["permissions"]
             }
           },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"create permission ok or conflict\", function () {",
+                  "    pm.expect([201, 409]).to.include(pm.response.code);",
+                  "});",
+                  "const perm = pm.response.json();",
+                  "if (pm.response.code === 201 && perm && perm.id) {",
+                  "    pm.collectionVariables.set(\"permission_id\", perm.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
           "response": []
         },
         {
@@ -493,7 +662,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Read products (updated)\"\n}"
+              "raw": "{\n  \"name\": \"Read permissions (updated)\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/permissions/{{permission_id}}",
@@ -517,7 +686,17 @@
           "response": []
         }
       ],
-      "event": []
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.request.headers.upsert({ key: \"x-tenant-slug\", value: pm.collectionVariables.get(\"tenant_slug\") });"
+            ]
+          }
+        }
+      ]
     },
     {
       "name": "Platform",
@@ -526,21 +705,21 @@
         "bearer": [
           {
             "key": "token",
-            "value": "{{access_token}}",
+            "value": "{{platform_token}}",
             "type": "string"
           }
         ]
       },
       "item": [
         {
-          "name": "List Stores",
+          "name": "List Tenants",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{base_url}}/platform/stores",
+              "raw": "{{base_url}}/platform/tenants",
               "host": ["{{base_url}}"],
-              "path": ["platform", "stores"]
+              "path": ["platform", "tenants"]
             }
           },
           "event": [
@@ -549,9 +728,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"list stores ok\", function () {",
+                  "pm.test(\"list tenants ok\", function () {",
                   "    pm.response.to.have.status(200);",
-                  "});"
+                  "});",
+                  "const tenants = pm.response.json();",
+                  "if (Array.isArray(tenants) && tenants.length) {",
+                  "    pm.collectionVariables.set(\"tenant_id\", tenants[0].id);",
+                  "}"
                 ]
               }
             }
@@ -559,14 +742,14 @@
           "response": []
         },
         {
-          "name": "Get Store By Id",
+          "name": "Get Tenant By Id",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{base_url}}/platform/stores/{{user_id}}",
+              "raw": "{{base_url}}/platform/tenants/{{tenant_id}}",
               "host": ["{{base_url}}"],
-              "path": ["platform", "stores", "{{user_id}}"]
+              "path": ["platform", "tenants", "{{tenant_id}}"]
             }
           },
           "response": []

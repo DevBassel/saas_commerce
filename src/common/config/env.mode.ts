@@ -7,8 +7,6 @@ const buildEnv = (): IENV => ({
     port: Number(process.env.APP_PORT),
     apiPrefix: process.env.API_PREFIX!,
     apiVersion: process.env.API_VERSION!,
-    bootstrapStoreOwnerEmail:
-      process.env.BOOTSTRAP_STORE_OWNER_EMAIL || undefined,
     bootstrapSuperAdminEmail:
       process.env.BOOTSTRAP_SUPER_ADMIN_EMAIL || undefined,
     bootstrapSuperAdminPassword:
@@ -33,8 +31,11 @@ const buildEnv = (): IENV => ({
   },
   jwt: {
     accessSecret: process.env.JWT_ACCESS_SECRET!,
+    refreshSecret: process.env.JWT_REFRESH_SECRET!,
     accessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN!,
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN!,
+    issuer: process.env.JWT_ISSUER || 'saas_store',
+    audience: process.env.JWT_AUDIENCE || 'saas_store',
   },
   bcrypt: {
     rounds: Number(process.env.BCRYPT_ROUNDS),
@@ -76,12 +77,6 @@ const buildEnv = (): IENV => ({
     origin: process.env.CORS_ORIGIN!,
     credentials:
       String(process.env.CORS_CREDENTIALS).toLocaleLowerCase() === 'true',
-  },
-  admin: {
-    rootPath: process.env.ADMINJS_ROOT_PATH || '/admin',
-    cookieName: process.env.ADMINJS_COOKIE_NAME || 'saas_admin',
-    cookiePassword: process.env.ADMINJS_COOKIE_PASSWORD!,
-    sessionSecret: process.env.ADMINJS_SESSION_SECRET!,
   },
 });
 
