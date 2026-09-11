@@ -29,7 +29,7 @@ export class Tenant extends BaseEntity {
   @Index({ unique: true })
   subdomain: string;
 
-  @Column({ default: TenantStatus.ACTIVE, enum: TenantStatus })
+  @Column({ type: 'enum', enum: TenantStatus, default: TenantStatus.ACTIVE })
   status: TenantStatus;
 
   @Column()

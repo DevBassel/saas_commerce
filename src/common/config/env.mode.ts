@@ -1,6 +1,6 @@
 import { IENV } from './env.interface';
 
-const buildEnv = (): IENV => ({
+export const buildEnv = (): IENV => ({
   app: {
     env: process.env.NODE_ENV!,
     name: process.env.APP_NAME!,
@@ -78,19 +78,4 @@ const buildEnv = (): IENV => ({
     credentials:
       String(process.env.CORS_CREDENTIALS).toLocaleLowerCase() === 'true',
   },
-});
-
-export const development = (): IENV => ({
-  ...buildEnv(),
-  app: { ...buildEnv().app, env: 'development' },
-});
-
-export const testing = (): IENV => ({
-  ...buildEnv(),
-  app: { ...buildEnv().app, env: 'testing' },
-});
-
-export const production = (): IENV => ({
-  ...buildEnv(),
-  app: { ...buildEnv().app, env: 'production' },
 });
