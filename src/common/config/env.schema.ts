@@ -61,33 +61,9 @@ export const EnvSchema = joi.object({
   JWT_AUDIENCE: joi.string().optional(),
   //  Password Hashing
   BCRYPT_ROUNDS: joi.number().required(),
-  // Redis
-  REDIS_HOST: joi.string().required(),
-  REDIS_PORT: joi.number().required(),
-  REDIS_PASSWORD: joi.string().required(),
-  REDIS_DB: joi.number().required(),
-  // Cache
-  CACHE_TTL: joi.number().required(),
-  // Mail (SMTP)
-  MAIL_HOST: joi.string().required(),
-  MAIL_PORT: joi.number().required(),
-  MAIL_SECURE: joi.boolean().required(),
-  MAIL_USER: joi.string().required(),
-  MAIL_PASSWORD: joi.string().required(),
-  MAIL_FROM: joi.string().required(),
-  // Stripe
-  STRIPE_SECRET_KEY: joi.string().required(),
-  STRIPE_WEBHOOK_SECRET: joi.string().required(),
-  STRIPE_PUBLIC_KEY: joi.string().required(),
-  // Rate Limiting
-  THROTTLE_TTL: joi.number().required(),
-  THROTTLE_LIMIT: joi.number().required(),
 
   // Logging
   LOG_LEVEL: joi.string().required(),
-  // Files
-  MAX_FILE_SIZE: joi.number().required(),
-  MAX_FILES: joi.number().required(),
   // CORS
   CORS_ORIGIN: joi.string().required(),
   CORS_CREDENTIALS: joi.boolean().required(),

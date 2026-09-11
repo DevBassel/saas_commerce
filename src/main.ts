@@ -6,9 +6,7 @@ import { IAPP, ICORS, IENV } from './common/config/env.interface';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
-    rawBody: true,
-  });
+  const app = await NestFactory.create(AppModule);
 
   const { name, apiPrefix, apiVersion, port } = app
     .get(ConfigService<IENV>)

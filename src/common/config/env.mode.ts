@@ -40,38 +40,8 @@ export const buildEnv = (): IENV => ({
   bcrypt: {
     rounds: Number(process.env.BCRYPT_ROUNDS),
   },
-  redis: {
-    host: process.env.REDIS_HOST!,
-    port: Number(process.env.REDIS_PORT),
-    password: process.env.REDIS_PASSWORD!,
-    db: Number(process.env.REDIS_DB),
-    ttl: Number(process.env.CACHE_TTL),
-  },
-
-  mail: {
-    host: process.env.MAIL_HOST!,
-    port: Number(process.env.MAIL_PORT),
-    secure: String(process.env.MAIL_SECURE).toLocaleLowerCase() === 'true',
-    user: process.env.MAIL_USER!,
-    password: process.env.MAIL_PASSWORD!,
-    from: process.env.MAIL_FROM!,
-  },
-  stripe: {
-    secretKey: process.env.STRIPE_SECRET_KEY!,
-    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET!,
-    publicKey: process.env.STRIPE_PUBLIC_KEY!,
-  },
-  throttle: {
-    ttl: Number(process.env.THROTTLE_TTL),
-    limit: Number(process.env.THROTTLE_LIMIT),
-  },
-
   log: {
     level: process.env.LOG_LEVEL!,
-  },
-  files: {
-    maxFileSize: Number(process.env.MAX_FILE_SIZE),
-    maxFiles: Number(process.env.MAX_FILES),
   },
   cors: {
     origin: process.env.CORS_ORIGIN!,

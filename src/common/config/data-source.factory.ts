@@ -21,7 +21,7 @@ export const buildDataSourceOptions = (
   config: ConfigService<IENV>,
   overrides: DataSourceOverrides = {},
 ): PostgresConnectionOptions => {
-  const { name, host, port, username, password, synchronize, ssl } =
+  const { name, host, port, username, password, synchronize, logging, ssl } =
     config.getOrThrow<IDB>('db');
 
   return {
@@ -32,7 +32,7 @@ export const buildDataSourceOptions = (
     password: password,
     database: name,
     ssl,
-    logging: 'all',
+    logging,
     logger: getSharedLogger(),
     synchronize: overrides.synchronize ?? synchronize,
     ...(overrides.schema ? { schema: overrides.schema } : {}),
