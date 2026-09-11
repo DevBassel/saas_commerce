@@ -1,3 +1,8 @@
+export type TenantRef = { schemaName: string };
+
+export const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export const SLUG_MESSAGE = 'must be lowercase alphanumeric, hyphen-separated';
+
 export const sanitizeSchemaName = (name: string): string => {
   const sanitized = name
     .toLowerCase()

@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { TenantService } from '../../tenants/tenant.service';
+import { TenantRef } from '../../tenants/tenant.utils';
 
-export type TenantRef = { schemaName: string };
+export type { TenantRef };
 
 @Injectable()
 export class PlatformTenantRefService {

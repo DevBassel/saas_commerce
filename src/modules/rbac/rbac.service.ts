@@ -16,8 +16,7 @@ import { CreatePermissionDto } from './dto/create-permission.dto';
 import { UpdatePermissionDto } from './dto/update-permission.dto';
 import { TenantManagerService } from '../tenants/tenant-manager.service';
 import { tenantRefFromContext } from '../auth/tenant-context';
-
-type TenantRef = { schemaName: string };
+import { TenantRef } from '../tenants/tenant.utils';
 
 const SYSTEM_ROLES: RoleKey[] = [
   RoleKey.SUPER_ADMIN,

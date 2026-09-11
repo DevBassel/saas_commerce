@@ -19,7 +19,7 @@ import { compare } from 'bcrypt';
 import { TenantService } from '../tenants/tenant.service';
 import { TenantProvisionerService } from '../tenants/tenant-provisioner.service';
 import { getTenantContext } from './tenant-context';
-import { TenantRef, tenantRefFromPayload } from './tenant-ref.util';
+import { TenantIdentity, tenantRefFromPayload } from './tenant-ref.util';
 
 @Injectable()
 export class AuthService {
@@ -125,7 +125,7 @@ export class AuthService {
     return this.returnUserCredential(user, tenant);
   }
 
-  async returnUserCredential(user: User, tenant?: TenantRef) {
+  async returnUserCredential(user: User, tenant?: TenantIdentity) {
     const payload = {
       id: user.id,
       role: user.role?.key ?? RoleKey.CUSTOMER,
@@ -173,7 +173,7 @@ export class AuthService {
     };
   }
 
-  private requireTenant(): TenantRef {
+  private requireTenant(): TenantIdentity {
     const ctx = getTenantContext();
     if (!ctx) throw new BadRequestException('Tenant context is required');
     return ctx.tenant;

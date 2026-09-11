@@ -8,6 +8,7 @@ import { User } from '../users/entities/user.entity';
 import { seedRbac } from './rbac.seed';
 import { RoleKey } from 'src/common/constants/RoleKey.enum';
 import { IAPP, IENV } from 'src/common/config/env.interface';
+import { mergePermissions } from './permission.utils';
 import bcrypt from 'bcrypt';
 
 @Injectable()
@@ -80,10 +81,7 @@ export class RbacSeedService implements OnApplicationBootstrap {
         relations: { permissions: true },
       });
       if (loaded) {
-        const merged = new Map<number, Permission>();
-        for (const p of loaded.permissions ?? []) merged.set(p.id, p);
-        for (const p of permissions) merged.set(p.id, p);
-        loaded.permissions = [...merged.values()];
+        loaded.permissions = mergePermissions(loaded.permissions, permissions);
         await this.userRepo.save(loaded);
       }
 

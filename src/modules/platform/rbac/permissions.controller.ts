@@ -18,6 +18,7 @@ import { UpdatePermissionDto } from '../../rbac/dto/update-permission.dto';
 import { PlatformPermissionsService } from './permissions.service';
 
 @Platform()
+@Roles([RoleKey.SUPER_ADMIN])
 @Controller('platform')
 export class PlatformPermissionsController {
   constructor(
@@ -25,13 +26,11 @@ export class PlatformPermissionsController {
   ) {}
 
   @Get('tenants/:tenantId/permissions')
-  @Roles([RoleKey.SUPER_ADMIN])
   listTenantPermissions(@Param('tenantId', ParseIntPipe) tenantId: number) {
     return this.permissionsService.listTenantPermissions(tenantId);
   }
 
   @Post('tenants/:tenantId/permissions')
-  @Roles([RoleKey.SUPER_ADMIN])
   createTenantPermission(
     @Param('tenantId', ParseIntPipe) tenantId: number,
     @Body() dto: CreatePermissionDto,
@@ -40,7 +39,6 @@ export class PlatformPermissionsController {
   }
 
   @Patch('tenants/:tenantId/permissions/:permissionId')
-  @Roles([RoleKey.SUPER_ADMIN])
   updateTenantPermission(
     @Param('tenantId', ParseIntPipe) tenantId: number,
     @Param('permissionId', ParseIntPipe) permissionId: number,
@@ -55,7 +53,6 @@ export class PlatformPermissionsController {
 
   @Delete('tenants/:tenantId/permissions/:permissionId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @Roles([RoleKey.SUPER_ADMIN])
   removeTenantPermission(
     @Param('tenantId', ParseIntPipe) tenantId: number,
     @Param('permissionId', ParseIntPipe) permissionId: number,

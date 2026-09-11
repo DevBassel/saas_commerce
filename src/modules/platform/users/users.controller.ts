@@ -19,18 +19,17 @@ import { PlatformUsersService } from './users.service';
 import { PlatformCreateUserDto } from './dto/platform-create-user.dto';
 
 @Platform()
+@Roles([RoleKey.SUPER_ADMIN])
 @Controller('platform')
 export class PlatformUsersController {
   constructor(private readonly usersService: PlatformUsersService) {}
 
   @Get('tenants/:tenantId/users')
-  @Roles([RoleKey.SUPER_ADMIN])
   listTenantUsers(@Param('tenantId', ParseIntPipe) tenantId: number) {
     return this.usersService.listTenantUsers(tenantId);
   }
 
   @Get('tenants/:tenantId/users/:userId')
-  @Roles([RoleKey.SUPER_ADMIN])
   getTenantUser(
     @Param('tenantId', ParseIntPipe) tenantId: number,
     @Param('userId', ParseIntPipe) userId: number,
@@ -39,7 +38,6 @@ export class PlatformUsersController {
   }
 
   @Post('tenants/:tenantId/users')
-  @Roles([RoleKey.SUPER_ADMIN])
   createTenantUser(
     @Param('tenantId', ParseIntPipe) tenantId: number,
     @Body() dto: PlatformCreateUserDto,
@@ -48,7 +46,6 @@ export class PlatformUsersController {
   }
 
   @Patch('tenants/:tenantId/users/:userId')
-  @Roles([RoleKey.SUPER_ADMIN])
   updateTenantUser(
     @Param('tenantId', ParseIntPipe) tenantId: number,
     @Param('userId', ParseIntPipe) userId: number,
@@ -58,7 +55,6 @@ export class PlatformUsersController {
   }
 
   @Delete('tenants/:tenantId/users/:userId')
-  @Roles([RoleKey.SUPER_ADMIN])
   removeTenantUser(
     @Param('tenantId', ParseIntPipe) tenantId: number,
     @Param('userId', ParseIntPipe) userId: number,
@@ -67,7 +63,6 @@ export class PlatformUsersController {
   }
 
   @Patch('tenants/:tenantId/users/:userId/role')
-  @Roles([RoleKey.SUPER_ADMIN])
   assignTenantUserRole(
     @Param('tenantId', ParseIntPipe) tenantId: number,
     @Param('userId', ParseIntPipe) userId: number,
@@ -77,7 +72,6 @@ export class PlatformUsersController {
   }
 
   @Delete('tenants/:tenantId/users/:userId/role')
-  @Roles([RoleKey.SUPER_ADMIN])
   deassignTenantUserRole(
     @Param('tenantId', ParseIntPipe) tenantId: number,
     @Param('userId', ParseIntPipe) userId: number,
@@ -86,7 +80,6 @@ export class PlatformUsersController {
   }
 
   @Post('tenants/:tenantId/users/:userId/permissions')
-  @Roles([RoleKey.SUPER_ADMIN])
   grantTenantUserPermissions(
     @Param('tenantId', ParseIntPipe) tenantId: number,
     @Param('userId', ParseIntPipe) userId: number,
@@ -96,7 +89,6 @@ export class PlatformUsersController {
   }
 
   @Delete('tenants/:tenantId/users/:userId/permissions')
-  @Roles([RoleKey.SUPER_ADMIN])
   revokeTenantUserPermissions(
     @Param('tenantId', ParseIntPipe) tenantId: number,
     @Param('userId', ParseIntPipe) userId: number,

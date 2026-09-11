@@ -6,6 +6,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { CreateUserDto } from '../../users/dto/create-user.dto';
+import { SLUG_MESSAGE, SLUG_REGEX } from '../../tenants/tenant.utils';
 
 export class RegisterStoreDto extends CreateUserDto {
   @IsString()
@@ -14,8 +15,8 @@ export class RegisterStoreDto extends CreateUserDto {
 
   @IsString()
   @Length(2, 50)
-  @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, {
-    message: 'storeSlug must be lowercase alphanumeric, hyphen-separated',
+  @Matches(SLUG_REGEX, {
+    message: `storeSlug ${SLUG_MESSAGE}`,
   })
   storeSlug: string;
 

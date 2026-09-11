@@ -18,18 +18,17 @@ import { UpdateRoleDto } from '../../rbac/dto/update-role.dto';
 import { PlatformRolesService } from './roles.service';
 
 @Platform()
+@Roles([RoleKey.SUPER_ADMIN])
 @Controller('platform')
 export class PlatformRolesController {
   constructor(private readonly rolesService: PlatformRolesService) {}
 
   @Get('tenants/:tenantId/roles')
-  @Roles([RoleKey.SUPER_ADMIN])
   listTenantRoles(@Param('tenantId', ParseIntPipe) tenantId: number) {
     return this.rolesService.listTenantRoles(tenantId);
   }
 
   @Get('tenants/:tenantId/roles/:roleId')
-  @Roles([RoleKey.SUPER_ADMIN])
   getTenantRole(
     @Param('tenantId', ParseIntPipe) tenantId: number,
     @Param('roleId', ParseIntPipe) roleId: number,
@@ -38,7 +37,6 @@ export class PlatformRolesController {
   }
 
   @Post('tenants/:tenantId/roles')
-  @Roles([RoleKey.SUPER_ADMIN])
   createTenantRole(
     @Param('tenantId', ParseIntPipe) tenantId: number,
     @Body() dto: CreateRoleDto,
@@ -47,7 +45,6 @@ export class PlatformRolesController {
   }
 
   @Patch('tenants/:tenantId/roles/:roleId')
-  @Roles([RoleKey.SUPER_ADMIN])
   updateTenantRole(
     @Param('tenantId', ParseIntPipe) tenantId: number,
     @Param('roleId', ParseIntPipe) roleId: number,
@@ -58,7 +55,6 @@ export class PlatformRolesController {
 
   @Delete('tenants/:tenantId/roles/:roleId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @Roles([RoleKey.SUPER_ADMIN])
   removeTenantRole(
     @Param('tenantId', ParseIntPipe) tenantId: number,
     @Param('roleId', ParseIntPipe) roleId: number,

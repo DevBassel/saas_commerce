@@ -12,14 +12,14 @@ import { User } from './entities/user.entity';
 import { Repository, In } from 'typeorm';
 import { Role } from '../rbac/entities/role.entity';
 import { Permission } from '../rbac/entities/permission.entity';
+import { mergePermissions } from '../rbac/permission.utils';
 import { RoleKey, ROLE_RANK } from '../../common/constants/RoleKey.enum';
 import { TenantManagerService } from '../tenants/tenant-manager.service';
 import { tenantRefFromContext } from '../auth/tenant-context';
+import { TenantRef } from '../tenants/tenant.utils';
 import bcrypt from 'bcrypt';
 
 type FindOneOptions = { withRole?: boolean; withPermissions?: boolean };
-
-type TenantRef = { schemaName: string };
 
 @Injectable()
 export class UsersService {
@@ -205,10 +205,7 @@ export class UsersService {
     });
     if (!loaded) throw new NotFoundException('User not found');
 
-    const merged = new Map<number, Permission>();
-    for (const p of loaded.permissions ?? []) merged.set(p.id, p);
-    for (const p of permissions) merged.set(p.id, p);
-    loaded.permissions = [...merged.values()];
+    loaded.permissions = mergePermissions(loaded.permissions, permissions);
     await userRepo.save(loaded);
 
     return this.findOne(

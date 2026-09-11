@@ -5,6 +5,7 @@ import {
   Matches,
   MinLength,
 } from 'class-validator';
+import { SLUG_MESSAGE, SLUG_REGEX } from '../tenant.utils';
 
 export class CreateTenantDto {
   @IsString()
@@ -13,8 +14,8 @@ export class CreateTenantDto {
 
   @IsString()
   @Length(2, 50)
-  @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, {
-    message: 'slug must be lowercase alphanumeric, hyphen-separated',
+  @Matches(SLUG_REGEX, {
+    message: `slug ${SLUG_MESSAGE}`,
   })
   slug: string;
 
