@@ -2,6 +2,8 @@ import { RoleKey } from 'src/common/constants/RoleKey.enum';
 import { PermissionKey } from 'src/common/constants/PermissionKey.enum';
 import { UserPermissionKey } from 'src/modules/users/constants/user-permissions.enum';
 import { RbacPermissionKey } from 'src/modules/rbac/constants/rbac-permissions.enum';
+import { ProductPermissionKey } from 'src/modules/products/constants/product-permissions.enum';
+import { CategoryPermissionKey } from 'src/modules/categories/constants/category-permissions.enum';
 
 export const SEED_PERMISSIONS: {
   key: PermissionKey;
@@ -73,6 +75,46 @@ export const SEED_PERMISSIONS: {
     name: 'Delete permissions',
     description: 'Remove permissions',
   },
+  {
+    key: ProductPermissionKey.READ,
+    name: 'Read products',
+    description: 'List and view store products',
+  },
+  {
+    key: ProductPermissionKey.CREATE,
+    name: 'Create products',
+    description: 'Add new products',
+  },
+  {
+    key: ProductPermissionKey.UPDATE,
+    name: 'Update products',
+    description: 'Edit products and manage their images',
+  },
+  {
+    key: ProductPermissionKey.DELETE,
+    name: 'Delete products',
+    description: 'Remove products',
+  },
+  {
+    key: CategoryPermissionKey.READ,
+    name: 'Read categories',
+    description: 'List and view product categories',
+  },
+  {
+    key: CategoryPermissionKey.CREATE,
+    name: 'Create categories',
+    description: 'Add new product categories',
+  },
+  {
+    key: CategoryPermissionKey.UPDATE,
+    name: 'Update categories',
+    description: 'Edit product categories',
+  },
+  {
+    key: CategoryPermissionKey.DELETE,
+    name: 'Delete categories',
+    description: 'Remove product categories',
+  },
 ];
 
 export const SEED_ROLES: {
@@ -127,12 +169,28 @@ export const SEED_ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     UserPermissionKey.ASSIGN_PERMISSIONS,
     RbacPermissionKey.ROLES_READ,
     RbacPermissionKey.PERMISSIONS_READ,
+    ProductPermissionKey.READ,
+    ProductPermissionKey.CREATE,
+    ProductPermissionKey.UPDATE,
+    ProductPermissionKey.DELETE,
+    CategoryPermissionKey.READ,
+    CategoryPermissionKey.CREATE,
+    CategoryPermissionKey.UPDATE,
+    CategoryPermissionKey.DELETE,
   ],
   [RoleKey.MANAGER]: [
     UserPermissionKey.READ,
     UserPermissionKey.UPDATE,
     RbacPermissionKey.ROLES_READ,
+    ProductPermissionKey.READ,
+    ProductPermissionKey.UPDATE,
+    CategoryPermissionKey.READ,
+    CategoryPermissionKey.UPDATE,
   ],
-  [RoleKey.EMPLOYEE]: [UserPermissionKey.READ],
+  [RoleKey.EMPLOYEE]: [
+    UserPermissionKey.READ,
+    ProductPermissionKey.READ,
+    CategoryPermissionKey.READ,
+  ],
   [RoleKey.CUSTOMER]: [],
 };

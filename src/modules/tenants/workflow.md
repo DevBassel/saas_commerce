@@ -25,7 +25,7 @@ flowchart TD
     PROV --> SAN["sanitizeSchemaName<br/>lowercase, a-z 0-9 underscore, max 63 chars"]
     SAN --> DDL["CREATE SCHEMA IF NOT EXISTS<br/>via public DataSource"]
     DDL --> GDS["TenantManagerService.getDataSource"]
-    GDS --> SEED["seedRbac on tenant DataSource<br/>TENANT_ROLE_KEYS: STORE_OWNER, ADMIN,<br/>MANAGER, EMPLOYEE, CUSTOMER + permissions"]
+    GDS --> SEED["seedRbac then seedCategories on tenant DataSource<br/>TENANT_ROLE_KEYS: STORE_OWNER, ADMIN,<br/>MANAGER, EMPLOYEE, CUSTOMER + permissions,<br/>8 base product categories"]
     SEED --> DONE["log: Provisioned tenant slug (schema)"]
 
     subgraph MGR["TenantManagerService — per-schema DataSource cache"]

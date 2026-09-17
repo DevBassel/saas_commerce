@@ -52,6 +52,16 @@ export const EnvSchema = joi.object({
   DB_LOGGING: joi.boolean().required(),
   DB_SSL: joi.boolean().required(),
   TENANT_POOL_SIZE: joi.number().required(),
+  TENANT_STORAGE_CAPACITY_BYTES: joi.number().integer().min(0).required(),
+  // R2 Object Storage
+  R2_ACCOUNT_ID: joi.string().required(),
+  R2_ACCESS_KEY_ID: joi.string().required(),
+  R2_SECRET_ACCESS_KEY: secretRule('R2_SECRET_ACCESS_KEY'),
+  R2_BUCKET: joi.string().required(),
+  R2_PUBLIC_URL: joi.string().uri().required(),
+  // Upload limits
+  MAX_FILE_SIZE: joi.number().integer().min(1).required(),
+  MAX_PRODUCT_IMAGES: joi.number().integer().min(1).required(),
   // JWT
   JWT_ACCESS_SECRET: secretRule('JWT_ACCESS_SECRET'),
   JWT_REFRESH_SECRET: secretRule('JWT_REFRESH_SECRET'),

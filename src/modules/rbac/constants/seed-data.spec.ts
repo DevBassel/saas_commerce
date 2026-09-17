@@ -1,6 +1,8 @@
 import { RoleKey } from 'src/common/constants/RoleKey.enum';
 import { UserPermissionKey } from 'src/modules/users/constants/user-permissions.enum';
 import { RbacPermissionKey } from './rbac-permissions.enum';
+import { ProductPermissionKey } from 'src/modules/products/constants/product-permissions.enum';
+import { CategoryPermissionKey } from 'src/modules/categories/constants/category-permissions.enum';
 import { SEED_PERMISSIONS, SEED_ROLE_PERMISSIONS } from './seed-data';
 
 describe('role × permission seed matrix', () => {
@@ -23,10 +25,44 @@ describe('role × permission seed matrix', () => {
     expect(SEED_ROLE_PERMISSIONS[RoleKey.CUSTOMER]).toEqual([]);
   });
 
-  it('gives EMPLOYEE read-only user access', () => {
+  it('gives EMPLOYEE read-only user, product and category access', () => {
     expect(SEED_ROLE_PERMISSIONS[RoleKey.EMPLOYEE]).toEqual([
       UserPermissionKey.READ,
+      ProductPermissionKey.READ,
+      CategoryPermissionKey.READ,
     ]);
+  });
+
+  it('gives ADMIN full category access', () => {
+    const grants = SEED_ROLE_PERMISSIONS[RoleKey.ADMIN];
+    expect(grants).toContain(CategoryPermissionKey.READ);
+    expect(grants).toContain(CategoryPermissionKey.CREATE);
+    expect(grants).toContain(CategoryPermissionKey.UPDATE);
+    expect(grants).toContain(CategoryPermissionKey.DELETE);
+  });
+
+  it('gives MANAGER category read/update without create or delete', () => {
+    const grants = SEED_ROLE_PERMISSIONS[RoleKey.MANAGER];
+    expect(grants).toContain(CategoryPermissionKey.READ);
+    expect(grants).toContain(CategoryPermissionKey.UPDATE);
+    expect(grants).not.toContain(CategoryPermissionKey.CREATE);
+    expect(grants).not.toContain(CategoryPermissionKey.DELETE);
+  });
+
+  it('gives ADMIN full product access', () => {
+    const grants = SEED_ROLE_PERMISSIONS[RoleKey.ADMIN];
+    expect(grants).toContain(ProductPermissionKey.READ);
+    expect(grants).toContain(ProductPermissionKey.CREATE);
+    expect(grants).toContain(ProductPermissionKey.UPDATE);
+    expect(grants).toContain(ProductPermissionKey.DELETE);
+  });
+
+  it('gives MANAGER product read/update without create or delete', () => {
+    const grants = SEED_ROLE_PERMISSIONS[RoleKey.MANAGER];
+    expect(grants).toContain(ProductPermissionKey.READ);
+    expect(grants).toContain(ProductPermissionKey.UPDATE);
+    expect(grants).not.toContain(ProductPermissionKey.CREATE);
+    expect(grants).not.toContain(ProductPermissionKey.DELETE);
   });
 
   it('does not grant ADMIN destructive RBAC permissions', () => {

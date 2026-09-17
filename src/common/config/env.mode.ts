@@ -28,6 +28,9 @@ export const buildEnv = (): IENV => ({
     tenantPoolSize: process.env.TENANT_POOL_SIZE
       ? Number(process.env.TENANT_POOL_SIZE)
       : undefined,
+    tenantStorageCapacityBytes: Number(
+      process.env.TENANT_STORAGE_CAPACITY_BYTES,
+    ),
   },
   jwt: {
     accessSecret: process.env.JWT_ACCESS_SECRET!,
@@ -47,5 +50,16 @@ export const buildEnv = (): IENV => ({
     origin: process.env.CORS_ORIGIN!,
     credentials:
       String(process.env.CORS_CREDENTIALS).toLocaleLowerCase() === 'true',
+  },
+  r2: {
+    accountId: process.env.R2_ACCOUNT_ID!,
+    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+    bucket: process.env.R2_BUCKET!,
+    publicUrl: (process.env.R2_PUBLIC_URL || '').replace(/\/+$/, ''),
+  },
+  files: {
+    maxFileSize: Number(process.env.MAX_FILE_SIZE),
+    maxProductImages: Number(process.env.MAX_PRODUCT_IMAGES),
   },
 });

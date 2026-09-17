@@ -6,7 +6,17 @@ import { ConfigEnv } from './common/config/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { IENV, IJWT } from './common/config/env.interface';
 import { AppLoggerModule } from './common/logger/logger.module';
+import { R2Module } from './common/storage/r2.module';
 import { buildDataSourceOptions } from './common/config/data-source.factory';
+import { Tenant } from './modules/tenants/entities/tenant.entity';
+import { User } from './modules/users/entities/user.entity';
+import { Role } from './modules/rbac/entities/role.entity';
+import { Permission } from './modules/rbac/entities/permission.entity';
+
+// Public schema entities only. Tenant-scoped entities live in
+// tenant-entities.ts and must never be registered here.
+const PUBLIC_ENTITIES = [Tenant, User, Role, Permission];
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -15,13 +25,14 @@ import { buildDataSourceOptions } from './common/config/data-source.factory';
       load: [ConfigEnv],
     }),
     AppLoggerModule,
+    R2Module,
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService<IENV>) => {
         return {
           ...buildDataSourceOptions(config),
           autoLoadEntities: true,
-          entities: [__dirname + '/**/*.entity.{js,ts}'],
+          entities: PUBLIC_ENTITIES,
         };
       },
     }),

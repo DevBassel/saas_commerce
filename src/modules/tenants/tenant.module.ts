@@ -5,6 +5,7 @@ import { TenantService } from './tenant.service';
 import { TenantManagerService } from './tenant-manager.service';
 import { TenantProvisionerService } from './tenant-provisioner.service';
 import { TenantResolutionService } from './tenant-resolution.service';
+import { TenantReseedService } from './tenant-reseed.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Tenant])],
@@ -13,6 +14,7 @@ import { TenantResolutionService } from './tenant-resolution.service';
     TenantManagerService,
     TenantProvisionerService,
     TenantResolutionService,
+    TenantReseedService,
   ],
   exports: [
     TenantService,

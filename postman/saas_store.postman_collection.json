@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Saas Store API",
-    "description": "Schema-per-tenant RBAC API. Flow: run `Register Store` first (public self-serve signup, auto-sets tenant_slug + owner tokens), or `Login Platform` to get {{platform_token}} for the Platform folder. Set `tenant_slug` to target a tenant; Users/Roles/Permissions folders auto-send `x-tenant-slug`. Login stores access_token/refresh_token; Refresh rotates them (old refresh token is revoked). List Users/Roles/Permissions/Tenants auto-set user_id/role_id/permission_id/tenant_id. Users/Roles/Permissions folders use Bearer {{access_token}}; Platform folder uses Bearer {{platform_token}} (tenant tokens are rejected on platform routes with 403). Custom role keys must match ^[a-z][a-z0-9_-]*$ ; uppercase keys are reserved system roles (create/rename to them -> 409, rename/delete of system roles -> 409). Create Permission key must be a valid permission key (409 if already seeded).",
+    "description": "Schema-per-tenant RBAC API. Flow: run `Register Store` first (public self-serve signup, auto-sets tenant_slug + owner tokens), or `Login Platform` to get {{platform_token}} for the Platform folder. Set `tenant_slug` to target a tenant; Users/Roles/Permissions/Products/Categories folders auto-send `x-tenant-slug`. Login stores access_token/refresh_token; Refresh rotates them (old refresh token is revoked). List Users/Roles/Permissions/Tenants/Products/Categories auto-set user_id/role_id/permission_id/tenant_id/product_id/category_id (list/upload also set image_id). Users/Roles/Permissions/Products/Categories folders use Bearer {{access_token}}; Platform folder uses Bearer {{platform_token}} (tenant tokens are rejected on platform routes with 403). Custom role keys must match ^[a-z][a-z0-9_-]*$ ; uppercase keys are reserved system roles (create/rename to them -> 409, rename/delete of system roles -> 409). Create Permission key must be a valid permission key (409 if already seeded). Products: SKU must match ^[A-Za-z0-9][A-Za-z0-9_-]*$ (duplicate -> 400), optional categoryId must reference an existing category (unknown -> 400), images are jpeg/png/webp/gif multipart `file` field (quota + count limits -> 413/400). Categories: each tenant is seeded with 8 base categories on provision/re-seed; slug is auto-derived from name when omitted and must be unique (duplicate -> 400), deleting a category nulls products.categoryId.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -47,6 +47,21 @@
     },
     {
       "key": "permission_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "product_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "image_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "category_id",
       "value": "",
       "type": "string"
     }
@@ -736,6 +751,370 @@
       ]
     },
     {
+      "name": "Products",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{access_token}}",
+            "type": "string"
+          }
+        ]
+      },
+      "item": [
+        {
+          "name": "List Products",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/products",
+              "host": ["{{base_url}}"],
+              "path": ["products"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"list products ok\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const products = pm.response.json();",
+                  "if (Array.isArray(products) && products.length) {",
+                  "    pm.collectionVariables.set(\"product_id\", products[0].id);",
+                  "    if (products[0].categoryId) pm.collectionVariables.set(\"category_id\", products[0].categoryId);",
+                  "    const img = products.find(p => p.images && p.images.length);",
+                  "    if (img) pm.collectionVariables.set(\"image_id\", img.images[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get Product By Id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/products/{{product_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["products", "{{product_id}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Product",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Product\",\n  \"sku\": \"test-sku-1\",\n  \"description\": \"A test product\",\n  \"price\": 19.99,\n  \"stock\": 10,\n  \"isActive\": true,\n  \"categoryId\": {{category_id}}\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/products",
+              "host": ["{{base_url}}"],
+              "path": ["products"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"create product ok\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "const product = pm.response.json();",
+                  "if (product && product.id) {",
+                  "    pm.collectionVariables.set(\"product_id\", product.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Update Product",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Product (updated)\",\n  \"price\": 24.99\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/products/{{product_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["products", "{{product_id}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Upload Product Image",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/products/{{product_id}}/images",
+              "host": ["{{base_url}}"],
+              "path": ["products", "{{product_id}}", "images"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"upload image ok\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "const product = pm.response.json();",
+                  "if (product && product.images && product.images.length) {",
+                  "    pm.collectionVariables.set(\"image_id\", product.images[product.images.length - 1].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Reorder Product Images",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"imageIds\": [\n    {{image_id}}\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/products/{{product_id}}/images/order",
+              "host": ["{{base_url}}"],
+              "path": ["products", "{{product_id}}", "images", "order"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Product Image",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/products/{{product_id}}/images/{{image_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["products", "{{product_id}}", "images", "{{image_id}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Product",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/products/{{product_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["products", "{{product_id}}"]
+            }
+          },
+          "response": []
+        }
+      ],
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.request.headers.upsert({ key: \"x-tenant-slug\", value: pm.collectionVariables.get(\"tenant_slug\") });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Categories",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{access_token}}",
+            "type": "string"
+          }
+        ]
+      },
+      "item": [
+        {
+          "name": "List Categories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/categories",
+              "host": ["{{base_url}}"],
+              "path": ["categories"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"list categories ok\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const categories = pm.response.json();",
+                  "if (Array.isArray(categories) && categories.length) {",
+                  "    pm.collectionVariables.set(\"category_id\", categories[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get Category By Id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/categories/{{category_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["categories", "{{category_id}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Category",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Audio\",\n  \"slug\": \"audio\",\n  \"description\": \"Speakers and headphones\",\n  \"isActive\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/categories",
+              "host": ["{{base_url}}"],
+              "path": ["categories"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"create category ok\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "const category = pm.response.json();",
+                  "if (category && category.id) {",
+                  "    pm.collectionVariables.set(\"category_id\", category.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Update Category",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Audio & Sound\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/categories/{{category_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["categories", "{{category_id}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Category",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/categories/{{category_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["categories", "{{category_id}}"]
+            }
+          },
+          "response": []
+        }
+      ],
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.request.headers.upsert({ key: \"x-tenant-slug\", value: pm.collectionVariables.get(\"tenant_slug\") });"
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "Platform",
       "auth": {
         "type": "bearer",
@@ -789,6 +1168,46 @@
               "path": ["platform", "tenants", "{{tenant_id}}"]
             }
           },
+          "response": []
+        },
+        {
+          "name": "Toggle Tenant Active",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/platform/tenants/{{tenant_id}}/toggle-active",
+              "host": ["{{base_url}}"],
+              "path": ["platform", "tenants", "{{tenant_id}}", "toggle-active"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Storage Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health/storage",
+              "host": ["{{base_url}}"],
+              "path": ["health", "storage"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"storage health ok\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json()).to.have.property(\"ok\");",
+                  "});"
+                ]
+              }
+            }
+          ],
           "response": []
         }
       ],

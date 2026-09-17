@@ -4,6 +4,7 @@ import { DataSource } from 'typeorm';
 import { Tenant } from './entities/tenant.entity';
 import { TenantManagerService } from './tenant-manager.service';
 import { TENANT_ROLE_KEYS, seedRbac } from '../rbac/rbac.seed';
+import { seedCategories } from '../categories/categories.seed';
 import { sanitizeSchemaName } from './tenant.utils';
 
 @Injectable()
@@ -25,6 +26,7 @@ export class TenantProvisionerService {
     const ds = await this.manager.getDataSource({ schemaName: schema });
 
     await seedRbac(ds, { roles: TENANT_ROLE_KEYS });
+    await seedCategories(ds);
 
     this.logger.log(`Provisioned tenant ${tenant.slug} (schema ${schema})`);
     return ds;

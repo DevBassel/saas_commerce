@@ -7,6 +7,8 @@ export interface IENV {
   };
   log: Ilog;
   cors: ICORS;
+  r2: IR2;
+  files: IFiles;
 }
 
 export interface IAPP {
@@ -31,6 +33,7 @@ export interface IDB {
   logging: boolean;
   ssl: boolean;
   tenantPoolSize?: number;
+  tenantStorageCapacityBytes: number;
 }
 
 export interface IJWT {
@@ -49,4 +52,17 @@ export interface Ilog {
 export interface ICORS {
   origin: string;
   credentials: boolean;
+}
+
+export interface IR2 {
+  accountId: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  bucket: string;
+  publicUrl: string;
+}
+
+export interface IFiles {
+  maxFileSize: number;
+  maxProductImages: number;
 }

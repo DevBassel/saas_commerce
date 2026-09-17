@@ -18,7 +18,7 @@ async function bootstrap() {
     .getOrThrow<ICORS>('cors');
 
   app.enableCors({
-    origin,
+    origin: '*',
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials,
   });

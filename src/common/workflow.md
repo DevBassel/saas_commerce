@@ -46,7 +46,7 @@ flowchart TD
     subgraph RUNTIME["Runtime reuse"]
         TENDS["TenantManagerService reuses buildDataSourceOptions<br/>for per-tenant DataSources<br/>(schema override, TENANT_ENTITIES, synchronize = true,<br/>TENANT_POOL_SIZE)"]
         RK["constants: RoleKey + ROLE_RANK<br/>SUPER_ADMIN 5 → CUSTOMER 0<br/>used by rank checks"]
-        PK["constants: PermissionKey =<br/>UserPermissionKey | RbacPermissionKey"]
+        PK["constants: PermissionKey =<br/>UserPermissionKey | RbacPermissionKey |<br/>ProductPermissionKey | CategoryPermissionKey"]
     end
     DSF --> TENDS
 ```
