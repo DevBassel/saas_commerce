@@ -17,10 +17,12 @@ export const RowActions = ({
   resource,
   recordItemId,
   labels,
+  hideDelete,
 }: {
   resource: string;
   recordItemId: number;
   labels?: RowActionsLabels;
+  hideDelete?: boolean;
 }) => (
   <div className={cn("flex", "items-center", "gap-1")}>
     <ShowButton
@@ -41,15 +43,17 @@ export const RowActions = ({
     >
       <Pencil className="h-4 w-4" />
     </EditButton>
-    <DeleteButton
-      resource={resource}
-      recordItemId={recordItemId}
-      variant="ghost"
-      size="icon"
-      aria-label={labels?.delete ?? "Delete"}
-    >
-      <Trash className={cn("h-4", "w-4", "text-destructive")} />
-    </DeleteButton>
+    {hideDelete ? null : (
+      <DeleteButton
+        resource={resource}
+        recordItemId={recordItemId}
+        variant="ghost"
+        size="icon"
+        aria-label={labels?.delete ?? "Delete"}
+      >
+        <Trash className={cn("h-4", "w-4", "text-destructive")} />
+      </DeleteButton>
+    )}
   </div>
 );
 

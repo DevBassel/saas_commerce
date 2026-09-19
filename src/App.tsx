@@ -25,6 +25,7 @@ import {
   CategoriesEdit,
   CategoriesShow,
 } from "./pages/categories";
+import { UsersList, UsersCreate, UsersShow, UsersEdit } from "./pages/users";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ErrorComponent } from "./components/refine-ui/layout/error-component";
 import { Layout } from "./components/refine-ui/layout/layout";
@@ -32,7 +33,7 @@ import { UnsavedChangesDialog } from "./components/refine-ui/unsaved-changes-dia
 import { useNotificationProvider } from "./components/refine-ui/notification/use-notification-provider";
 import { Toaster } from "./components/refine-ui/notification/toaster";
 import { ThemeProvider } from "./components/refine-ui/theme/theme-provider";
-import { LayoutDashboardIcon, PackageIcon, TagsIcon } from "lucide-react";
+import { LayoutDashboardIcon, PackageIcon, TagsIcon, UsersIcon } from "lucide-react";
 import "./App.css";
 
 function App() {
@@ -78,6 +79,17 @@ function App() {
                     icon: <TagsIcon />,
                   },
                 },
+                {
+                  name: "users",
+                  list: "/users",
+                  create: "/users/create",
+                  show: "/users/show/:id",
+                  edit: "/users/edit/:id",
+                  meta: {
+                    label: "Users",
+                    icon: <UsersIcon />,
+                  },
+                },
               ]}
               options={{
                 syncWithLocation: true,
@@ -113,6 +125,13 @@ function App() {
                     <Route path="create" element={<CategoriesCreate />} />
                     <Route path="edit/:id" element={<CategoriesEdit />} />
                     <Route path="show/:id" element={<CategoriesShow />} />
+                  </Route>
+
+                  <Route path="users">
+                    <Route index element={<UsersList />} />
+                    <Route path="create" element={<UsersCreate />} />
+                    <Route path="edit/:id" element={<UsersEdit />} />
+                    <Route path="show/:id" element={<UsersShow />} />
                   </Route>
 
                   <Route path="*" element={<ErrorComponent />} />

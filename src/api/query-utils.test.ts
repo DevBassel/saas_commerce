@@ -5,6 +5,7 @@ import {
   applyPagination,
   applySorters,
   buildListParams,
+  resolveDetailPath,
 } from "./query-utils";
 
 type Row = { id: number; name: string; price: number };
@@ -71,6 +72,23 @@ describe("applyPagination", () => {
     });
     expect(result.data.map((row) => row.id)).toEqual([3]);
     expect(result.total).toBe(3);
+  });
+});
+
+describe("resolveDetailPath", () => {
+  it("defaults to the resource path when no detailPath meta is provided", () => {
+    expect(resolveDetailPath("products", 7)).toBe("products/7");
+    expect(resolveDetailPath("products", 7, {})).toBe("products/7");
+  });
+
+  it("uses the detailPath meta override when present", () => {
+    expect(
+      resolveDetailPath("users", 7, { detailPath: "users/profile" }),
+    ).toBe("users/profile/7");
+  });
+
+  it("ignores a non-string detailPath meta value", () => {
+    expect(resolveDetailPath("users", 7, { detailPath: 42 })).toBe("users/7");
   });
 });
 

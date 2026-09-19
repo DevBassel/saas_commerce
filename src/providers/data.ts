@@ -7,6 +7,7 @@ import {
   applySorters,
   applyPagination,
   buildListParams,
+  resolveDetailPath,
 } from "@/api/query-utils";
 
 type ListResponse = {
@@ -52,10 +53,10 @@ export const dataProvider: DataProvider = {
     }
   },
 
-  getOne: async ({ resource, id }) => {
+  getOne: async ({ resource, id, meta }) => {
     try {
       const response = await apiClient.get<Record<string, unknown>>(
-        `${resource}/${id}`,
+        resolveDetailPath(resource, id, meta),
       );
       return { data: response.data as never };
     } catch (error) {

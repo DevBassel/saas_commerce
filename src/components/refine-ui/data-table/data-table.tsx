@@ -40,7 +40,10 @@ export function DataTable<TData extends BaseRecord>({
   const columns = getAllColumns();
   const leafColumns = table.reactTable.getAllLeafColumns();
   const isLoading = tableQuery.isLoading;
-  const totalSize = leafColumns.reduce((sum, column) => sum + column.getSize(), 0);
+  const totalSize = leafColumns.reduce(
+    (sum, column) => sum + column.getSize(),
+    0,
+  );
 
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
@@ -227,6 +230,7 @@ function DataTableNoData({
             "items-center",
             "justify-center",
             "gap-2",
+            "h-64",
             "bg-background",
           )}
           style={{

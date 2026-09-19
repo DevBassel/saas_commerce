@@ -1,5 +1,14 @@
 import type { CrudFilter, CrudSort, Pagination } from "@refinedev/core";
 
+export const resolveDetailPath = (
+  resource: string,
+  id: unknown,
+  meta?: Record<string, unknown>,
+): string =>
+  typeof meta?.detailPath === "string"
+    ? `${meta.detailPath}/${id}`
+    : `${resource}/${id}`;
+
 export const buildListParams = ({
   pagination,
   sorters,
