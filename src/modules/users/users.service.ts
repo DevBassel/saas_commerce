@@ -13,6 +13,7 @@ import { Repository, In } from 'typeorm';
 import { Role } from '../rbac/entities/role.entity';
 import { Permission } from '../rbac/entities/permission.entity';
 import { mergePermissions } from '../rbac/permission.utils';
+import { SEED_ROLE_PERMISSIONS } from '../rbac/constants/seed-data';
 import { RoleKey, ROLE_RANK } from '../../common/constants/RoleKey.enum';
 import { TenantManagerService } from '../tenants/tenant-manager.service';
 import { tenantRefFromContext } from '../auth/tenant-context';
@@ -20,6 +21,12 @@ import { TenantRef } from '../tenants/tenant.utils';
 import bcrypt from 'bcrypt';
 
 type FindOneOptions = { withRole?: boolean; withPermissions?: boolean };
+
+const ASSIGNABLE_ROLE_KEYS: RoleKey[] = [
+  RoleKey.CUSTOMER,
+  RoleKey.STORE_OWNER,
+  RoleKey.ADMIN,
+];
 
 @Injectable()
 export class UsersService {
@@ -65,10 +72,12 @@ export class UsersService {
     roleKey: RoleKey = RoleKey.CUSTOMER,
     tenant?: TenantRef,
   ) {
-    if (![RoleKey.CUSTOMER, RoleKey.STORE_OWNER].includes(roleKey))
-      throw new BadRequestException('Role cannot be assigned on signup');
+    if (roleKey === RoleKey.SUPER_ADMIN)
+      throw new ForbiddenException('You are not allowed to create super admin');
+    if (!ASSIGNABLE_ROLE_KEYS.includes(roleKey))
+      throw new BadRequestException('Role cannot be assigned');
 
-    const { userRepo, roleRepo } = await this.repos(tenant);
+    const { userRepo, roleRepo, permissionRepo } = await this.repos(tenant);
 
     const existing = await this.findOne(
       { email: createUserDto.email },
@@ -80,18 +89,24 @@ export class UsersService {
     const role = await roleRepo.findOneBy({ key: roleKey });
     if (!role) throw new BadRequestException('role not seeded');
 
+    const permissionKeys = SEED_ROLE_PERMISSIONS[roleKey] ?? [];
+    const permissions = permissionKeys.length
+      ? await permissionRepo.findBy({ key: In(permissionKeys) })
+      : [];
+
     createUserDto.password = await bcrypt.hash(createUserDto.password, 12);
     return await userRepo.save(
       userRepo.create({
         ...createUserDto,
         roleId: role.id,
+        permissions,
       }),
     );
   }
 
   async findAll(tenant?: TenantRef) {
     const { userRepo } = await this.repos(tenant);
-    return userRepo.find({ relations: { role: true } });
+    return userRepo.find({ relations: { role: true, permissions: true } });
   }
 
   async findOne(
@@ -131,7 +146,7 @@ export class UsersService {
     actorRoleKey: RoleKey,
     tenant?: TenantRef,
   ) {
-    const { userRepo, roleRepo } = await this.repos(tenant);
+    const { userRepo, roleRepo, permissionRepo } = await this.repos(tenant);
     const user = await this.findOne({ id }, {}, tenant);
     if (!user) throw new NotFoundException('User not found');
 
@@ -140,8 +155,26 @@ export class UsersService {
 
     this.assertCanAssignToUser(actorRoleKey, role.key as RoleKey);
 
-    await userRepo.update({ id }, { roleId: role.id });
-    return this.findOne({ id }, { withRole: true }, tenant);
+    const permissionKeys = SEED_ROLE_PERMISSIONS[role.key as RoleKey] ?? [];
+    const permissions = permissionKeys.length
+      ? await permissionRepo.findBy({ key: In(permissionKeys) })
+      : [];
+
+    const loaded = await userRepo.findOne({
+      where: { id },
+      relations: { permissions: true },
+    });
+    if (!loaded) throw new NotFoundException('User not found');
+
+    loaded.roleId = role.id;
+    loaded.permissions = permissions;
+    await userRepo.save(loaded);
+
+    return this.findOne(
+      { id },
+      { withRole: true, withPermissions: true },
+      tenant,
+    );
   }
 
   async deassignRole(id: number, actorRoleKey: RoleKey, tenant?: TenantRef) {

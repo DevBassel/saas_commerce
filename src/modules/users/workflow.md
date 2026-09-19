@@ -4,17 +4,17 @@ flowchart TD
 
     subgraph API["API — UsersController /api/v1/users"]
         GUARDS --> RO{"route"}
-        RO -->|"GET /users/profile<br/>(authenticated only)"| PR["getProfile — returns request.user"]
-        RO -->|"GET /users/profile/:id<br/>needs users:read"| FO["findOne with role + permissions"]
-        RO -->|"GET /users<br/>needs users:read"| FA["findAll with role relation"]
+        RO -->|"GET /users/profile<br/>(authenticated only)"| PR["getProfile — re-reads user by id,<br/>then presentUser"]
+        RO -->|"GET /users/profile/:id<br/>needs users:read"| FO["findOne with role + permissions,<br/>then presentUser"]
+        RO -->|"GET /users<br/>needs users:read"| FA["findAll with role + permissions,<br/>then presentUser"]
         RO -->|"PATCH /users/:id<br/>needs users:update"| UP["update (name only)"]
         RO -->|"DELETE /users/:id<br/>needs users:delete"| RM["remove"]
         RO -->|"PATCH /users/:id/role<br/>DELETE /users/:id/role<br/>needs users:assign_role"| AR["assignRole / deassignRole<br/>actor role from request.user"]
         RO -->|"POST /users/:id/permissions<br/>DELETE /users/:id/permissions<br/>needs users:assign_permissions"| GP["grantPermissions / revokePermissions<br/>actor role + actor permissions"]
     end
 
-    PR --> RESP["Response"]
-    FO --> SVC["UsersService"]
+    PR --> SVC["UsersService"]
+    FO --> SVC
     FA --> SVC
     UP --> SVC
     RM --> SVC
@@ -33,17 +33,47 @@ flowchart TD
     end
 ```
 
+### Normalized user response
+
+Every user-returning endpoint (`GET /users/profile`, `GET /users/profile/:id`, `GET /users`,
+`PATCH /users/:id`, role/permission mutations) serializes through `presentUser`
+(`user.presenter.ts`):
+
+```json
+{
+  "id": 5,
+  "name": "Jane",
+  "email": "jane@example.com",
+  "emailVerified": false,
+  "roleId": 3,
+  "role": { "id": 3, "key": "ADMIN", "name": "Admin" },
+  "permissions": [{ "id": 14, "key": "products:read", "name": "Read products" }],
+  "createdAt": "...",
+  "updatedAt": "..."
+}
+```
+
+- `role` carries identity only (`{ id, key, name }`) or is `null` when `roleId` is null.
+  Role-granted permissions are never embedded here.
+- `permissions` is the user's **direct** `user_permissions` grants only, sorted by `key`.
+  It is NOT the effective role ∪ direct union used for authorization.
+- `GET /users/profile` now re-reads the user by id instead of returning `request.user`, so it
+  serves the same shape as the other endpoints.
+- Gotcha: revoking a direct permission that the role also grants removes it from the response
+  `permissions` array, yet authorization still allows it (the guard unions role + direct
+  internally). Clients that need role capabilities must read the role separately.
+
 ---
 
 ```mermaid
 flowchart TD
 CREATE["create (auth register / register-store, platform create)"]
-        C1{"roleKey is CUSTOMER<br/>or STORE_OWNER ?"} -->|"no"| C1E["400 Role cannot be assigned on signup"]
+        C1{"roleKey in CUSTOMER / STORE_OWNER / ADMIN ?"} -->|"no"| C1E["400 Role cannot be assigned"]
         C1 -->|"yes"| C2{"email already used in schema?"}
         C2 -->|"yes"| C2E["400 user already exists"]
         C2 -->|"no"| C3{"role seeded in target schema?"}
         C3 -->|"no"| C3E["400 role not seeded"]
-        C3 -->|"yes"| C4["bcrypt.hash password (12 rounds)<br/>save user with roleId"]
+        C3 -->|"yes"| C4["resolve SEED_ROLE_PERMISSIONS[roleKey] in schema<br/>attach as direct grants (user_permissions); skip missing keys<br/>bcrypt.hash password (12 rounds)<br/>save user with roleId + permissions"]
 ```
 
 ---
@@ -55,7 +85,7 @@ ROLE["assignRole / deassignRole"]
         A1 -->|"yes"| A2{"role exists?<br/>(assignRole only)"} -->|"no"| A2E["404 Role not found"]
         A2 -->|"yes"| A3{"rank check assertCanAssignToUser:<br/>SUPER_ADMIN actor: target rank <= 5<br/>other actors: target rank < actor rank"}
         A3 -->|"fail"| A3E["403 cannot modify role or permissions<br/>of a user with equal or higher rank"]
-        A3 -->|"pass"| A4["update roleId / set roleId = null"]
+        A3 -->|"pass"| A4["assignRole: roleId = role.id<br/>replace user_permissions with SEED_ROLE_PERMISSIONS[role.key] (custom -> [])<br/>deassignRole: set roleId = null (grants untouched)"]
 ```
 
 ---

@@ -34,11 +34,10 @@ export class PermissionGuard implements CanActivate {
 
     const requiresSuper = requiredRoles?.includes(RoleKey.SUPER_ADMIN);
     const isSuper = user.role?.key === RoleKey.SUPER_ADMIN;
-    if (requiresSuper && !isSuper) {
+    if (requiresSuper && !isSuper)
       throw new ForbiddenException(
         'You are not allowed to access this resource',
       );
-    }
 
     if (isSuper) return true;
 

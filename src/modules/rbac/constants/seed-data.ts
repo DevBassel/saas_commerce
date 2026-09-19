@@ -12,6 +12,11 @@ export const SEED_PERMISSIONS: {
   description: string;
 }[] = [
   {
+    key: UserPermissionKey.CREATE,
+    name: 'Create users',
+    description: 'Create store users',
+  },
+  {
     key: UserPermissionKey.READ,
     name: 'Read users',
     description: 'List and view store users',
@@ -173,6 +178,7 @@ export const SEED_ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
   [RoleKey.SUPER_ADMIN]: ALL_PERMISSION_KEYS,
   [RoleKey.STORE_OWNER]: ALL_PERMISSION_KEYS,
   [RoleKey.ADMIN]: [
+    UserPermissionKey.CREATE,
     UserPermissionKey.READ,
     UserPermissionKey.UPDATE,
     UserPermissionKey.ASSIGN_ROLE,
