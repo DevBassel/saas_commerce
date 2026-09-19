@@ -8,8 +8,6 @@ export interface TenantContext {
 
 export const tenantStorage = new AsyncLocalStorage<TenantContext>();
 
-console.log('🚀 ~ tenant-context.ts:11 ~ tenantStorage:', tenantStorage);
-
 export const getTenantContext = (): TenantContext | undefined =>
   tenantStorage.getStore();
 

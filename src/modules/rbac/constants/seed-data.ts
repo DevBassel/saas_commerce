@@ -4,6 +4,7 @@ import { UserPermissionKey } from 'src/modules/users/constants/user-permissions.
 import { RbacPermissionKey } from 'src/modules/rbac/constants/rbac-permissions.enum';
 import { ProductPermissionKey } from 'src/modules/products/constants/product-permissions.enum';
 import { CategoryPermissionKey } from 'src/modules/categories/constants/category-permissions.enum';
+import { CartPermissionKey } from 'src/modules/cart/constants/cart-permissions.enum';
 
 export const SEED_PERMISSIONS: {
   key: PermissionKey;
@@ -115,6 +116,26 @@ export const SEED_PERMISSIONS: {
     name: 'Delete categories',
     description: 'Remove product categories',
   },
+  {
+    key: CartPermissionKey.READ,
+    name: 'Read cart',
+    description: 'View your own shopping cart',
+  },
+  {
+    key: CartPermissionKey.CREATE,
+    name: 'Add to cart',
+    description: 'Add products to your own shopping cart',
+  },
+  {
+    key: CartPermissionKey.UPDATE,
+    name: 'Update cart',
+    description: 'Change quantities in your own shopping cart',
+  },
+  {
+    key: CartPermissionKey.DELETE,
+    name: 'Delete from cart',
+    description: 'Remove items from or clear your own shopping cart',
+  },
 ];
 
 export const SEED_ROLES: {
@@ -140,16 +161,6 @@ export const SEED_ROLES: {
     description: 'Operational access to manage store users',
   },
   {
-    key: RoleKey.MANAGER,
-    name: 'Manager',
-    description: 'Manages customers and employees day to day',
-  },
-  {
-    key: RoleKey.EMPLOYEE,
-    name: 'Employee',
-    description: 'Store staff with view access to customers',
-  },
-  {
     key: RoleKey.CUSTOMER,
     name: 'Customer',
     description: 'Default registered customer',
@@ -164,7 +175,6 @@ export const SEED_ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
   [RoleKey.ADMIN]: [
     UserPermissionKey.READ,
     UserPermissionKey.UPDATE,
-    UserPermissionKey.DELETE,
     UserPermissionKey.ASSIGN_ROLE,
     UserPermissionKey.ASSIGN_PERMISSIONS,
     RbacPermissionKey.ROLES_READ,
@@ -177,20 +187,17 @@ export const SEED_ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     CategoryPermissionKey.CREATE,
     CategoryPermissionKey.UPDATE,
     CategoryPermissionKey.DELETE,
+    CartPermissionKey.READ,
+    CartPermissionKey.CREATE,
+    CartPermissionKey.UPDATE,
+    CartPermissionKey.DELETE,
   ],
-  [RoleKey.MANAGER]: [
-    UserPermissionKey.READ,
-    UserPermissionKey.UPDATE,
-    RbacPermissionKey.ROLES_READ,
-    ProductPermissionKey.READ,
-    ProductPermissionKey.UPDATE,
-    CategoryPermissionKey.READ,
-    CategoryPermissionKey.UPDATE,
-  ],
-  [RoleKey.EMPLOYEE]: [
-    UserPermissionKey.READ,
+  [RoleKey.CUSTOMER]: [
     ProductPermissionKey.READ,
     CategoryPermissionKey.READ,
+    CartPermissionKey.READ,
+    CartPermissionKey.CREATE,
+    CartPermissionKey.UPDATE,
+    CartPermissionKey.DELETE,
   ],
-  [RoleKey.CUSTOMER]: [],
 };

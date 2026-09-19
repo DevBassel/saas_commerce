@@ -22,8 +22,6 @@ const SYSTEM_ROLES: RoleKey[] = [
   RoleKey.SUPER_ADMIN,
   RoleKey.STORE_OWNER,
   RoleKey.ADMIN,
-  RoleKey.MANAGER,
-  RoleKey.EMPLOYEE,
   RoleKey.CUSTOMER,
 ];
 

@@ -33,26 +33,17 @@ export class UsersService {
     private readonly tenantManager: TenantManagerService,
   ) {}
 
-  private resolveTenant(tenant?: TenantRef): TenantRef | undefined {
-    return tenant ?? tenantRefFromContext();
-  }
-
-  private warnMissingTenantContext(): void {
-    if (process.env.NODE_ENV === 'production') return;
-    this.logger.warn(
-      'UsersService: no tenant context resolved; falling back to public schema repositories',
-    );
-  }
-
   private async repos(tenant?: TenantRef): Promise<{
     userRepo: Repository<User>;
     roleRepo: Repository<Role>;
     permissionRepo: Repository<Permission>;
   }> {
-    const target = this.resolveTenant(tenant);
+    const target = tenant ?? tenantRefFromContext();
 
     if (!target) {
-      this.warnMissingTenantContext();
+      this.logger.warn(
+        'UsersService: no tenant resolved; using public schema repositories',
+      );
       return {
         userRepo: this.userRepo,
         roleRepo: this.roleRepo,
@@ -74,9 +65,8 @@ export class UsersService {
     roleKey: RoleKey = RoleKey.CUSTOMER,
     tenant?: TenantRef,
   ) {
-    if (![RoleKey.CUSTOMER, RoleKey.STORE_OWNER].includes(roleKey)) {
+    if (![RoleKey.CUSTOMER, RoleKey.STORE_OWNER].includes(roleKey))
       throw new BadRequestException('Role cannot be assigned on signup');
-    }
 
     const { userRepo, roleRepo } = await this.repos(tenant);
 

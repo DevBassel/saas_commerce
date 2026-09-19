@@ -13,8 +13,6 @@ const SLUG = 'verify-t1';
 const EXPECTED_TENANT_ROLES = [
   RoleKey.STORE_OWNER,
   RoleKey.ADMIN,
-  RoleKey.MANAGER,
-  RoleKey.EMPLOYEE,
   RoleKey.CUSTOMER,
 ];
 

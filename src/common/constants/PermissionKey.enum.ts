@@ -2,9 +2,11 @@ import { UserPermissionKey } from 'src/modules/users/constants/user-permissions.
 import { RbacPermissionKey } from 'src/modules/rbac/constants/rbac-permissions.enum';
 import { ProductPermissionKey } from 'src/modules/products/constants/product-permissions.enum';
 import { CategoryPermissionKey } from 'src/modules/categories/constants/category-permissions.enum';
+import { CartPermissionKey } from 'src/modules/cart/constants/cart-permissions.enum';
 
 export type PermissionKey =
   | UserPermissionKey
   | RbacPermissionKey
   | ProductPermissionKey
-  | CategoryPermissionKey;
+  | CategoryPermissionKey
+  | CartPermissionKey;

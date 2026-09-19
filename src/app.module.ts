@@ -7,6 +7,7 @@ import { TenantModule } from './modules/tenants/tenant.module';
 import { PlatformModule } from './modules/platform/platform.module';
 import { ProductsModule } from './modules/products/products.module';
 import { CategoriesModule } from './modules/categories/categories.module';
+import { CartModule } from './modules/cart/cart.module';
 import { APP_GUARD } from '@nestjs/core';
 import { PermissionGuard } from './modules/auth/guards/permission.guard';
 import { JwtGuard } from './modules/auth/guards/jwt.guard';
@@ -23,6 +24,7 @@ import { TenantMiddleware } from './modules/auth/tenant.middleware';
     PlatformModule,
     ProductsModule,
     CategoriesModule,
+    CartModule,
   ],
   providers: [
     {

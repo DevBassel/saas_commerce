@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Saas Store API",
-    "description": "Schema-per-tenant RBAC API. Flow: run `Register Store` first (public self-serve signup, auto-sets tenant_slug + owner tokens), or `Login Platform` to get {{platform_token}} for the Platform folder. Set `tenant_slug` to target a tenant; Users/Roles/Permissions/Products/Categories folders auto-send `x-tenant-slug`. Login stores access_token/refresh_token; Refresh rotates them (old refresh token is revoked). List Users/Roles/Permissions/Tenants/Products/Categories auto-set user_id/role_id/permission_id/tenant_id/product_id/category_id (list/upload also set image_id). Users/Roles/Permissions/Products/Categories folders use Bearer {{access_token}}; Platform folder uses Bearer {{platform_token}} (tenant tokens are rejected on platform routes with 403). Custom role keys must match ^[a-z][a-z0-9_-]*$ ; uppercase keys are reserved system roles (create/rename to them -> 409, rename/delete of system roles -> 409). Create Permission key must be a valid permission key (409 if already seeded). Products: SKU must match ^[A-Za-z0-9][A-Za-z0-9_-]*$ (duplicate -> 400), optional categoryId must reference an existing category (unknown -> 400), images are jpeg/png/webp/gif multipart `file` field (quota + count limits -> 413/400). Categories: each tenant is seeded with 8 base categories on provision/re-seed; slug is auto-derived from name when omitted and must be unique (duplicate -> 400), deleting a category nulls products.categoryId.",
+    "description": "Schema-per-tenant RBAC API. Flow: run `Register Store` first (public self-serve signup, auto-sets tenant_slug + owner tokens), or `Login Platform` to get {{platform_token}} for the Platform folder. Set `tenant_slug` to target a tenant; Users/Roles/Permissions/Products/Categories folders auto-send `x-tenant-slug`. Login stores access_token/refresh_token; Refresh rotates them (old refresh token is revoked). List Users/Roles/Permissions/Tenants/Products/Categories auto-set user_id/role_id/permission_id/tenant_id/product_id/category_id (list/upload also set image_id). Users/Roles/Permissions/Products/Categories folders use Bearer {{access_token}}; Platform folder uses Bearer {{platform_token}} (tenant tokens are rejected on platform routes with 403). Custom role keys must match ^[a-z][a-z0-9_-]*$ ; uppercase keys are reserved system roles (create/rename to them -> 409, rename/delete of system roles -> 409). Create Permission key must be a valid permission key (409 if already seeded). Products: SKU must match ^[A-Za-z0-9][A-Za-z0-9_-]*$ (duplicate -> 400), optional categoryId must reference an existing category (unknown -> 400), images are jpeg/png/webp/gif multipart `file` field (quota + count limits -> 413/400). Categories: each tenant is seeded with 8 base categories on provision/re-seed; slug is auto-derived from name when omitted and must be unique (duplicate -> 400), deleting a category nulls products.categoryId. Cart: each authenticated tenant user has one owner-scoped cart; GET /cart returns the enriched cart (empty synthetic cart when none, no row written). POST /cart/items merges by incrementing (needs a product_id from List Products); PATCH /cart/items/:productId sets an absolute quantity (0 is not a remove, use DELETE); DELETE /cart/items/:productId removes a line; DELETE /cart clears lines but keeps the cart. Requires cart:read/create/update/delete (seeded for CUSTOMER/ADMIN/STORE_OWNER/SUPER_ADMIN and backfilled on boot). Add/update validate isActive + stock (1..99 per line, 100 distinct lines max; over -> 400), and reads flag stale lines with isAvailable/availableStock without deleting them.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -1099,6 +1099,189 @@
               "path": ["categories", "{{category_id}}"]
             }
           },
+          "response": []
+        }
+      ],
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.request.headers.upsert({ key: \"x-tenant-slug\", value: pm.collectionVariables.get(\"tenant_slug\") });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cart",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{access_token}}",
+            "type": "string"
+          }
+        ]
+      },
+      "item": [
+        {
+          "name": "Get Cart",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/cart",
+              "host": ["{{base_url}}"],
+              "path": ["cart"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"get cart ok\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const cart = pm.response.json();",
+                  "if (cart && Array.isArray(cart.items) && cart.items.length) {",
+                  "    pm.collectionVariables.set(\"product_id\", cart.items[0].productId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Add Cart Item",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": {{product_id}},\n  \"quantity\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/cart/items",
+              "host": ["{{base_url}}"],
+              "path": ["cart", "items"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"add cart item ok\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "const cart = pm.response.json();",
+                  "if (cart && Array.isArray(cart.items) && cart.items.length) {",
+                  "    pm.collectionVariables.set(\"product_id\", cart.items[0].productId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Update Cart Item",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 2\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/cart/items/{{product_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["cart", "items", "{{product_id}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"update cart item ok\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Remove Cart Item",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/cart/items/{{product_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["cart", "items", "{{product_id}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"remove cart item ok\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Clear Cart",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/cart",
+              "host": ["{{base_url}}"],
+              "path": ["cart"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"clear cart ok\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().items).to.be.an(\"array\").that.is.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
           "response": []
         }
       ],

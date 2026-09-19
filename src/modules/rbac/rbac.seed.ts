@@ -14,8 +14,6 @@ const logger = new Logger('RbacSeed');
 export const TENANT_ROLE_KEYS: RoleKey[] = [
   RoleKey.STORE_OWNER,
   RoleKey.ADMIN,
-  RoleKey.MANAGER,
-  RoleKey.EMPLOYEE,
   RoleKey.CUSTOMER,
 ];
 
