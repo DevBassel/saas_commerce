@@ -37,14 +37,14 @@ export class Tenant extends BaseEntity {
 
   @Column({
     type: 'bigint',
-    nullable: true,
-    transformer: {
-      from: (value: string | null): number | null =>
-        value ? Number(value) : null,
-      to: (value: number | null): number | null => value,
-    },
+    default: 0,
   })
-  storageCapacityBytes?: number | null;
+  storageUsedBytes: bigint;
+
+  @Column({
+    type: 'bigint',
+  })
+  storageCapacityBytes: bigint;
 
   @CreateDateColumn()
   createdAt: Date;

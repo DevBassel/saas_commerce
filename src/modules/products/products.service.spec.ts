@@ -51,7 +51,6 @@ const buildMocks = () => {
     update: jest.fn(),
     delete: jest.fn(),
     maximum: jest.fn(),
-    createQueryBuilder: jest.fn(),
   };
   const tenantManager = {
     getRepository: jest.fn((entity: unknown) =>
@@ -61,8 +60,8 @@ const buildMocks = () => {
     ),
   } as unknown as TenantManagerService;
   const tenantService = {
-    findBySchemaName: jest.fn(),
-  } as unknown as TenantService;
+    adjustStorageUsedBytes: jest.fn().mockResolvedValue(0),
+  };
   const categoriesService = {
     findById: jest.fn().mockResolvedValue({ id: 1 }),
   } as unknown as CategoriesService;
@@ -86,7 +85,7 @@ const buildMocks = () => {
 
   const service = new ProductsService(
     tenantManager,
-    tenantService,
+    tenantService as unknown as TenantService,
     categoriesService,
     r2,
     config,
@@ -243,32 +242,38 @@ describe('ProductsService', () => {
     });
 
     it('rejects when tenant storage capacity is exceeded', async () => {
-      const { service, productRepo, imageRepo, tenantService } = buildMocks();
-      productRepo.findOneBy.mockResolvedValue({ id: 1 });
-      imageRepo.count.mockResolvedValue(0);
-      (tenantService.findBySchemaName as jest.Mock).mockResolvedValue(null);
-      imageRepo.createQueryBuilder.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        getRawOne: jest.fn().mockResolvedValue({ total: '998' }),
-      });
-
-      await expect(service.uploadImages(1, [file()], TENANT)).rejects.toThrow(
-        PayloadTooLargeException,
-      );
-    });
-
-    it('honors per-tenant capacity override', async () => {
       const { service, productRepo, imageRepo, tenantService, r2Mocks } =
         buildMocks();
       productRepo.findOneBy.mockResolvedValue({ id: 1 });
       imageRepo.count.mockResolvedValue(0);
-      (tenantService.findBySchemaName as jest.Mock).mockResolvedValue({
-        storageCapacityBytes: 2000,
+      imageRepo.maximum.mockResolvedValue(0);
+      r2Mocks.upload.mockResolvedValue({
+        key: 'tenants/tenant_test/products/photo.png',
+        sizeBytes: 4,
       });
-      imageRepo.createQueryBuilder.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        getRawOne: jest.fn().mockResolvedValue({ total: '1500' }),
-      });
+      r2Mocks.deleteMany.mockResolvedValue(undefined);
+      imageRepo.create.mockImplementation(
+        (data: Record<string, unknown>) => data,
+      );
+      imageRepo.save.mockResolvedValue({});
+      tenantService.adjustStorageUsedBytes.mockRejectedValue(
+        new BadRequestException('Storage capacity exceeded'),
+      );
+
+      await expect(service.uploadImages(1, [file()], TENANT)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      expect(r2Mocks.deleteMany).toHaveBeenCalledWith([
+        'tenants/tenant_test/products/photo.png',
+      ]);
+    });
+
+    it('records uploaded bytes against the tenant quota', async () => {
+      const { service, productRepo, imageRepo, tenantService, r2Mocks } =
+        buildMocks();
+      productRepo.findOneBy.mockResolvedValue({ id: 1 });
+      imageRepo.count.mockResolvedValue(0);
       r2Mocks.upload.mockResolvedValue({
         key: 'tenants/tenant_test/products/uuid.png',
         sizeBytes: 4,
@@ -294,6 +299,10 @@ describe('ProductsService', () => {
 
       const result = await service.uploadImages(1, [file()], TENANT);
 
+      expect(tenantService.adjustStorageUsedBytes).toHaveBeenCalledWith(
+        'tenant_test',
+        4,
+      );
       expect(r2Mocks.upload).toHaveBeenCalledWith(
         'tenants/tenant_test/products/photo.png',
         expect.any(Buffer),
@@ -310,13 +319,10 @@ describe('ProductsService', () => {
     });
 
     it('uploads multiple files with sequential positions', async () => {
-      const { service, productRepo, imageRepo, r2Mocks } = buildMocks();
+      const { service, productRepo, imageRepo, r2Mocks, tenantService } =
+        buildMocks();
       productRepo.findOneBy.mockResolvedValue({ id: 1 });
       imageRepo.count.mockResolvedValue(0);
-      imageRepo.createQueryBuilder.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        getRawOne: jest.fn().mockResolvedValue({ total: '0' }),
-      });
       r2Mocks.upload.mockImplementation((key: string) =>
         Promise.resolve({ key, sizeBytes: 4 }),
       );
@@ -344,16 +350,16 @@ describe('ProductsService', () => {
           position: 3,
         }),
       ]);
+      expect(tenantService.adjustStorageUsedBytes).toHaveBeenCalledWith(
+        'tenant_test',
+        8,
+      );
     });
 
     it('cleans up uploaded objects when a batch upload fails', async () => {
       const { service, productRepo, imageRepo, r2Mocks } = buildMocks();
       productRepo.findOneBy.mockResolvedValue({ id: 1 });
       imageRepo.count.mockResolvedValue(0);
-      imageRepo.createQueryBuilder.mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        getRawOne: jest.fn().mockResolvedValue({ total: '0' }),
-      });
       imageRepo.maximum.mockResolvedValue(0);
       r2Mocks.upload
         .mockImplementationOnce((key: string) =>
@@ -402,6 +408,23 @@ describe('ProductsService', () => {
 
     expect(imageRepo.delete).toHaveBeenCalledWith({ id: 5 });
     expect(r2Mocks.deleteMany).toHaveBeenCalledWith(['k1']);
+  });
+
+  it('releases deleted image bytes from the tenant quota', async () => {
+    const { service, imageRepo, productRepo, tenantService } = buildMocks();
+    imageRepo.findOneBy.mockResolvedValue({
+      id: 5,
+      objectKey: 'k1',
+      sizeBytes: 4,
+    });
+    productRepo.findOne.mockResolvedValue({ id: 1, images: [] });
+
+    await service.deleteImage(1, 5, TENANT);
+
+    expect(tenantService.adjustStorageUsedBytes).toHaveBeenCalledWith(
+      'tenant_test',
+      -4,
+    );
   });
 
   it('rejects reorder when imageIds do not match current images', async () => {

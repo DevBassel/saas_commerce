@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Tenant } from './entities/tenant.entity';
@@ -7,15 +12,20 @@ import { buildSchemaName } from './tenant.utils';
 import { TenantManagerService } from './tenant-manager.service';
 import { User } from '../users/entities/user.entity';
 import { TenantStatus } from './enums/tenantStatus.enum';
+import { ConfigService } from '@nestjs/config';
+import { IDB, IENV } from 'src/common/config/env.interface';
 
 @Injectable()
 export class TenantService {
+  private readonly logger = new Logger(TenantService.name);
+
   constructor(
     @InjectRepository(Tenant)
     private readonly tenantRepo: Repository<Tenant>,
     private readonly tenantManager: TenantManagerService,
     @InjectDataSource()
     private readonly dataSource: DataSource,
+    private readonly config: ConfigService<IENV>,
   ) {}
 
   findAll(): Promise<Tenant[]> {
@@ -88,6 +98,9 @@ export class TenantService {
         slug: dto.slug,
         schemaName,
         subdomain,
+        storageCapacityBytes: BigInt(
+          this.config.getOrThrow<IDB>('db').tenantStorageCapacityBytes,
+        ),
       }),
     );
   }
@@ -113,5 +126,45 @@ export class TenantService {
       });
       return 'Tenant activated successfully';
     }
+  }
+  async adjustStorageUsedBytes(
+    schemaName: string,
+    deltaBytes: number,
+  ): Promise<number> {
+    if (!Number.isSafeInteger(deltaBytes) || deltaBytes === 0)
+      throw new BadRequestException(
+        'deltaBytes must be a non-zero safe integer',
+      );
+
+    return this.tenantRepo.manager.transaction(async (manager) => {
+      const tenant = await manager.findOne(Tenant, {
+        where: { schemaName },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!tenant)
+        throw new NotFoundException(
+          `Tenant with schema "${schemaName}" not found`,
+        );
+
+      let nextUsedBytes = BigInt(tenant.storageUsedBytes) + BigInt(deltaBytes);
+
+      if (nextUsedBytes < 0n) {
+        this.logger.warn(
+          `Storage usage clamped to 0 for schema "${schemaName}" (delta ${deltaBytes})`,
+        );
+        nextUsedBytes = 0n;
+      } else if (nextUsedBytes > BigInt(tenant.storageCapacityBytes)) {
+        throw new BadRequestException('Storage capacity exceeded');
+      }
+
+      await manager.update(
+        Tenant,
+        { id: tenant.id },
+        { storageUsedBytes: nextUsedBytes },
+      );
+
+      return Number(nextUsedBytes);
+    });
   }
 }

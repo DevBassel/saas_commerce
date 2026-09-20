@@ -16,7 +16,7 @@ import { TenantService } from '../tenants/tenant.service';
 import { tenantRefFromContext } from '../auth/tenant-context';
 import { TenantRef } from '../tenants/tenant.utils';
 import { R2Service } from '../../common/storage/r2.service';
-import { IENV, IFiles, IDB } from '../../common/config/env.interface';
+import { IENV, IFiles } from '../../common/config/env.interface';
 import { SerializedProduct } from './constants/products.interface';
 import { ALLOWED_MIME_TYPES } from './constants/allowed-imgs-type';
 import { MAX_FILES_PER_REQUEST } from './constants/upload.constants';
@@ -143,10 +143,19 @@ export class ProductsService {
     });
     if (!product) throw new NotFoundException('Product not found');
 
-    const keys = (product.images ?? []).map((image) => image.objectKey);
+    const keys = (product.images ?? []).map((image) => ({
+      key: image.objectKey,
+      size: image.sizeBytes,
+    }));
     if (keys.length > 0) {
       await imageRepo.delete({ productId: id });
-      await this.r2.deleteMany(keys);
+      await this.r2.deleteMany(keys.map((key) => key.key));
+      const getTenant = this.resolveTenant(tenant);
+      // update capacity
+      await this.tenantService.adjustStorageUsedBytes(
+        getTenant.schemaName,
+        -keys.map((key) => key.size).reduce((a, b) => a + b, 0),
+      );
     }
     await productRepo.delete({ id });
     return { deleted: true };
@@ -196,7 +205,6 @@ export class ProductsService {
     }
 
     const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
-    await this.assertQuota(totalBytes, target);
 
     const maxPosition = await imageRepo.maximum('position', { productId });
     const basePosition = maxPosition ?? 0;
@@ -229,6 +237,11 @@ export class ProductsService {
         }),
       );
       await imageRepo.save(entities);
+      // update capacity
+      await this.tenantService.adjustStorageUsedBytes(
+        target.schemaName,
+        totalBytes,
+      );
     } catch (error) {
       if (uploaded.length > 0) {
         await this.r2
@@ -242,13 +255,21 @@ export class ProductsService {
   }
 
   async deleteImage(productId: number, imageId: number, tenant?: TenantRef) {
-    const { imageRepo } = await this.repos(tenant);
+    const target = this.resolveTenant(tenant);
+    const { imageRepo } = await this.repos(target);
     const image = await imageRepo.findOneBy({ id: imageId, productId });
     if (!image) throw new NotFoundException('Image not found');
 
     await imageRepo.delete({ id: imageId });
     await this.r2.deleteMany([image.objectKey]);
-    return this.findOne(productId, tenant);
+
+    // update capacity
+    await this.tenantService.adjustStorageUsedBytes(
+      target.schemaName,
+      -image.sizeBytes,
+    );
+
+    return this.findOne(productId, target);
   }
 
   async reorderImages(
@@ -287,28 +308,5 @@ export class ProductsService {
   ): Promise<void> {
     const category = await this.categoriesService.findById(categoryId, tenant);
     if (!category) throw new BadRequestException('category not found');
-  }
-
-  private async assertQuota(
-    incomingBytes: number,
-    tenant: TenantRef,
-  ): Promise<void> {
-    const { tenantStorageCapacityBytes } = this.config.getOrThrow<IDB>('db');
-    const record = await this.tenantService.findBySchemaName(tenant.schemaName);
-    const capacity = record?.storageCapacityBytes ?? tenantStorageCapacityBytes;
-    if (capacity <= 0) return;
-
-    const { imageRepo } = await this.repos(tenant);
-    const usedRaw = await imageRepo
-      .createQueryBuilder('image')
-      .select('COALESCE(SUM(image.sizeBytes), 0)', 'total')
-      .getRawOne<{ total: string | null }>();
-    const used = Number(usedRaw?.total ?? 0);
-
-    if (used + incomingBytes > capacity) {
-      throw new PayloadTooLargeException(
-        'Upload exceeds tenant storage capacity',
-      );
-    }
   }
 }
