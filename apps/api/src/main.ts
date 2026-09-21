@@ -3,12 +3,13 @@ import { AppModule } from './app.module';
 import { ClassSerializerInterceptor, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IAPP, ICORS, IENV } from './common/config/env.interface';
+import { buildCorsOrigin } from './common/config/cors.util';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  const { name, apiPrefix, apiVersion, port } = app
+  const { name, apiPrefix, apiVersion, port, rootDomain } = app
     .get(ConfigService<IENV>)
     .getOrThrow<IAPP>('app');
 
@@ -17,13 +18,8 @@ async function bootstrap() {
     .get(ConfigService<IENV>)
     .getOrThrow<ICORS>('cors');
 
-  const allowedOrigins = origin
-    .split(',')
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-
   app.enableCors({
-    origin: allowedOrigins.length > 0 ? allowedOrigins : '*',
+    origin: buildCorsOrigin(origin, rootDomain),
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials,
   });

@@ -50,9 +50,11 @@ section only records what the monorepo changed.
 
 - Standardized scripts: `dev` (alias of the retained `start:dev`), `typecheck`. `start:dev`, `build`,
   `lint`, `test`, `test:e2e` are unchanged.
-- `CORS_ORIGIN` is a comma-separated list of allowed browser origins, consumed by `src/main.ts`.
-  It was previously dead config there (`origin: '*'` was hardcoded). Keep `.env` and `.env.example`
-  in sync with the SPA dev ports (5173, 5174).
+- `CORS_ORIGIN` is a comma-separated exact allowlist of browser origins. `src/main.ts` additionally
+  allows any origin whose host is `APP_ROOT_DOMAIN` or a subdomain of it, on any scheme and port, via
+  `src/common/config/cors.util.ts` — that is how tenant dashboard subdomains such as
+  `http://my-store.localhost:5174` pass preflight. Keep `.env` and `.env.example` in sync with the
+  SPA dev ports (5173, 5174); no glob/`*` entries are supported.
 - `test:e2e`, `test/verify-*.ts`, and `test/reset-dev-db.ts` are manual and need a live Postgres.
 - `synchronize: true` per tenant schema is dev-only; there is no migrations infrastructure.
 - Never add tenant entities to `PUBLIC_ENTITIES` in `src/core.module.ts`; add them to
