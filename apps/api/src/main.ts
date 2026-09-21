@@ -17,8 +17,13 @@ async function bootstrap() {
     .get(ConfigService<IENV>)
     .getOrThrow<ICORS>('cors');
 
+  const allowedOrigins = origin
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
   app.enableCors({
-    origin: '*',
+    origin: allowedOrigins.length > 0 ? allowedOrigins : '*',
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials,
   });

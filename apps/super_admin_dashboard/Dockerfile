@@ -1,37 +1,29 @@
-# This Dockerfile uses `serve` npm package to serve the static files with node process.
-# You can find the Dockerfile for nginx in the following link:
-# https://github.com/refinedev/dockerfiles/blob/main/vite/Dockerfile.nginx
-FROM refinedev/node:18 AS base
+# syntax=docker/dockerfile:1
 
-FROM base as deps
+# Build from the monorepo root: docker build -f apps/super_admin_dashboard/Dockerfile .
 
-COPY package.json yarn.lock* package-lock.json* pnpm-lock.yaml* .npmrc* ./
+FROM node:20-alpine AS base
+RUN npm install -g pnpm@12.4.1
+WORKDIR /repo
 
-RUN \
-  if [ -f yarn.lock ]; then yarn --frozen-lockfile; \
-  elif [ -f package-lock.json ]; then npm ci; \
-  elif [ -f pnpm-lock.yaml ]; then yarn global add pnpm && pnpm i --frozen-lockfile; \
-  else echo "Lockfile not found." && exit 1; \
-  fi
+FROM base AS deps
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/store_owner_dashboard/package.json apps/store_owner_dashboard/package.json
+COPY apps/super_admin_dashboard/package.json apps/super_admin_dashboard/package.json
+RUN pnpm install --frozen-lockfile
 
-FROM base as builder
-
-ENV NODE_ENV production
-
-COPY --from=deps /app/refine/node_modules ./node_modules
-
+FROM base AS builder
+ENV NODE_ENV=production
+COPY --from=deps /repo ./
 COPY . .
+RUN pnpm --filter super_admin_dash build
 
-RUN npm run build
-
-FROM base as runner
-
-ENV NODE_ENV production
-
-RUN npm install -g serve
-
-COPY --from=builder /app/refine/dist ./
-
-USER refine
-
-CMD ["serve"]
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+RUN npm install -g serve@14
+COPY --from=builder /repo/apps/super_admin_dashboard/dist ./dist
+USER node
+EXPOSE 3000
+CMD ["serve", "-s", "dist", "-l", "3000"]

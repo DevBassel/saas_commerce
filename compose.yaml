@@ -5,10 +5,11 @@ services:
   # api:
   #   build:
   #     context: .
-  #     dockerfile: Dockerfile
+  #     dockerfile: apps/api/Dockerfile
   #   container_name: saas_store_api
   #   env_file:
   #     - .env
+  #     - apps/api/.env
   #   environment:
   #     # Container networking: reach Postgres by service name, not the host loopback.
   #     DB_HOST: postgres
@@ -22,13 +23,17 @@ services:
   #   ports:
   #     - "${APP_PORT:-4000}:${APP_PORT:-4000}"
   #   volumes:
-  #     # Live reload: host source over the image, with container node_modules preserved.
-  #     - .:/app
-  #     - /app/node_modules
+  #     # Live reload: host source over the image, with container node_modules preserved
+  #     # (the root workspace store plus the per-app symlink trees).
+  #     - .:/repo
+  #     - /repo/node_modules
+  #     - /repo/apps/api/node_modules
+  #     - /repo/apps/store_owner_dashboard/node_modules
+  #     - /repo/apps/super_admin_dashboard/node_modules
   #   depends_on:
   #     postgres:
   #       condition: service_healthy
-  #   command: pnpm run start:dev
+  #   command: pnpm --filter saas_store_api dev
 
   postgres:
     image: postgres:16-alpine
