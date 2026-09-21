@@ -1,0 +1,58 @@
+name: saas_store
+
+services:
+
+  # api:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: saas_store_api
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     # Container networking: reach Postgres by service name, not the host loopback.
+  #     DB_HOST: postgres
+  #     DB_PORT: 5432
+  #     NODE_ENV: ${NODE_ENV:-development}
+  #     # Bind-mounted source on Windows/macOS does not emit inotify events reliably,
+  #     # so tell the TypeScript watcher to poll instead.
+  #     TSC_WATCHFILE: DynamicPriorityPolling
+  #     TSC_WATCHDIRECTORY: DynamicPriorityPolling
+  #     CHOKIDAR_USEPOLLING: "true"
+  #   ports:
+  #     - "${APP_PORT:-4000}:${APP_PORT:-4000}"
+  #   volumes:
+  #     # Live reload: host source over the image, with container node_modules preserved.
+  #     - .:/app
+  #     - /app/node_modules
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   command: pnpm run start:dev
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: saas_store_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-saas_store}
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      # Override POSTGRES_HOST_PORT if 5432 is already taken by a local Postgres.
+      - '${POSTGRES_HOST_PORT:-5432}:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U ${DB_USERNAME:-postgres} -d ${DB_NAME:-saas_store}',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  postgres_data:
