@@ -26,6 +26,10 @@ build` dependency (the API tests run through `ts-jest`).
 `super_admin_dash` has **no** `test` task and no test setup — do not invent one; Turborepo skips
 packages that lack a task.
 
+Both dashboards start a Refine Devtools server on port 5001, so running them together logs a
+non-fatal "port 5001 already in use" for the second one. Set `REFINE_DEVTOOLS_PORT` to separate
+them if needed. Their Vite servers use 5174 (store owner) and 5173 (super admin).
+
 ## Workspace rules
 
 - Never add a nested `pnpm-workspace.yaml`, `pnpm-lock.yaml`, or `.npmrc` under `apps/*`. They were

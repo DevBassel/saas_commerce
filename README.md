@@ -52,6 +52,11 @@ pnpm test       # turbo run test (super_admin_dash has no test task and is skipp
 pnpm clean      # remove dist/, build/, coverage/, .turbo/, node_modules/ from all apps
 ```
 
+When both dashboards run at the same time, Refine Devtools binds port 5001 for whichever starts
+first; the second one logs a non-fatal "port 5001 already in use" and keeps serving. Give each its
+own port with `REFINE_DEVTOOLS_PORT` if the devtools UI matters. The SPA servers themselves use
+5174 and 5173.
+
 Target one app with a pnpm filter (package names are unchanged from the source repos):
 
 ```bash

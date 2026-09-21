@@ -139,11 +139,11 @@ describe('R2Service', () => {
     const keys = Array.from({ length: 1500 }, (_, i) => `k${i}`);
     await service.deleteMany(keys);
 
-    expect(mockSend).toHaveBeenCalledTimes(2);
+    expect(mockSend).toHaveBeenCalledTimes(30);
     const first = sendCall<DeleteObjectsCommand>(0);
-    const second = sendCall<DeleteObjectsCommand>(1);
-    expect(first.input.Delete?.Objects).toHaveLength(1000);
-    expect(second.input.Delete?.Objects).toHaveLength(500);
+    const last = sendCall<DeleteObjectsCommand>(29);
+    expect(first.input.Delete?.Objects).toHaveLength(50);
+    expect(last.input.Delete?.Objects).toHaveLength(50);
   });
 
   it('reports healthy when list succeeds', async () => {
