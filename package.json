@@ -1,0 +1,20 @@
+{
+  "name": "saas_commerce",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@12.4.1",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "clean": "node -e \"const fs=require('fs'),p=require('path');const roots=['.turbo','node_modules'];for(const app of fs.existsSync('apps')?fs.readdirSync('apps'):[])for(const d of ['dist','build','coverage','.turbo','node_modules'])roots.push(p.join('apps',app,d));for(const t of roots)fs.rmSync(t,{recursive:true,force:true});\""
+  },
+  "devDependencies": {
+    "turbo": "^2.11.2"
+  }
+}

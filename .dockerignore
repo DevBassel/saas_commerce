@@ -1,0 +1,52 @@
+# Dependencies / build output (installed and built inside the image)
+node_modules
+**/node_modules
+dist
+**/dist
+build
+**/build
+coverage
+**/coverage
+.turbo
+**/.turbo
+
+# Secrets and local env
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+
+# Logs
+logs
+**/logs
+*.log
+
+# VCS / tooling
+.git
+.gitignore
+.github
+.kilo
+.agents
+skills-lock.json
+
+# Editors / OS
+.vscode
+.idea
+.DS_Store
+*.swp
+
+# Docker
+Dockerfile
+**/Dockerfile
+.dockerignore
+compose.yaml
+docker-compose.yml
+
+# Historical docs never needed in an image
+docs
+
+# Temp
+.temp
+.tmp
