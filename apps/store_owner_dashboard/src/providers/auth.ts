@@ -1,7 +1,7 @@
 import type { AuthProvider } from "@refinedev/core";
 
 import { authApi } from "@/api/auth.api";
-import { tokenStorage, toApiError } from "@/api/client";
+import { refreshSession, tokenStorage, toApiError } from "@/api/client";
 import { getTenantSlug, tenantMatchesSlug } from "@/api/tenant";
 
 type JwtPayload = {
@@ -92,7 +92,21 @@ export const authProvider: AuthProvider = {
       };
     }
 
-    tokenStorage.clear();
+    if (tokenStorage.getRefreshToken()) {
+      const accessToken = await refreshSession();
+      const refreshed = accessToken ? decodeJwt(accessToken) : null;
+
+      if (refreshed && isTenantValid(refreshed)) {
+        return {
+          authenticated: true,
+        };
+      }
+
+      // Tenant mismatch is definitive; transient refresh failure keeps tokens.
+      if (refreshed && !isTenantValid(refreshed)) tokenStorage.clear();
+    }
+
+    if (!tokenStorage.getRefreshToken()) tokenStorage.clear();
 
     return {
       authenticated: false,
@@ -121,7 +135,7 @@ export const authProvider: AuthProvider = {
   onError: async (error) => {
     const statusCode = (error as { statusCode?: number })?.statusCode;
 
-    if (statusCode === 401) {
+    if (statusCode === 401 && !tokenStorage.getRefreshToken()) {
       return {
         logout: true,
         redirectTo: "/login",

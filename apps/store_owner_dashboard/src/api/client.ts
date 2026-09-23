@@ -3,6 +3,7 @@ import axios, {
   type AxiosInstance,
   type InternalAxiosRequestConfig,
 } from "axios";
+import { jwtDecode } from "jwt-decode";
 
 import {
   API_URL,
@@ -67,34 +68,47 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
+const decodeExp = (token: string): number | undefined => {
+  try {
+    const payload = jwtDecode<{ exp?: number }>(token);
+    return typeof payload.exp === "number" ? payload.exp : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 let refreshPromise: Promise<string | null> | null = null;
 
-const refreshAccessToken = (): Promise<string | null> => {
+export const refreshSession = (): Promise<string | null> => {
   if (refreshPromise) return refreshPromise;
 
-  const refreshToken = tokenStorage.getRefreshToken();
-  if (!refreshToken) return Promise.resolve(null);
+  const run = async (): Promise<string | null> => {
+    const refreshToken = tokenStorage.getRefreshToken();
+    if (!refreshToken) return null; // definitive: nothing to refresh with
 
-  refreshPromise = axios
-    .post<{ access_token: string; refresh_token: string }>(
-      `${API_URL}/${REFRESH_ENDPOINT}`,
-      { refresh_token: refreshToken },
-      { headers: { "x-tenant-slug": getTenantHeaderValue() } },
-    )
-    .then((response) => {
-      tokenStorage.setTokens(
-        response.data.access_token,
-        response.data.refresh_token,
+    try {
+      const { data } = await axios.post<{
+        access_token: string;
+        refresh_token: string;
+      }>(
+        `${API_URL}/${REFRESH_ENDPOINT}`,
+        { refresh_token: refreshToken },
+        { headers: { "x-tenant-slug": getTenantHeaderValue() } },
       );
-      return response.data.access_token;
-    })
-    .catch(() => {
-      tokenStorage.clear();
-      return null;
-    })
-    .finally(() => {
-      refreshPromise = null;
-    });
+      tokenStorage.setTokens(data.access_token, data.refresh_token);
+      return data.access_token;
+    } catch (error) {
+      const status = axios.isAxiosError(error)
+        ? error.response?.status
+        : undefined;
+      if (status === 401 || status === 403) tokenStorage.clear(); // definitive
+      return null; // transient: tokens kept
+    }
+  };
+
+  refreshPromise = run().finally(() => {
+    refreshPromise = null;
+  });
 
   return refreshPromise;
 };
@@ -116,14 +130,20 @@ apiClient.interceptors.response.use(
     ) {
       config._retry = true;
 
-      const accessToken = await refreshAccessToken();
+      const token = tokenStorage.getAccessToken();
+      const exp = token ? decodeExp(token) : undefined;
+      const isExpired = exp === undefined || exp * 1000 <= Date.now();
+      void isExpired; // classification only; refresh runs on any 401
+
+      const accessToken = await refreshSession();
 
       if (accessToken) {
         config.headers.set("Authorization", `Bearer ${accessToken}`);
         return apiClient.request(config);
       }
 
-      unauthenticatedRedirect();
+      // Definitive failure cleared the refresh token; transient failure keeps it.
+      if (!tokenStorage.getRefreshToken()) unauthenticatedRedirect();
     }
 
     return Promise.reject(error);
