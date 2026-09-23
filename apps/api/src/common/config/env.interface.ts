@@ -9,6 +9,8 @@ export interface IENV {
   cors: ICORS;
   r2: IR2;
   files: IFiles;
+  payments: IPayments;
+  stripe: IStripe;
 }
 
 export interface IAPP {
@@ -65,4 +67,19 @@ export interface IR2 {
 export interface IFiles {
   maxFileSize: number;
   maxProductImages: number;
+}
+
+export interface IPayments {
+  provider: string;
+}
+
+export interface IStripe {
+  secretKey?: string;
+  publishableKey?: string;
+  webhookSecret?: string;
+  currency: string;
+  applicationFeeBps: number;
+  connectCountry: string;
+  onboardingReturnUrl?: string;
+  onboardingRefreshUrl?: string;
 }

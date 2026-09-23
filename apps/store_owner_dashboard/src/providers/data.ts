@@ -22,10 +22,14 @@ const toRecordArray = (payload: unknown): Record<string, unknown>[] => {
 };
 
 export const dataProvider: DataProvider = {
-  getList: async ({ resource, pagination, filters, sorters }) => {
+  getList: async ({ resource, pagination, filters, sorters, meta }) => {
     try {
       const response = await apiClient.get(resource, {
-        params: buildListParams({ pagination, sorters }),
+        params: buildListParams({
+          pagination,
+          sorters,
+          omit: meta?.omitListParams === true,
+        }),
       });
       const body = response.data;
 

@@ -1,7 +1,7 @@
 import { Injectable, NestMiddleware } from '@nestjs/common';
 import { NextFunction, Request, Response } from 'express';
 import { Tenant } from '../tenants/entities/tenant.entity';
-import { TenantResolutionService } from '../tenants/tenant-resolution.service';
+import { TenantResolutionService } from '../tenants/services/tenant-resolution.service';
 import { tenantStorage } from './tenant-context';
 
 @Injectable()

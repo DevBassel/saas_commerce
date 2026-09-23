@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { CategoriesService } from './categories.service';
-import { TenantManagerService } from '../tenants/tenant-manager.service';
+import { TenantManagerService } from '../tenants/services/tenant-manager.service';
 
 const TENANT = { schemaName: 'tenant_test' };
 

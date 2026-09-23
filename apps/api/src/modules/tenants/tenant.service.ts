@@ -9,7 +9,7 @@ import { DataSource, Repository } from 'typeorm';
 import { Tenant } from './entities/tenant.entity';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { buildSchemaName } from './tenant.utils';
-import { TenantManagerService } from './tenant-manager.service';
+import { TenantManagerService } from './services/tenant-manager.service';
 import { User } from '../users/entities/user.entity';
 import { TenantStatus } from './enums/tenantStatus.enum';
 import { ConfigService } from '@nestjs/config';
@@ -87,6 +87,22 @@ export class TenantService {
 
   findBySubdomain(subdomain: string): Promise<Tenant | null> {
     return this.tenantRepo.findOneBy({ subdomain });
+  }
+
+  findByStripeAccountId(stripeAccountId: string): Promise<Tenant | null> {
+    return this.tenantRepo.findOneBy({ stripeAccountId });
+  }
+
+  async updateStripeAccountState(
+    id: number,
+    state: {
+      stripeAccountId?: string;
+      stripeChargesEnabled?: boolean;
+      stripePayoutsEnabled?: boolean;
+      stripeDetailsSubmitted?: boolean;
+    },
+  ): Promise<void> {
+    await this.tenantRepo.update({ id }, state);
   }
 
   async create(dto: CreateTenantDto): Promise<Tenant> {

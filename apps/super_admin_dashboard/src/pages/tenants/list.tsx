@@ -23,7 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatKb, storagePercent } from "@/lib/utils";
+import { formatBytes, storagePercent } from "@/lib/utils";
 import type { Tenant } from "@/types/tenant";
 
 const columns: { field: keyof Tenant; header: string; sortable: boolean }[] = [
@@ -31,7 +31,7 @@ const columns: { field: keyof Tenant; header: string; sortable: boolean }[] = [
   { field: "slug", header: "Slug", sortable: true },
   { field: "subdomain", header: "Subdomain", sortable: true },
   { field: "status", header: "Status", sortable: true },
-  { field: "storage", header: "Storage", sortable: false },
+  { field: "storageUsedBytes", header: "Storage", sortable: false },
   { field: "ownerUserId", header: "Owner ID", sortable: false },
   { field: "createdAt", header: "Created", sortable: true },
 ];
@@ -180,25 +180,21 @@ export const TenantsList = () => {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {tenant.storage ? (
-                        <div className="flex flex-col gap-1">
-                          <span>
-                            {formatKb(tenant.storage.usedKb)} /{" "}
-                            {formatKb(tenant.storage.capacityKb)}
-                          </span>
-                          <span className="text-xs">
-                            {Math.round(
-                              storagePercent(
-                                tenant.storage.usedKb,
-                                tenant.storage.capacityKb
-                              )
-                            )}
-                            %
-                          </span>
-                        </div>
-                      ) : (
-                        "—"
-                      )}
+                      <div className="flex flex-col gap-1">
+                        <span>
+                          {formatBytes(tenant.storageUsedBytes)} /{" "}
+                          {formatBytes(tenant.storageCapacityBytes)}
+                        </span>
+                        <span className="text-xs">
+                          {Math.round(
+                            storagePercent(
+                              tenant.storageUsedBytes,
+                              tenant.storageCapacityBytes
+                            )
+                          )}
+                          %
+                        </span>
+                      </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {tenant.ownerUserId ?? "—"}

@@ -77,4 +77,27 @@ export const EnvSchema = joi.object({
   // CORS
   CORS_ORIGIN: joi.string().required(),
   CORS_CREDENTIALS: joi.boolean().required(),
+  // Payments
+  PAYMENT_PROVIDER: joi.string().valid('stripe').empty('').default('stripe'),
+  STRIPE_SECRET_KEY: joi.string().empty('').optional(),
+  STRIPE_PUBLISHABLE_KEY: joi.string().empty('').optional(),
+  STRIPE_WEBHOOK_SECRET: secretRule('STRIPE_WEBHOOK_SECRET')
+    .optional()
+    .empty(''),
+  STRIPE_CURRENCY: joi.string().lowercase().length(3).empty('').default('usd'),
+  STRIPE_APPLICATION_FEE_BPS: joi
+    .number()
+    .integer()
+    .min(0)
+    .max(10000)
+    .empty('')
+    .default(0),
+  STRIPE_CONNECT_COUNTRY: joi
+    .string()
+    .uppercase()
+    .length(2)
+    .empty('')
+    .default('US'),
+  STRIPE_ONBOARDING_RETURN_URL: joi.string().empty('').optional(),
+  STRIPE_ONBOARDING_REFRESH_URL: joi.string().empty('').optional(),
 });

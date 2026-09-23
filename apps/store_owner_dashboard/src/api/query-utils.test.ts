@@ -42,6 +42,40 @@ describe("applyFilters", () => {
       ]),
     ).toThrow(/Unsupported filter operator/);
   });
+
+  it("filters nested fields with eq", () => {
+    const nested = [
+      { id: 1, role: { key: "ADMIN" } },
+      { id: 2, role: { key: "CUSTOMER" } },
+    ];
+    const result = applyFilters(nested, [
+      { field: "role.key", operator: "eq", value: "ADMIN" },
+    ]);
+    expect(result.map((row) => row.id)).toEqual([1]);
+  });
+
+  it("filters nested fields with in", () => {
+    const nested = [
+      { id: 1, role: { key: "ADMIN" } },
+      { id: 2, role: { key: "CUSTOMER" } },
+      { id: 3, role: { key: "STORE_OWNER" } },
+    ];
+    const result = applyFilters(nested, [
+      { field: "role.key", operator: "in", value: ["ADMIN", "CUSTOMER"] },
+    ]);
+    expect(result.map((row) => row.id)).toEqual([1, 2]);
+  });
+
+  it("excludes rows with a missing nested path instead of crashing", () => {
+    const nested = [
+      { id: 1, role: { key: "ADMIN" } },
+      { id: 2, role: null },
+    ];
+    const result = applyFilters(nested, [
+      { field: "role.key", operator: "in", value: ["ADMIN"] },
+    ]);
+    expect(result.map((row) => row.id)).toEqual([1]);
+  });
 });
 
 describe("applySorters", () => {
@@ -110,6 +144,16 @@ describe("buildListParams", () => {
   it("omits params when pagination is off and there are no sorters", () => {
     expect(
       buildListParams({ pagination: { mode: "off" }, sorters: [] }),
+    ).toEqual({});
+  });
+
+  it("omits every param when omit is set", () => {
+    expect(
+      buildListParams({
+        pagination: { mode: "server", currentPage: 3, pageSize: 25 },
+        sorters: [{ field: "createdAt", order: "desc" }],
+        omit: true,
+      }),
     ).toEqual({});
   });
 });

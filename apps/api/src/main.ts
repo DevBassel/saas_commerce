@@ -7,7 +7,7 @@ import { buildCorsOrigin } from './common/config/cors.util';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { rawBody: true });
 
   const { name, apiPrefix, apiVersion, port, rootDomain } = app
     .get(ConfigService<IENV>)

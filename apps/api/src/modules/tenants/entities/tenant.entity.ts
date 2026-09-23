@@ -46,6 +46,19 @@ export class Tenant extends BaseEntity {
   })
   storageCapacityBytes: bigint;
 
+  @Column({ type: 'varchar', nullable: true })
+  @Index({ unique: true })
+  stripeAccountId: string | null;
+
+  @Column({ type: 'boolean', default: false })
+  stripeChargesEnabled: boolean;
+
+  @Column({ type: 'boolean', default: false })
+  stripePayoutsEnabled: boolean;
+
+  @Column({ type: 'boolean', default: false })
+  stripeDetailsSubmitted: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 

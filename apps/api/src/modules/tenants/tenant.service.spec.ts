@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { DataSource, Repository } from 'typeorm';
 import { TenantService } from './tenant.service';
 import { Tenant } from './entities/tenant.entity';
-import { TenantManagerService } from './tenant-manager.service';
+import { TenantManagerService } from './services/tenant-manager.service';
 import { IENV } from 'src/common/config/env.interface';
 
 const buildMocks = () => {
@@ -14,7 +14,12 @@ const buildMocks = () => {
   const transaction = jest.fn((callback: (m: unknown) => unknown) =>
     callback(manager),
   );
+  const tenantRepoMocks = {
+    findOneBy: jest.fn(),
+    update: jest.fn(),
+  };
   const tenantRepo = {
+    ...tenantRepoMocks,
     manager: { transaction },
   } as unknown as Repository<Tenant>;
 
@@ -25,7 +30,7 @@ const buildMocks = () => {
     {} as ConfigService<IENV>,
   );
 
-  return { service, tenantRepo, manager, transaction };
+  return { service, tenantRepo, tenantRepoMocks, manager, transaction };
 };
 
 const tenantRow = (overrides: Partial<Tenant> = {}): Tenant =>
@@ -128,4 +133,50 @@ describe('TenantService.adjustStorageUsedBytes', () => {
       expect(transaction).not.toHaveBeenCalled();
     },
   );
+});
+
+describe('TenantService Stripe Connect state', () => {
+  it('finds a tenant by its Stripe account id', async () => {
+    const { service, tenantRepoMocks } = buildMocks();
+    const row = tenantRow({ stripeAccountId: 'acct_123' });
+    tenantRepoMocks.findOneBy.mockResolvedValue(row);
+
+    const result = await service.findByStripeAccountId('acct_123');
+
+    expect(tenantRepoMocks.findOneBy).toHaveBeenCalledWith({
+      stripeAccountId: 'acct_123',
+    });
+    expect(result).toBe(row);
+  });
+
+  it('returns null when no tenant owns the Stripe account id', async () => {
+    const { service, tenantRepoMocks } = buildMocks();
+    tenantRepoMocks.findOneBy.mockResolvedValue(null);
+
+    await expect(
+      service.findByStripeAccountId('acct_missing'),
+    ).resolves.toBeNull();
+  });
+
+  it('updates the Connect flags for a tenant', async () => {
+    const { service, tenantRepoMocks } = buildMocks();
+    tenantRepoMocks.update.mockResolvedValue({ affected: 1 });
+
+    await service.updateStripeAccountState(1, {
+      stripeAccountId: 'acct_123',
+      stripeChargesEnabled: true,
+      stripePayoutsEnabled: true,
+      stripeDetailsSubmitted: true,
+    });
+
+    expect(tenantRepoMocks.update).toHaveBeenCalledWith(
+      { id: 1 },
+      {
+        stripeAccountId: 'acct_123',
+        stripeChargesEnabled: true,
+        stripePayoutsEnabled: true,
+        stripeDetailsSubmitted: true,
+      },
+    );
+  });
 });

@@ -1,9 +1,9 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
-import { TenantService } from './tenant.service';
+import { TenantService } from '../tenant.service';
 import { TenantManagerService } from './tenant-manager.service';
-import { TENANT_ROLE_KEYS, seedRbac } from '../rbac/rbac.seed';
-import { seedCategories } from '../categories/categories.seed';
-import { TenantStatus } from './enums/tenantStatus.enum';
+import { TENANT_ROLE_KEYS, seedRbac } from '../../rbac/rbac.seed';
+import { seedCategories } from '../../categories/categories.seed';
+import { TenantStatus } from '../enums/tenantStatus.enum';
 
 @Injectable()
 export class TenantReseedService implements OnApplicationBootstrap {

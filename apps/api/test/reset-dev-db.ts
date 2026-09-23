@@ -1,7 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
-import { TenantManagerService } from '../src/modules/tenants/tenant-manager.service';
+import { TenantManagerService } from '../src/modules/tenants/services/tenant-manager.service';
 
 async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {

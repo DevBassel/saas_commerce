@@ -7,7 +7,7 @@ import { Role } from '../rbac/entities/role.entity';
 import { Permission } from '../rbac/entities/permission.entity';
 import { RoleKey } from '../../common/constants/RoleKey.enum';
 import { SEED_ROLE_PERMISSIONS } from '../rbac/constants/seed-data';
-import { TenantManagerService } from '../tenants/tenant-manager.service';
+import { TenantManagerService } from '../tenants/services/tenant-manager.service';
 
 jest.mock('bcrypt', () => ({
   __esModule: true,

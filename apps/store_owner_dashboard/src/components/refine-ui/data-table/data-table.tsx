@@ -1,5 +1,3 @@
-"use client";
-
 import type { HttpError, BaseRecord } from "@refinedev/core";
 import type { UseTableReturnType } from "@refinedev/react-table";
 import type { Column } from "@tanstack/react-table";
@@ -187,7 +185,6 @@ export function DataTable<TData extends BaseRecord>({
               })
             ) : (
               <DataTableNoData
-                isOverflowing={isOverflowing}
                 columnsLength={columns.length}
               />
             )}
@@ -209,10 +206,8 @@ export function DataTable<TData extends BaseRecord>({
 }
 
 function DataTableNoData({
-  isOverflowing,
   columnsLength,
 }: {
-  isOverflowing: { horizontal: boolean; vertical: boolean };
   columnsLength: number;
 }) {
   return (
@@ -223,8 +218,6 @@ function DataTableNoData({
       >
         <div
           className={cn(
-            "absolute",
-            "inset-0",
             "flex",
             "flex-col",
             "items-center",
@@ -233,14 +226,6 @@ function DataTableNoData({
             "h-64",
             "bg-background",
           )}
-          style={{
-            position: isOverflowing.horizontal ? "sticky" : "absolute",
-            left: isOverflowing.horizontal ? "50%" : "50%",
-            transform: "translateX(-50%)",
-            zIndex: isOverflowing.horizontal ? 2 : 1,
-            width: isOverflowing.horizontal ? "fit-content" : "100%",
-            minWidth: "300px",
-          }}
         >
           <div className={cn("text-lg", "font-semibold", "text-foreground")}>
             No data to display

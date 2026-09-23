@@ -11,7 +11,7 @@ import { Product } from './entities/product.entity';
 import { ProductImage } from './entities/product-image.entity';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
-import { TenantManagerService } from '../tenants/tenant-manager.service';
+import { TenantManagerService } from '../tenants/services/tenant-manager.service';
 import { TenantService } from '../tenants/tenant.service';
 import { tenantRefFromContext } from '../auth/tenant-context';
 import { TenantRef } from '../tenants/tenant.utils';

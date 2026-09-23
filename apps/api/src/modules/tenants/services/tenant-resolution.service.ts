@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IAPP, IENV } from 'src/common/config/env.interface';
-import { Tenant } from './entities/tenant.entity';
-import { TenantService } from './tenant.service';
-import { resolveSubdomain } from './tenant.utils';
+import { Tenant } from '../entities/tenant.entity';
+import { TenantService } from '../tenant.service';
+import { resolveSubdomain } from '../tenant.utils';
 
 interface RequestLike {
   headers: Record<string, unknown>;

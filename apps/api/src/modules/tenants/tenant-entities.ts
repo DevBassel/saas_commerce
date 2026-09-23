@@ -7,6 +7,10 @@ import { ProductImage } from '../products/entities/product-image.entity';
 import { Category } from '../categories/entities/category.entity';
 import { Cart } from '../cart/entities/cart.entity';
 import { CartItem } from '../cart/entities/cart-item.entity';
+import { Order } from '../orders/entities/order.entity';
+import { OrderItem } from '../orders/entities/order-item.entity';
+import { Payment } from '../payments/entities/payment.entity';
+import { Address } from '../addresses/entities/address.entity';
 
 export const TENANT_ENTITIES: PostgresConnectionOptions['entities'] = [
   User,
@@ -17,4 +21,8 @@ export const TENANT_ENTITIES: PostgresConnectionOptions['entities'] = [
   Category,
   Cart,
   CartItem,
+  Order,
+  OrderItem,
+  Payment,
+  Address,
 ];

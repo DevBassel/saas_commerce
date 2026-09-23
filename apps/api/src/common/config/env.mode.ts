@@ -62,4 +62,20 @@ export const buildEnv = (): IENV => ({
     maxFileSize: Number(process.env.MAX_FILE_SIZE),
     maxProductImages: Number(process.env.MAX_PRODUCT_IMAGES),
   },
+  payments: {
+    provider: process.env.PAYMENT_PROVIDER || 'stripe',
+  },
+  stripe: {
+    secretKey: process.env.STRIPE_SECRET_KEY || undefined,
+    publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || undefined,
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || undefined,
+    currency: (process.env.STRIPE_CURRENCY || 'usd').toLowerCase(),
+    applicationFeeBps: process.env.STRIPE_APPLICATION_FEE_BPS
+      ? Number(process.env.STRIPE_APPLICATION_FEE_BPS)
+      : 0,
+    connectCountry: (process.env.STRIPE_CONNECT_COUNTRY || 'US').toUpperCase(),
+    onboardingReturnUrl: process.env.STRIPE_ONBOARDING_RETURN_URL || undefined,
+    onboardingRefreshUrl:
+      process.env.STRIPE_ONBOARDING_REFRESH_URL || undefined,
+  },
 });

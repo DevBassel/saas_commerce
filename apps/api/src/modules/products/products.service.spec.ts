@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { Product } from './entities/product.entity';
-import { TenantManagerService } from '../tenants/tenant-manager.service';
+import { TenantManagerService } from '../tenants/services/tenant-manager.service';
 import { TenantService } from '../tenants/tenant.service';
 import { CategoriesService } from '../categories/categories.service';
 import { R2Service } from '../../common/storage/r2.service';

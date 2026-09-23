@@ -4,6 +4,8 @@ import { RbacPermissionKey } from './rbac-permissions.enum';
 import { ProductPermissionKey } from 'src/modules/products/constants/product-permissions.enum';
 import { CategoryPermissionKey } from 'src/modules/categories/constants/category-permissions.enum';
 import { CartPermissionKey } from 'src/modules/cart/constants/cart-permissions.enum';
+import { OrderPermissionKey } from 'src/modules/orders/constants/order-permissions.enum';
+import { PaymentPermissionKey } from 'src/modules/payments/constants/payments-permissions.enum';
 import { SEED_PERMISSIONS, SEED_ROLE_PERMISSIONS } from './seed-data';
 
 describe('role × permission seed matrix', () => {
@@ -59,5 +61,28 @@ describe('role × permission seed matrix', () => {
     expect(grants).not.toContain(RbacPermissionKey.ROLES_DELETE);
     expect(grants).not.toContain(RbacPermissionKey.PERMISSIONS_DELETE);
     expect(grants).toContain(UserPermissionKey.ASSIGN_ROLE);
+  });
+
+  it('grants CUSTOMER payment create and read only', () => {
+    const grants = SEED_ROLE_PERMISSIONS[RoleKey.CUSTOMER];
+    expect(grants).toContain(PaymentPermissionKey.CREATE);
+    expect(grants).toContain(PaymentPermissionKey.READ);
+    expect(grants).not.toContain(PaymentPermissionKey.MANAGE);
+  });
+
+  it('grants ADMIN full payment access', () => {
+    const grants = SEED_ROLE_PERMISSIONS[RoleKey.ADMIN];
+    expect(grants).toContain(PaymentPermissionKey.CREATE);
+    expect(grants).toContain(PaymentPermissionKey.READ);
+    expect(grants).toContain(PaymentPermissionKey.MANAGE);
+  });
+
+  it('grants CUSTOMER and ADMIN permission to return orders', () => {
+    expect(SEED_ROLE_PERMISSIONS[RoleKey.CUSTOMER]).toContain(
+      OrderPermissionKey.RETURN,
+    );
+    expect(SEED_ROLE_PERMISSIONS[RoleKey.ADMIN]).toContain(
+      OrderPermissionKey.RETURN,
+    );
   });
 });

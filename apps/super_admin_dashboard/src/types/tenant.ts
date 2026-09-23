@@ -3,17 +3,17 @@ export type TenantOwnerRole = {
   name: string;
 };
 
+export type TenantPermission = {
+  key: string;
+  name: string;
+};
+
 export type TenantOwner = {
   id: number;
   name: string;
   email: string;
   role: TenantOwnerRole | null;
-  permissions: string[];
-};
-
-export type TenantStorage = {
-  usedKb: number;
-  capacityKb: number;
+  permissions: TenantPermission[];
 };
 
 export type Tenant = {
@@ -24,8 +24,9 @@ export type Tenant = {
   subdomain: string | null;
   status: string;
   ownerUserId: number | null;
-  owner: TenantOwner | null;
-  storage: TenantStorage | null;
+  owner?: TenantOwner | null;
+  storageUsedBytes: string;
+  storageCapacityBytes: string;
   createdAt: string;
   updatedAt: string;
 };

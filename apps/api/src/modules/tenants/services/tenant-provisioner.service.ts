@@ -1,11 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { Tenant } from './entities/tenant.entity';
+import { Tenant } from '../entities/tenant.entity';
 import { TenantManagerService } from './tenant-manager.service';
-import { TENANT_ROLE_KEYS, seedRbac } from '../rbac/rbac.seed';
-import { seedCategories } from '../categories/categories.seed';
-import { sanitizeSchemaName } from './tenant.utils';
+import { TENANT_ROLE_KEYS, seedRbac } from '../../rbac/rbac.seed';
+import { seedCategories } from '../../categories/categories.seed';
+import { sanitizeSchemaName } from '../tenant.utils';
 
 @Injectable()
 export class TenantProvisionerService {

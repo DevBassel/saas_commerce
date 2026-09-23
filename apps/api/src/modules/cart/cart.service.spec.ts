@@ -6,7 +6,7 @@ import {
 import { CartService } from './cart.service';
 import { Cart } from './entities/cart.entity';
 import { CartItem } from './entities/cart-item.entity';
-import { TenantManagerService } from '../tenants/tenant-manager.service';
+import { TenantManagerService } from '../tenants/services/tenant-manager.service';
 import { R2Service } from '../../common/storage/r2.service';
 import { MAX_CART_ITEMS } from './constants/cart.constants';
 

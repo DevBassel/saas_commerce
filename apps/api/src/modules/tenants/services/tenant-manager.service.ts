@@ -3,8 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { DataSource, EntityTarget, ObjectLiteral, Repository } from 'typeorm';
 import { buildDataSourceOptions } from 'src/common/config/data-source.factory';
 import { IDB, IENV } from 'src/common/config/env.interface';
-import { Tenant } from './entities/tenant.entity';
-import { TENANT_ENTITIES } from './tenant-entities';
+import { Tenant } from '../entities/tenant.entity';
+import { TENANT_ENTITIES } from '../tenant-entities';
 
 type TenantRef = Pick<Tenant, 'schemaName'>;
 

@@ -12,10 +12,14 @@ export const resolveDetailPath = (
 export const buildListParams = ({
   pagination,
   sorters,
+  omit,
 }: {
   pagination?: Pagination;
   sorters?: CrudSort[];
+  omit?: boolean;
 }): Record<string, string | number> => {
+  if (omit) return {};
+
   const params: Record<string, string | number> = {};
 
   if (pagination && pagination.mode !== "off") {
@@ -33,6 +37,22 @@ export const buildListParams = ({
   return params;
 };
 
+const getFieldValue = (
+  record: Record<string, unknown>,
+  field: string,
+): unknown => {
+  if (!field.includes(".")) return record[field];
+  return field
+    .split(".")
+    .reduce<unknown>(
+      (acc, key) =>
+        acc != null && typeof acc === "object"
+          ? (acc as Record<string, unknown>)[key]
+          : undefined,
+      record,
+    );
+};
+
 export const applyFilters = <T extends Record<string, unknown>>(
   data: T[],
   filters?: CrudFilter[]
@@ -44,7 +64,7 @@ export const applyFilters = <T extends Record<string, unknown>>(
     logicalFilters.every((filter) => {
       if (!("field" in filter)) return true;
       const { field, operator, value } = filter;
-      const itemValue = item[field];
+      const itemValue = getFieldValue(item, field);
 
       switch (operator) {
         case "eq":

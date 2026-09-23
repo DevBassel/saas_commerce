@@ -17,7 +17,7 @@ import { RoleKey } from 'src/common/constants/RoleKey.enum';
 import { randomUUID } from 'crypto';
 import { compare } from 'bcrypt';
 import { TenantService } from '../tenants/tenant.service';
-import { TenantProvisionerService } from '../tenants/tenant-provisioner.service';
+import { TenantProvisionerService } from '../tenants/services/tenant-provisioner.service';
 import { getTenantContext } from './tenant-context';
 import { TenantIdentity, tenantRefFromPayload } from './tenant-ref.util';
 

@@ -3,7 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
 import { Tenant } from '../src/modules/tenants/entities/tenant.entity';
-import { TenantManagerService } from '../src/modules/tenants/tenant-manager.service';
+import { TenantManagerService } from '../src/modules/tenants/services/tenant-manager.service';
 
 const SLUG = 'verify-regstore-guard';
 

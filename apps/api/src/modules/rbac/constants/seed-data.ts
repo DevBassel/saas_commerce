@@ -5,6 +5,9 @@ import { RbacPermissionKey } from 'src/modules/rbac/constants/rbac-permissions.e
 import { ProductPermissionKey } from 'src/modules/products/constants/product-permissions.enum';
 import { CategoryPermissionKey } from 'src/modules/categories/constants/category-permissions.enum';
 import { CartPermissionKey } from 'src/modules/cart/constants/cart-permissions.enum';
+import { OrderPermissionKey } from 'src/modules/orders/constants/order-permissions.enum';
+import { PaymentPermissionKey } from 'src/modules/payments/constants/payments-permissions.enum';
+import { AddressPermissionKey } from 'src/modules/addresses/constants/address-permissions.enum';
 
 export const SEED_PERMISSIONS: {
   key: PermissionKey;
@@ -141,6 +144,66 @@ export const SEED_PERMISSIONS: {
     name: 'Delete from cart',
     description: 'Remove items from or clear your own shopping cart',
   },
+  {
+    key: OrderPermissionKey.CREATE,
+    name: 'Place orders',
+    description: 'Check out your own shopping cart into an order',
+  },
+  {
+    key: OrderPermissionKey.READ,
+    name: 'Read orders',
+    description: 'List and view your own orders',
+  },
+  {
+    key: OrderPermissionKey.CANCEL,
+    name: 'Cancel orders',
+    description: 'Cancel your own orders while they are pending or confirmed',
+  },
+  {
+    key: OrderPermissionKey.RETURN,
+    name: 'Return orders',
+    description: 'Request a return for your own delivered orders',
+  },
+  {
+    key: OrderPermissionKey.MANAGE,
+    name: 'Manage orders',
+    description: 'List, view and progress any store order',
+  },
+  {
+    key: PaymentPermissionKey.CREATE,
+    name: 'Pay own orders',
+    description: 'Start a payment for your own order',
+  },
+  {
+    key: PaymentPermissionKey.READ,
+    name: 'Read own payments',
+    description: 'View payment status for your own orders',
+  },
+  {
+    key: PaymentPermissionKey.MANAGE,
+    name: 'Manage store payment settings',
+    description: 'Connect and manage the store payment account',
+  },
+  {
+    key: AddressPermissionKey.CREATE,
+    name: 'Create delivery addresses',
+    description: 'Add delivery addresses to your own address book',
+  },
+  {
+    key: AddressPermissionKey.READ,
+    name: 'Read delivery addresses',
+    description: 'List and view your own delivery addresses',
+  },
+  {
+    key: AddressPermissionKey.UPDATE,
+    name: 'Update delivery addresses',
+    description: 'Edit and set the default of your own delivery addresses',
+  },
+  {
+    key: AddressPermissionKey.DELETE,
+    name: 'Delete delivery addresses',
+    description: 'Remove delivery addresses from your own address book',
+  },
 ];
 
 export const SEED_ROLES: {
@@ -197,6 +260,18 @@ export const SEED_ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     CartPermissionKey.CREATE,
     CartPermissionKey.UPDATE,
     CartPermissionKey.DELETE,
+    OrderPermissionKey.CREATE,
+    OrderPermissionKey.READ,
+    OrderPermissionKey.CANCEL,
+    OrderPermissionKey.RETURN,
+    OrderPermissionKey.MANAGE,
+    PaymentPermissionKey.CREATE,
+    PaymentPermissionKey.READ,
+    PaymentPermissionKey.MANAGE,
+    AddressPermissionKey.CREATE,
+    AddressPermissionKey.READ,
+    AddressPermissionKey.UPDATE,
+    AddressPermissionKey.DELETE,
   ],
   [RoleKey.CUSTOMER]: [
     ProductPermissionKey.READ,
@@ -205,5 +280,15 @@ export const SEED_ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     CartPermissionKey.CREATE,
     CartPermissionKey.UPDATE,
     CartPermissionKey.DELETE,
+    OrderPermissionKey.CREATE,
+    OrderPermissionKey.READ,
+    OrderPermissionKey.CANCEL,
+    OrderPermissionKey.RETURN,
+    PaymentPermissionKey.CREATE,
+    PaymentPermissionKey.READ,
+    AddressPermissionKey.CREATE,
+    AddressPermissionKey.READ,
+    AddressPermissionKey.UPDATE,
+    AddressPermissionKey.DELETE,
   ],
 };

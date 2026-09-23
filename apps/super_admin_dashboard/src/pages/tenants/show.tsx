@@ -18,10 +18,16 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatKb, storagePercent } from "@/lib/utils";
+import { formatBytes, storagePercent } from "@/lib/utils";
 import type { Tenant } from "@/types/tenant";
 
-const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
+const Field = ({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) => (
   <div className="flex flex-col gap-1">
     <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
       {label}
@@ -157,9 +163,21 @@ export const TenantsShow = () => {
                 )}
               </Field>
               <Field label="Permissions">
-                {tenant.owner.permissions.length > 0
-                  ? tenant.owner.permissions.join(", ")
-                  : "—"}
+                {tenant.owner.permissions.length > 0 ? (
+                  <span className="flex flex-wrap gap-2">
+                    {tenant.owner.permissions.map((permission) => (
+                      <Badge
+                        key={permission.key}
+                        variant="outline"
+                        title={permission.key}
+                      >
+                        {permission.name}
+                      </Badge>
+                    ))}
+                  </span>
+                ) : (
+                  "—"
+                )}
               </Field>
             </div>
           ) : (
@@ -175,36 +193,28 @@ export const TenantsShow = () => {
         </CardHeader>
         <Separator />
         <CardContent>
-          {tenant.storage ? (
-            <div className="flex flex-col gap-6">
-              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                <Field label="Used">
-                  {formatKb(tenant.storage.usedKb)}
-                </Field>
-                <Field label="Capacity">
-                  {formatKb(tenant.storage.capacityKb)}
-                </Field>
-                <Field label="Used %">
-                  {`${Math.round(
-                    storagePercent(
-                      tenant.storage.usedKb,
-                      tenant.storage.capacityKb
-                    )
-                  )}%`}
-                </Field>
-              </div>
-              <Progress
-                value={storagePercent(
-                  tenant.storage.usedKb,
-                  tenant.storage.capacityKb
-                )}
-              />
+          <div className="flex flex-col gap-6">
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              <Field label="Used">{formatBytes(tenant.storageUsedBytes)}</Field>
+              <Field label="Used %">
+                {`${Math.round(
+                  storagePercent(
+                    tenant.storageUsedBytes,
+                    tenant.storageCapacityBytes,
+                  ),
+                )}%`}
+              </Field>
+              <Field label="Capacity">
+                {formatBytes(tenant.storageCapacityBytes)}
+              </Field>
             </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              No storage information available.
-            </p>
-          )}
+            <Progress
+              value={storagePercent(
+                tenant.storageUsedBytes,
+                tenant.storageCapacityBytes,
+              )}
+            />
+          </div>
         </CardContent>
       </Card>
     </div>

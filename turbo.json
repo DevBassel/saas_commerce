@@ -5,8 +5,12 @@
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
     },
-    "lint": {},
-    "typecheck": {},
+    "lint": {
+      "cache": false
+    },
+    "typecheck": {
+      "cache": false
+    },
     "test": {
       "outputs": ["coverage/**"]
     },

@@ -15,7 +15,7 @@ import { Permission } from '../rbac/entities/permission.entity';
 import { mergePermissions } from '../rbac/permission.utils';
 import { SEED_ROLE_PERMISSIONS } from '../rbac/constants/seed-data';
 import { RoleKey, ROLE_RANK } from '../../common/constants/RoleKey.enum';
-import { TenantManagerService } from '../tenants/tenant-manager.service';
+import { TenantManagerService } from '../tenants/services/tenant-manager.service';
 import { tenantRefFromContext } from '../auth/tenant-context';
 import { TenantRef } from '../tenants/tenant.utils';
 import bcrypt from 'bcrypt';

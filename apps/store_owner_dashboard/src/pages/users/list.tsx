@@ -9,7 +9,9 @@ import { userColumns } from "@/components/users/user-columns";
 import { canCreateUsers } from "@/constants/users";
 import type { ActorIdentity, User } from "@/types/user";
 
-export const UsersList = () => {
+type UsersListProps = { roleKey?: string; title?: string };
+
+export const UsersList = ({ roleKey, title }: UsersListProps = {}) => {
   const { data: identity } = useGetIdentity<ActorIdentity>();
   const canCreate = canCreateUsers(identity?.roles?.[0] ?? null);
 
@@ -21,12 +23,19 @@ export const UsersList = () => {
       sorters: {
         initial: [{ field: "createdAt", order: "desc" }],
       },
+      filters: roleKey
+        ? {
+            permanent: [
+              { field: "role.key", operator: "in", value: [roleKey] },
+            ],
+          }
+        : undefined,
     },
   });
 
   return (
     <ListView>
-      <ListViewHeader canCreate={canCreate} />
+      <ListViewHeader resource="users" title={title} canCreate={canCreate} />
       <DataTable table={table} />
     </ListView>
   );
