@@ -32,6 +32,8 @@ const buildMocks = () => {
     findOne: jest.fn().mockResolvedValue(null),
     create: jest.fn((data: unknown) => data),
     save: jest.fn((data: unknown) => data),
+    update: jest.fn().mockResolvedValue(undefined),
+    delete: jest.fn().mockResolvedValue(undefined),
   };
   const roleRepo = {
     findOneBy: jest.fn(),
@@ -60,6 +62,11 @@ const buildMocks = () => {
     roleRepo as unknown as Repository<Role>,
     permissionRepo as unknown as Repository<Permission>,
     tenantManager,
+    {
+      getOrThrow: jest.fn((key: string) =>
+        key === 'bcrypt' ? { rounds: 12 } : undefined,
+      ),
+    } as never,
   );
 
   return { service, userRepo, roleRepo, permissionRepo };
@@ -263,5 +270,61 @@ describe('UsersService.assignRole', () => {
       roleId: 10,
       permissions: expected,
     });
+  });
+});
+
+describe('UsersService rank guards on update/remove', () => {
+  it('rejects updating a user with higher rank and writes nothing', async () => {
+    const { service, userRepo } = buildMocks();
+    userRepo.findOne.mockResolvedValue({
+      id: 5,
+      role: { key: RoleKey.SUPER_ADMIN },
+    });
+
+    await expect(
+      service.update(5, { name: 'Nope' }, RoleKey.ADMIN, TENANT),
+    ).rejects.toThrow(ForbiddenException);
+    expect(userRepo.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects updating a user with equal rank', async () => {
+    const { service, userRepo } = buildMocks();
+    userRepo.findOne.mockResolvedValue({
+      id: 5,
+      role: { key: RoleKey.ADMIN },
+    });
+
+    await expect(
+      service.update(5, { name: 'Nope' }, RoleKey.ADMIN, TENANT),
+    ).rejects.toThrow(ForbiddenException);
+    expect(userRepo.update).not.toHaveBeenCalled();
+  });
+
+  it('allows updating a lower-ranked user', async () => {
+    const { service, userRepo } = buildMocks();
+    userRepo.findOne
+      .mockResolvedValueOnce({ id: 5, role: { key: RoleKey.CUSTOMER } })
+      .mockResolvedValueOnce({
+        id: 5,
+        name: 'New',
+        role: { key: RoleKey.CUSTOMER },
+      });
+
+    await service.update(5, { name: 'New' }, RoleKey.ADMIN, TENANT);
+
+    expect(userRepo.update).toHaveBeenCalledWith({ id: 5 }, { name: 'New' });
+  });
+
+  it('rejects removing a user with equal or higher rank', async () => {
+    const { service, userRepo } = buildMocks();
+    userRepo.findOne.mockResolvedValue({
+      id: 5,
+      role: { key: RoleKey.STORE_OWNER },
+    });
+
+    await expect(service.remove(5, RoleKey.CUSTOMER, TENANT)).rejects.toThrow(
+      ForbiddenException,
+    );
+    expect(userRepo.delete).not.toHaveBeenCalled();
   });
 });

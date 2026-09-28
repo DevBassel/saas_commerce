@@ -7,6 +7,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { IENV, IJWT } from './common/config/env.interface';
 import { AppLoggerModule } from './common/logger/logger.module';
 import { R2Module } from './common/storage/r2.module';
+import { HealthController } from './common/health/health.controller';
 import { buildDataSourceOptions } from './common/config/data-source.factory';
 import { Tenant } from './modules/tenants/entities/tenant.entity';
 import { User } from './modules/users/entities/user.entity';
@@ -51,5 +52,6 @@ const PUBLIC_ENTITIES = [Tenant, User, Role, Permission];
       inject: [ConfigService],
     }),
   ],
+  controllers: [HealthController],
 })
 export default class CoreModule {}

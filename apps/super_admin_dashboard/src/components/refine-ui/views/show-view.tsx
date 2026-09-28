@@ -30,6 +30,7 @@ type ShowViewHeaderProps = PropsWithChildren<{
   title?: string;
   wrapperClassName?: string;
   headerClassName?: string;
+  hideEdit?: boolean;
 }>;
 
 export const ShowViewHeader = ({
@@ -37,6 +38,7 @@ export const ShowViewHeader = ({
   title: titleFromProps,
   wrapperClassName,
   headerClassName,
+  hideEdit,
 }: ShowViewHeaderProps) => {
   const back = useBack();
 
@@ -53,16 +55,16 @@ export const ShowViewHeader = ({
     titleFromProps ??
     getUserFriendlyName(
       resource?.meta?.label ?? identifier ?? resource?.name,
-      "singular"
+      "singular",
     );
 
   return (
     <div className={cn("flex flex-col", "gap-4", wrapperClassName)}>
       <div className="flex items-center relative gap-2">
-        <div className="bg-background z-[2] pr-4">
+        <div className="bg-background z-2 pr-4">
           <Breadcrumb />
         </div>
-        <Separator className={cn("absolute", "left-0", "right-0", "z-[1]")} />
+        <Separator className={cn("absolute", "left-0", "right-0", "z-1")} />
       </div>
       <div
         className={cn(
@@ -71,7 +73,7 @@ export const ShowViewHeader = ({
           "items-center",
           "justify-between",
           "-ml-2.5",
-          headerClassName
+          headerClassName,
         )}
       >
         <div className="flex items-center gap-1">
@@ -87,11 +89,13 @@ export const ShowViewHeader = ({
             recordItemId={recordItemId}
             resource={resourceName}
           />
-          <EditButton
-            variant="outline"
-            recordItemId={recordItemId}
-            resource={resourceName}
-          />
+          {hideEdit ? null : (
+            <EditButton
+              variant="outline"
+              recordItemId={recordItemId}
+              resource={resourceName}
+            />
+          )}
         </div>
       </div>
     </div>

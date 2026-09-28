@@ -1,10 +1,9 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
-  Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Role } from './entities/role.entity';
 import { Permission } from './entities/permission.entity';
@@ -27,24 +26,14 @@ const SYSTEM_ROLES: RoleKey[] = [
 
 @Injectable()
 export class RbacService {
-  private readonly logger = new Logger(RbacService.name);
+  constructor(private readonly tenantManager: TenantManagerService) {}
 
-  constructor(
-    @InjectRepository(Role) private readonly roleRepo: Repository<Role>,
-    @InjectRepository(Permission)
-    private readonly permissionRepo: Repository<Permission>,
-    private readonly tenantManager: TenantManagerService,
-  ) {}
-
-  private resolveTenant(tenant?: TenantRef): TenantRef | undefined {
-    return tenant ?? tenantRefFromContext();
-  }
-
-  private warnMissingTenantContext(): void {
-    if (process.env.NODE_ENV === 'production') return;
-    this.logger.warn(
-      'RbacService: no tenant context resolved; falling back to public schema repositories',
-    );
+  private resolveTenant(tenant?: TenantRef): TenantRef {
+    const target = tenant ?? tenantRefFromContext();
+    if (!target) {
+      throw new ForbiddenException('Tenant context is required');
+    }
+    return target;
   }
 
   private async repos(tenant?: TenantRef): Promise<{
@@ -52,10 +41,6 @@ export class RbacService {
     permissionRepo: Repository<Permission>;
   }> {
     const target = this.resolveTenant(tenant);
-    if (!target) {
-      this.warnMissingTenantContext();
-      return { roleRepo: this.roleRepo, permissionRepo: this.permissionRepo };
-    }
 
     const [roleRepo, permissionRepo] = await Promise.all([
       this.tenantManager.getRepository(Role, target),

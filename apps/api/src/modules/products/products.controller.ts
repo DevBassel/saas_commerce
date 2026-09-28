@@ -18,6 +18,7 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ReorderImagesDto } from './dto/reorder-images.dto';
 import { Permissions } from '../auth/decorators/permissions.decorator';
+import { Public } from '../auth/decorators/isPublic.decorator';
 import { ProductPermissionKey } from './constants/product-permissions.enum';
 import {
   FALLBACK_MAX_FILE_SIZE,
@@ -29,12 +30,14 @@ export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
   @Get()
+  @Public()
   @Permissions([ProductPermissionKey.READ])
   findAll() {
     return this.productsService.findAll();
   }
 
   @Get(':id')
+  @Public()
   @Permissions([ProductPermissionKey.READ])
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.productsService.findOne(id);

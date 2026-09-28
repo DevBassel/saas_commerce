@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
+import { TenantService } from '../tenants/tenant.service';
 import { tenantRefFromContext } from '../auth/tenant-context';
 import { TenantRef } from '../tenants/tenant.utils';
 import { RoleKey } from '../../common/constants/RoleKey.enum';
@@ -13,7 +14,10 @@ const round2 = (value: number): number => Math.round(value * 100) / 100;
 
 @Injectable()
 export class DashboardService {
-  constructor(private readonly tenantManager: TenantManagerService) {}
+  constructor(
+    private readonly tenantManager: TenantManagerService,
+    private readonly tenantService: TenantService,
+  ) {}
 
   private resolveTenant(tenant?: TenantRef): TenantRef {
     const target = tenant ?? tenantRefFromContext();
@@ -24,9 +28,10 @@ export class DashboardService {
   async getStats(tenant?: TenantRef): Promise<DashboardStats> {
     const target = this.resolveTenant(tenant);
 
-    const [orderRepo, userRepo] = await Promise.all([
+    const [orderRepo, userRepo, tenantRow] = await Promise.all([
       this.tenantManager.getRepository(Order, target),
       this.tenantManager.getRepository(User, target),
+      this.tenantService.findBySchemaName(target.schemaName),
     ]);
 
     const [totalOrders, fulfilledOrders, pendingOrders, money, customers] =
@@ -63,6 +68,8 @@ export class DashboardService {
       totalPaid: round2(Number(money?.paid ?? 0)),
       waitingAmount: round2(Number(money?.waiting ?? 0)),
       customers,
+      storageUsedBytes: Number(tenantRow?.storageUsedBytes ?? 0),
+      storageCapacityBytes: Number(tenantRow?.storageCapacityBytes ?? 0),
     };
   }
 }

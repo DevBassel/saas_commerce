@@ -79,14 +79,22 @@ export class JwtGuard implements CanActivate {
     } else {
       if (!tenant) throw new ForbiddenException('Tenant-scoped token required');
       if (!resolved) throw new ForbiddenException('Tenant context is required');
-      if (resolved.schemaName !== tenant.schemaName)
+      if (
+        resolved.id !== tenant.id ||
+        resolved.schemaName !== tenant.schemaName
+      )
         throw new ForbiddenException('Token does not belong to this tenant');
     }
-    const user = await this.userService.findOne(
-      { id: payload.id },
-      { withRole: true, withPermissions: true },
-      tenant,
-    );
+    const user = tenant
+      ? await this.userService.findOne(
+          { id: payload.id },
+          { withRole: true, withPermissions: true },
+          tenant,
+        )
+      : await this.userService.findOnePublic(
+          { id: payload.id },
+          { withRole: true, withPermissions: true },
+        );
     if (!user) throw new NotFoundException('User not found');
 
     const directPermissions =

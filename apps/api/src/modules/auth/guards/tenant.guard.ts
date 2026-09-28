@@ -19,7 +19,7 @@ export class TenantGuard implements CanActivate {
     private readonly tenantResolution: TenantResolutionService,
   ) {}
 
-  async canActivate(context: ExecutionContext): Promise<boolean> {
+  canActivate(context: ExecutionContext): boolean {
     const isPlatform = this.reflector.getAllAndOverride<boolean>(IS_PLATFORM, [
       context.getHandler(),
       context.getClass(),
@@ -31,9 +31,7 @@ export class TenantGuard implements CanActivate {
     if (!this.tenantResolution.isApiPath(request.originalUrl ?? request.url))
       return true;
 
-    const tenant =
-      request.tenant ??
-      (await this.tenantResolution.resolveFromRequest(request));
+    const tenant = request.tenant;
 
     if (!tenant) {
       const hadIdentifier = this.tenantResolution.hasTenantIdentifier(request);

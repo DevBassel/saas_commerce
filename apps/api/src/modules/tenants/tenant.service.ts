@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -108,6 +109,17 @@ export class TenantService {
   async create(dto: CreateTenantDto): Promise<Tenant> {
     const schemaName = buildSchemaName(dto.slug);
     const subdomain = dto.subdomain ?? dto.slug;
+
+    const existingSchema = await this.tenantRepo.findOneBy({ schemaName });
+    if (existingSchema)
+      throw new ConflictException('Schema name already exists');
+
+    if (schemaName.length >= 63) {
+      this.logger.warn(
+        `Schema name "${schemaName}" is at the 63-char identifier limit; truncated slugs can collide`,
+      );
+    }
+
     return this.tenantRepo.save(
       this.tenantRepo.create({
         name: dto.name,
@@ -135,6 +147,7 @@ export class TenantService {
       await this.tenantRepo.update(id, {
         status: TenantStatus.INACTIVE,
       });
+      await this.tenantManager.release({ schemaName: tenant.schemaName });
       return 'Tenant deactivated successfully';
     } else {
       await this.tenantRepo.update(id, {

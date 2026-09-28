@@ -1,7 +1,7 @@
 import type { AuthProvider } from "@refinedev/core";
 
 import { authApi } from "@/api/auth.api";
-import { tokenStorage, toApiError } from "@/api/client";
+import { refreshSession, tokenStorage, toApiError } from "@/api/client";
 
 type JwtPayload = {
   type?: string;
@@ -33,7 +33,7 @@ const isTokenValid = (token: string | null): boolean => {
   const payload = decodeJwt(token);
   if (!payload) return false;
   if (payload.type && payload.type !== "access") return false;
-  if (typeof payload.exp !== "number") return true;
+  if (typeof payload.exp !== "number") return false;
   return payload.exp * 1000 > Date.now();
 };
 
@@ -76,13 +76,25 @@ export const authProvider: AuthProvider = {
   },
 
   check: async () => {
-    if (isTokenValid(tokenStorage.getAccessToken())) {
+    const token = tokenStorage.getAccessToken();
+
+    if (isTokenValid(token)) {
       return {
         authenticated: true,
       };
     }
 
-    tokenStorage.clear();
+    if (tokenStorage.getRefreshToken()) {
+      const accessToken = await refreshSession();
+
+      if (isTokenValid(accessToken)) {
+        return {
+          authenticated: true,
+        };
+      }
+    }
+
+    if (!tokenStorage.getRefreshToken()) tokenStorage.clear();
 
     return {
       authenticated: false,
@@ -111,7 +123,7 @@ export const authProvider: AuthProvider = {
   onError: async (error) => {
     const statusCode = (error as { statusCode?: number })?.statusCode;
 
-    if (statusCode === 401) {
+    if (statusCode === 401 && !tokenStorage.getRefreshToken()) {
       return {
         logout: true,
         redirectTo: "/login",

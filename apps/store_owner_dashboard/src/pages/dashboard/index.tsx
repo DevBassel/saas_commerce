@@ -12,6 +12,7 @@ import {
 import { Link } from "react-router";
 
 import { OrderStatusBadge } from "@/components/orders/order-status-badge";
+import { StorageCard } from "@/components/dashboard/storage-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -117,6 +118,12 @@ export const Dashboard = () => {
           title="Customers"
           value={String(stats?.customers ?? 0)}
           icon={UsersIcon}
+          isLoading={statsQuery.query.isLoading}
+          isError={statsQuery.query.isError}
+        />
+        <StorageCard
+          usedBytes={stats?.storageUsedBytes ?? 0}
+          capacityBytes={stats?.storageCapacityBytes ?? 0}
           isLoading={statsQuery.query.isLoading}
           isError={statsQuery.query.isError}
         />

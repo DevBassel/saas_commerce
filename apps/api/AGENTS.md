@@ -29,7 +29,7 @@ NestJS 10 + TypeORM 0.3 + PostgreSQL 16. Package manager: pnpm.
 - `src/common/` — `config/` (env schema + typed groups), `logger/` (pino → rotating file, TypeORM daily logger),
   `storage/` (Cloudflare R2 via `@aws-sdk/client-s3`), `constants/` (`RoleKey`+`ROLE_RANK`, `PermissionKey`).
 - `src/modules/` — `auth`, `users`, `rbac`, `tenants`, `platform`, `products`, `categories`, `cart`, `orders`,
-  plus a payments scaffold (permission enum + `Payment` entity only; no module/controller yet).
+  `storefront` (public tenant-resolved catalog reads), plus a payments scaffold (permission enum + `Payment` entity only; no module/controller yet).
   Most modules have a `workflow.md` mermaid diagram — treat those as the authoritative flow docs.
 
 ## Multi-tenancy model
@@ -42,22 +42,25 @@ NestJS 10 + TypeORM 0.3 + PostgreSQL 16. Package manager: pnpm.
   `x-tenant-id` → `x-tenant-slug` → subdomain from `Host` minus `APP_ROOT_DOMAIN`.
   Middleware sets `req.tenant` + AsyncLocalStorage (`tenant-context.ts`); guard enforces on non-platform API routes
   (400 when no identifier at all, 404 when identifier does not resolve).
-- **TenantManagerService**: per-schema DataSource LRU cache (cap 100), in-flight dedupe, `synchronize: true`,
+- **TenantManagerService**: per-schema DataSource LRU cache (cap 100), in-flight dedupe,
+  `synchronize = DB_SYNCHRONIZE && NODE_ENV !== 'production'`,
   explicit `TENANT_ENTITIES`, `poolSize = TENANT_POOL_SIZE`; `release()` on deactivate and destroy-all on module destroy.
-  Tenant services use `getRepository(entity, tenant)`, falling back to public repos when no tenant context (users/rbac).
+  Tenant services resolve repos via `getRepository(entity, tenant)` and **throw** when neither an explicit tenant nor
+  AsyncLocalStorage context is present. Platform paths use explicit `findOnePublic` / `updateSessionPublic` helpers.
 - **Guards**: `@Public()` skips auth; `@Platform()` routes skip tenant resolution and reject tokens carrying tenant claims;
-  tenant routes require token `tenantSchema === resolved schemaName` (else 403). `PermissionGuard`: SUPER_ADMIN bypass,
-  then `@Roles()` check, then `@Permissions()` (all required).
+  tenant routes require token `tenantId`+`tenantSchema` to match the resolved tenant `id`+`schemaName` (a partial claim is 403).
+  `PermissionGuard`: SUPER_ADMIN bypass, then `@Roles()` check, then `@Permissions()` (all required).
 - **JWT**: claims `type` (access|refresh), `id`, `role`, `tenantId`, `tenantSchema` (null for platform).
-  Separate access/refresh secrets + `issuer`/`audience`. Refresh rotates `jti`; stored `user.jti` mismatch → 401.
+  Separate access/refresh secrets + `issuer`/`audience` (required explicitly in production). Refresh rotates `jti` and
+  re-checks tenant status/registry; stored `user.jti` mismatch → 401. `POST /auth/logout` (+ `/auth/logout/platform`) clears it.
 
 ## Data model
 
 - `Tenant` (public): `id, name, slug(unique), schemaName(unique), subdomain(unique), status(ACTIVE|INACTIVE), ownerUserId, storageCapacityBytes`,
   plus Stripe Connect state (`stripeAccountId(unique)`, `stripeChargesEnabled`, `stripePayoutsEnabled`, `stripeDetailsSubmitted`).
 - Tenant-scoped: `User` (role + direct permissions via `user_permissions`, `jti` excluded from serialization),
-  `Role` (system roles protected), `Permission`, `Category` (unique slug), `Product` (unique `sku`, numeric(10,2) price,
-  `categoryId` FK ON DELETE SET NULL), `ProductImage` (position-ordered, R2 object key),
+  `Role` (system roles protected), `Permission`, `Category` (unique slug), `Product` (unique `sku`, unique nullable `slug` backfilled on
+  boot for storefront URLs, numeric(10,2) price, `categoryId` FK ON DELETE SET NULL), `ProductImage` (position-ordered, R2 object key),
   `Cart` (one per user)/`CartItem` (composite unique `cartId`+`productId`), and `Order`/`OrderItem`
   (unique `orderNumber`, `status` lifecycle, numeric(10,2) `subtotal`/`total`/`unitPrice`/`lineTotal`;
   `userId` and `productId` FKs are ON DELETE SET NULL, with name/sku/price/image snapshots kept on the line).
@@ -118,6 +121,8 @@ NestJS 10 + TypeORM 0.3 + PostgreSQL 16. Package manager: pnpm.
 - Inject repositories for tenant data via `TenantManagerService.getRepository(entity, tenant)`; public/global data uses
   standard `@InjectRepository` on the public DataSource.
 - DTO validation with class-validator; global pipe rejects unknown fields (no extra body props).
-- `synchronize: true` per tenant schema is dev-only; there is no migrations infrastructure.
+- `synchronize` per tenant schema is gated to `DB_SYNCHRONIZE && NODE_ENV !== 'production'`; there is no migrations infrastructure yet.
+- Security middleware: helmet (CSP disabled to keep Swagger UI working), global `@nestjs/throttler` (20 req/min; login routes 5/min),
+  `POST /auth/logout` clears `user.jti`, and `GET /api/v1/health` reports db + R2.
 - `src/...` import alias works via tsconfig `baseUrl` + jest `moduleNameMapper`; relative imports also used.
 - `docs/` holds historical planning artifacts (`PLAN.md`, `audit-report.md`, `CLEANUP_PLAN.md`) — not current-state docs.

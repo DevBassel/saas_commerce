@@ -12,9 +12,9 @@ import {
   Sidebar as ShadcnSidebar,
   SidebarContent as ShadcnSidebarContent,
   SidebarHeader as ShadcnSidebarHeader,
-  useSidebar as useShadcnSidebar,
   SidebarTrigger as ShadcnSidebarTrigger,
 } from "@/components/ui/sidebar";
+import { useSidebar as useShadcnSidebar } from "@/hooks/use-sidebar";
 import {
   DropdownMenu,
   DropdownMenuContent,

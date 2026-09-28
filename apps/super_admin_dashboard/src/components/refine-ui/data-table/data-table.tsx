@@ -1,11 +1,8 @@
-"use client";
-
 import type { HttpError, BaseRecord } from "@refinedev/core";
 import type { UseTableReturnType } from "@refinedev/react-table";
 import type { Column } from "@tanstack/react-table";
 import { flexRender } from "@tanstack/react-table";
-import { Loader2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import {
   Table,
@@ -16,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { DataTablePagination } from "@/components/refine-ui/data-table/data-table-pagination";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 type DataTableProps<TData extends BaseRecord> = {
@@ -40,6 +38,10 @@ export function DataTable<TData extends BaseRecord>({
   const columns = getAllColumns();
   const leafColumns = table.reactTable.getAllLeafColumns();
   const isLoading = tableQuery.isLoading;
+  const totalSize = leafColumns.reduce(
+    (sum, column) => sum + column.getSize(),
+    0,
+  );
 
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
@@ -48,40 +50,52 @@ export function DataTable<TData extends BaseRecord>({
     vertical: false,
   });
 
+  useLayoutEffect(() => {
+    const actionsColumn = table.reactTable.getColumn("actions");
+    if (!actionsColumn) return;
+
+    table.reactTable.setColumnPinning((previous) =>
+      previous.right?.includes("actions")
+        ? previous
+        : { ...previous, right: [...(previous.right ?? []), "actions"] },
+    );
+  }, [table.reactTable]);
+
   useEffect(() => {
+    const table = tableRef.current;
+    const container = tableContainerRef.current;
+    if (!table || !container) return;
+
     const checkOverflow = () => {
-      if (tableRef.current && tableContainerRef.current) {
-        const table = tableRef.current;
-        const container = tableContainerRef.current;
+      const next = {
+        horizontal: table.offsetWidth > container.clientWidth,
+        vertical: table.offsetHeight > container.clientHeight,
+      };
 
-        const horizontalOverflow = table.offsetWidth > container.clientWidth;
-        const verticalOverflow = table.offsetHeight > container.clientHeight;
-
-        setIsOverflowing({
-          horizontal: horizontalOverflow,
-          vertical: verticalOverflow,
-        });
-      }
+      setIsOverflowing((previous) =>
+        previous.horizontal === next.horizontal &&
+        previous.vertical === next.vertical
+          ? previous
+          : next,
+      );
     };
 
     checkOverflow();
 
-    // Check on window resize
-    window.addEventListener("resize", checkOverflow);
+    const observer = new ResizeObserver(checkOverflow);
+    observer.observe(table);
+    observer.observe(container);
 
-    // Check when table data changes
-    const timeoutId = setTimeout(checkOverflow, 100);
-
-    return () => {
-      window.removeEventListener("resize", checkOverflow);
-      clearTimeout(timeoutId);
-    };
+    return () => observer.disconnect();
   }, [tableQuery.data?.data, pageSize]);
 
   return (
     <div className={cn("flex", "flex-col", "flex-1", "gap-4")}>
       <div ref={tableContainerRef} className={cn("rounded-md", "border")}>
-        <Table ref={tableRef} style={{ tableLayout: "fixed", width: "100%" }}>
+        <Table
+          ref={tableRef}
+          style={{ tableLayout: "fixed", width: "100%", minWidth: totalSize }}
+        >
           <TableHeader>
             {getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
@@ -102,7 +116,7 @@ export function DataTable<TData extends BaseRecord>({
                         <div className={cn("flex", "items-center", "gap-1")}>
                           {flexRender(
                             header.column.columnDef.header,
-                            header.getContext()
+                            header.getContext(),
                           )}
                         </div>
                       )}
@@ -132,32 +146,12 @@ export function DataTable<TData extends BaseRecord>({
                           }}
                           className={cn("truncate")}
                         >
-                          <div className="h-8" />
+                          <Skeleton className="h-4 w-full" />
                         </TableCell>
                       ))}
                     </TableRow>
-                  )
+                  ),
                 )}
-                <TableRow>
-                  <TableCell
-                    colSpan={columns.length}
-                    className={cn("absolute", "inset-0", "pointer-events-none")}
-                  >
-                    <Loader2
-                      className={cn(
-                        "absolute",
-                        "top-1/2",
-                        "left-1/2",
-                        "animate-spin",
-                        "text-primary",
-                        "h-8",
-                        "w-8",
-                        "-translate-x-1/2",
-                        "-translate-y-1/2"
-                      )}
-                    />
-                  </TableCell>
-                </TableRow>
               </>
             ) : getRowModel().rows?.length ? (
               getRowModel().rows.map((row) => {
@@ -180,7 +174,7 @@ export function DataTable<TData extends BaseRecord>({
                           <div className="truncate">
                             {flexRender(
                               cell.column.columnDef.cell,
-                              cell.getContext()
+                              cell.getContext(),
                             )}
                           </div>
                         </TableCell>
@@ -191,7 +185,6 @@ export function DataTable<TData extends BaseRecord>({
               })
             ) : (
               <DataTableNoData
-                isOverflowing={isOverflowing}
                 columnsLength={columns.length}
               />
             )}
@@ -213,10 +206,8 @@ export function DataTable<TData extends BaseRecord>({
 }
 
 function DataTableNoData({
-  isOverflowing,
   columnsLength,
 }: {
-  isOverflowing: { horizontal: boolean; vertical: boolean };
   columnsLength: number;
 }) {
   return (
@@ -224,27 +215,17 @@ function DataTableNoData({
       <TableCell
         colSpan={columnsLength}
         className={cn("relative", "text-center")}
-        style={{ height: "490px" }}
       >
         <div
           className={cn(
-            "absolute",
-            "inset-0",
             "flex",
             "flex-col",
             "items-center",
             "justify-center",
             "gap-2",
-            "bg-background"
+            "h-64",
+            "bg-background",
           )}
-          style={{
-            position: isOverflowing.horizontal ? "sticky" : "absolute",
-            left: isOverflowing.horizontal ? "50%" : "50%",
-            transform: "translateX(-50%)",
-            zIndex: isOverflowing.horizontal ? 2 : 1,
-            width: isOverflowing.horizontal ? "fit-content" : "100%",
-            minWidth: "300px",
-          }}
         >
           <div className={cn("text-lg", "font-semibold", "text-foreground")}>
             No data to display
@@ -258,7 +239,7 @@ function DataTableNoData({
   );
 }
 
-export function getCommonStyles<TData>({
+function getCommonStyles<TData>({
   column,
   isOverflowing,
 }: {
@@ -279,8 +260,8 @@ export function getCommonStyles<TData>({
       isOverflowing.horizontal && isLastLeftPinnedColumn
         ? "-4px 0 4px -4px var(--border) inset"
         : isOverflowing.horizontal && isFirstRightPinnedColumn
-        ? "4px 0 4px -4px var(--border) inset"
-        : undefined,
+          ? "4px 0 4px -4px var(--border) inset"
+          : undefined,
     left:
       isOverflowing.horizontal && isPinned === "left"
         ? `${column.getStart("left")}px`

@@ -25,8 +25,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { TenantStatusBadge } from "@/components/tenants/tenant-status-badge";
 import type { Tenant } from "@/types/tenant";
 
 const StatCard = ({
@@ -162,11 +162,7 @@ export const Dashboard = () => {
                       {tenant.subdomain ?? "—"}
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant={tenant.status === "active" ? "default" : "secondary"}
-                      >
-                        {tenant.status}
-                      </Badge>
+                      <TenantStatusBadge status={tenant.status} />
                     </TableCell>
                     <TableCell className={cn("text-muted-foreground")}>
                       {format(new Date(tenant.createdAt), "MMM d, yyyy")}

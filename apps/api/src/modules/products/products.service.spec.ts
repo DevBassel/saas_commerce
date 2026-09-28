@@ -61,6 +61,7 @@ const buildMocks = () => {
   } as unknown as TenantManagerService;
   const tenantService = {
     adjustStorageUsedBytes: jest.fn().mockResolvedValue(0),
+    findBySchemaName: jest.fn().mockResolvedValue(null),
   };
   const categoriesService = {
     findById: jest.fn().mockResolvedValue({ id: 1 }),
@@ -267,6 +268,23 @@ describe('ProductsService', () => {
       expect(r2Mocks.deleteMany).toHaveBeenCalledWith([
         'tenants/tenant_test/products/photo.png',
       ]);
+    });
+
+    it('rejects upload before touching R2 when the tenant quota would be exceeded', async () => {
+      const { service, productRepo, imageRepo, tenantService, r2Mocks } =
+        buildMocks();
+      productRepo.findOneBy.mockResolvedValue({ id: 1 });
+      imageRepo.count.mockResolvedValue(0);
+      tenantService.findBySchemaName.mockResolvedValue({
+        storageUsedBytes: 1000,
+        storageCapacityBytes: 1000,
+      });
+
+      await expect(service.uploadImages(1, [file()], TENANT)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      expect(r2Mocks.upload).not.toHaveBeenCalled();
     });
 
     it('records uploaded bytes against the tenant quota', async () => {

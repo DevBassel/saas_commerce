@@ -5,6 +5,7 @@ Single pnpm + Turborepo workspace holding the multi-tenant SaaS commerce platfor
 - `apps/api` — package `saas_store_api` (NestJS 10 + TypeORM 0.3 + Postgres 16).
 - `apps/store_owner_dashboard` — package `tenant_dash` (Refine v5 + Vite 6 + React 19).
 - `apps/super_admin_dashboard` — package `super_admin_dash` (Refine v5 + Vite 6 + React 19).
+- `apps/tenant_store` — package `tenant_store` (Next.js 15 App Router + React 19 + shadcn/ui + Tailwind v4).
 
 Package names are unchanged from the source repositories, so Turborepo filters use them verbatim.
 `packages/*` is a declared workspace glob and is intentionally empty.
@@ -14,17 +15,17 @@ Package names are unchanged from the source repositories, so Turborepo filters u
 Run from the repository root (`C:\works\saas_commerce`):
 
 - `pnpm install` — one install for the whole workspace (single root `pnpm-lock.yaml`).
-- `pnpm dev` — `turbo run dev`, parallel and persistent: API 4000 + SPAs 5173/5174.
+- `pnpm dev` — `turbo run dev`, parallel and persistent: API 4000 + SPAs 5173/5174 + storefront 3000.
 - `pnpm build` / `pnpm lint` / `pnpm typecheck` / `pnpm test` — `turbo run <task>`.
 - `pnpm clean` — removes `dist`, `build`, `coverage`, `.turbo`, `node_modules` from the root and all apps.
 - Filtered: `pnpm --filter saas_store_api test`, `pnpm --filter tenant_dash build`, `turbo run lint --filter super_admin_dash`.
 
-`turbo.json` tasks: `build` (`dependsOn: ["^build"]`, outputs `dist/**`), `lint`, `typecheck`,
-`test` (outputs `coverage/**`), `dev` (no cache, persistent). There is deliberately no `test →
-build` dependency (the API tests run through `ts-jest`).
+`turbo.json` tasks: `build` (`dependsOn: ["^build"]`, outputs `dist/**`, `.next/**`,
+`!.next/cache/**`), `lint`, `typecheck`, `test` (outputs `coverage/**`), `dev` (no cache, persistent).
+There is deliberately no `test → build` dependency (the API tests run through `ts-jest`).
 
-`super_admin_dash` has **no** `test` task and no test setup — do not invent one; Turborepo skips
-packages that lack a task.
+`super_admin_dash` and `tenant_store` have **no** `test` task and no test setup — do not invent one;
+Turborepo skips packages that lack a task.
 
 Both dashboards start a Refine Devtools server on port 5001, so running them together logs a
 non-fatal "port 5001 already in use" for the second one. Set `REFINE_DEVTOOLS_PORT` to separate
@@ -54,7 +55,7 @@ section only records what the monorepo changed.
   allows any origin whose host is `APP_ROOT_DOMAIN` or a subdomain of it, on any scheme and port, via
   `src/common/config/cors.util.ts` — that is how tenant dashboard subdomains such as
   `http://my-store.localhost:5174` pass preflight. Keep `.env` and `.env.example` in sync with the
-  SPA dev ports (5173, 5174); no glob/`*` entries are supported.
+  SPA dev ports (5173, 5174) and the storefront (3000); no glob/`*` entries are supported.
 - `test:e2e`, `test/verify-*.ts`, and `test/reset-dev-db.ts` are manual and need a live Postgres.
 - `synchronize: true` per tenant schema is dev-only; there is no migrations infrastructure.
 - Never add tenant entities to `PUBLIC_ENTITIES` in `src/core.module.ts`; add them to
@@ -76,6 +77,27 @@ section only records what the monorepo changed.
   `saas-admin-refresh-token` in `src/api/constants.ts`) must not be renamed — renaming drops saved
   admin sessions.
 
+### `apps/tenant_store`
+
+Public, SEO-first customer storefront. Tenant is resolved from the request subdomain
+(`my-store.localhost:3000`, `APP_ROOT_DOMAIN`); the bare apex host gets a neutral 404
+(`src/middleware.ts`) without touching the API. Every storefront page is tenant-scoped by host —
+there is no path-based tenant prefix.
+
+- Scripts: `dev` / `start` on port **3000**, `build` (`next build --turbopack`), `lint`, `typecheck`.
+  No `test` task.
+- Browser code never calls the API directly: `src/lib/client-api.ts` (axios) talks only to the
+  Next route handlers under `src/app/api/**`, which hold the JWTs in `httpOnly` cookies
+  (`src/lib/session.ts`) and forward them as `Authorization: Bearer` plus `x-tenant-slug`.
+- Catalog reads use server-side `fetch` through `src/lib/api.ts` with `next: { revalidate: 60 }`
+  (time-based ISR); the API calls are `@Public()` but **not** `@Platform()`, so the tenant still
+  resolves from `x-tenant-slug`.
+- `output: "standalone"` is only enabled when `NEXT_STANDALONE=1` (set in the Dockerfile); the local
+  build skips it because tracing the pnpm store creates symlinks that Windows dev machines reject.
+- Configure `R2_PUBLIC_URL` so `next.config.ts` can add the R2/CDN host to `images.remotePatterns`.
+- Product detail pages are `/products/<slug>`; the API backfills `Product.slug` on boot
+  (`StorefrontSlugBackfillService`) and `ProductsService` generates/dedupes it on create/update.
+
 ## Behavior that must stay byte-identical
 
 These were deliberately preserved when the three repositories were merged. Do not "clean them up":
@@ -84,7 +106,7 @@ These were deliberately preserved when the three repositories were merged. Do no
   (stays `saas_store_postgres_data`) so existing tenant data keeps resolving.
 - `APP_NAME`, `DB_NAME`, `R2_BUCKET`, `JWT_ISSUER`, `JWT_AUDIENCE` (changing the JWT pair invalidates
   every issued access/refresh token; changing `DB_NAME`/`R2_BUCKET` orphans data).
-- All three workspace `package.json` names.
+- All four workspace `package.json` names.
 - Super admin `localStorage` keys and the dashboards' sign-in labels.
 
 ## Database

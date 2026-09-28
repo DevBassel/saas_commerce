@@ -1,4 +1,11 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  HttpCode,
+  HttpStatus,
+  Req,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import { RegisterStoreDto } from './dto/register-store.dto';
@@ -6,6 +13,8 @@ import { LoginUserDto } from './dto/login-user.dto';
 import { RefreshTokenDto } from './dto/refreshtoken.dto';
 import { Public } from './decorators/isPublic.decorator';
 import { Platform } from './decorators/isPlatform.decorator';
+import { Throttle } from '@nestjs/throttler';
+import type { RequestWithUser } from './interfaces/RequestWithUser.interface';
 
 @Controller('auth')
 export class AuthController {
@@ -34,6 +43,7 @@ export class AuthController {
   @Public()
   @Platform()
   @Post('login/platform')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   loginPlatform(@Body() loginData: LoginUserDto) {
     return this.authService.loginPlatform(loginData);
@@ -45,5 +55,18 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   refresh(@Body() refreshData: RefreshTokenDto) {
     return this.authService.refresh_user_credentials(refreshData.refresh_token);
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  logout(@Req() request: RequestWithUser) {
+    return this.authService.logout(request.user.id, request.tenant);
+  }
+
+  @Platform()
+  @Post('logout/platform')
+  @HttpCode(HttpStatus.OK)
+  logoutPlatform(@Req() request: RequestWithUser) {
+    return this.authService.logout(request.user.id);
   }
 }

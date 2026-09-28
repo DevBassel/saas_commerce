@@ -5,4 +5,6 @@ export interface DashboardStats {
   totalPaid: number;
   waitingAmount: number;
   customers: number;
+  storageUsedBytes: number;
+  storageCapacityBytes: number;
 }

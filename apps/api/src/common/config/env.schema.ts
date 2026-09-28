@@ -67,8 +67,28 @@ export const EnvSchema = joi.object({
   JWT_REFRESH_SECRET: secretRule('JWT_REFRESH_SECRET'),
   JWT_ACCESS_EXPIRES_IN: joi.string().required(),
   JWT_REFRESH_EXPIRES_IN: joi.string().required(),
-  JWT_ISSUER: joi.string().optional(),
-  JWT_AUDIENCE: joi.string().optional(),
+  JWT_ISSUER: joi
+    .string()
+    .when('NODE_ENV', {
+      is: 'production',
+      then: joi.required(),
+      otherwise: joi.optional(),
+    })
+    .messages({
+      'any.required':
+        '"JWT_ISSUER" must be set explicitly in production (no saas_store fallback)',
+    }),
+  JWT_AUDIENCE: joi
+    .string()
+    .when('NODE_ENV', {
+      is: 'production',
+      then: joi.required(),
+      otherwise: joi.optional(),
+    })
+    .messages({
+      'any.required':
+        '"JWT_AUDIENCE" must be set explicitly in production (no saas_store fallback)',
+    }),
   //  Password Hashing
   BCRYPT_ROUNDS: joi.number().required(),
 

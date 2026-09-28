@@ -5,6 +5,8 @@ dist
 **/dist
 build
 **/build
+.next
+**/.next
 coverage
 **/coverage
 .turbo

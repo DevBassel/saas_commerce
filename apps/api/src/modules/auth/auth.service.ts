@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -18,6 +19,7 @@ import { randomUUID } from 'crypto';
 import { compare } from 'bcrypt';
 import { TenantService } from '../tenants/tenant.service';
 import { TenantProvisionerService } from '../tenants/services/tenant-provisioner.service';
+import { TenantStatus } from '../tenants/enums/tenantStatus.enum';
 import { getTenantContext } from './tenant-context';
 import { TenantIdentity, tenantRefFromPayload } from './tenant-ref.util';
 
@@ -77,7 +79,7 @@ export class AuthService {
   }
 
   async loginPlatform(loginData: LoginUserDto) {
-    const user = await this.userService.findOne(
+    const user = await this.userService.findOnePublic(
       { email: loginData.email },
       { withRole: true },
     );
@@ -112,17 +114,36 @@ export class AuthService {
 
     const tenant = tenantRefFromPayload(verifyToken);
 
-    const user = await this.userService.findOne(
-      { id: verifyToken.id },
-      {},
-      tenant,
-    );
+    if (tenant) {
+      const registered = await this.tenantService.findBySchemaName(
+        tenant.schemaName,
+      );
+      if (!registered || registered.id !== tenant.id)
+        throw new UnauthorizedException('Invalid refresh token');
+      if (registered.status === TenantStatus.INACTIVE)
+        throw new ForbiddenException(
+          'Tenant is inactive or suspended. Please contact the administrator.',
+        );
+    }
+
+    const user = tenant
+      ? await this.userService.findOne({ id: verifyToken.id }, {}, tenant)
+      : await this.userService.findOnePublic({ id: verifyToken.id });
     if (!user) throw new NotFoundException();
 
     if (!verifyToken.jti || verifyToken.jti !== user.jti)
       throw new UnauthorizedException('Token revoked');
 
     return this.returnUserCredential(user, tenant);
+  }
+
+  async logout(userId: number, tenant?: TenantIdentity) {
+    if (tenant) {
+      await this.userService.updateSession(userId, null, tenant);
+    } else {
+      await this.userService.updateSessionPublic(userId, null);
+    }
+    return { success: true, msg: 'logout success' };
   }
 
   async returnUserCredential(user: User, tenant?: TenantIdentity) {
@@ -142,35 +163,40 @@ export class AuthService {
       audience,
     } = this.config.getOrThrow<IJWT>('jwt');
 
-    await this.userService.updateSession(user.id, jti, tenant);
-    return {
-      access_token: this.jwt.sign(
-        {
-          type: 'access',
-          ...payload,
-        },
-        {
-          secret: accessSecret,
-          expiresIn: accessExpiresIn,
-          issuer,
-          audience,
-        },
-      ),
+    const access_token = this.jwt.sign(
+      {
+        type: 'access',
+        ...payload,
+      },
+      {
+        secret: accessSecret,
+        expiresIn: accessExpiresIn,
+        issuer,
+        audience,
+      },
+    );
 
-      refresh_token: this.jwt.sign(
-        {
-          type: 'refresh',
-          jti,
-          ...payload,
-        },
-        {
-          secret: refreshSecret,
-          expiresIn: refreshExpiresIn,
-          issuer,
-          audience,
-        },
-      ),
-    };
+    const refresh_token = this.jwt.sign(
+      {
+        type: 'refresh',
+        jti,
+        ...payload,
+      },
+      {
+        secret: refreshSecret,
+        expiresIn: refreshExpiresIn,
+        issuer,
+        audience,
+      },
+    );
+
+    if (tenant) {
+      await this.userService.updateSession(user.id, jti, tenant);
+    } else {
+      await this.userService.updateSessionPublic(user.id, jti);
+    }
+
+    return { id: payload.id, access_token, refresh_token };
   }
 
   private requireTenant(): TenantIdentity {

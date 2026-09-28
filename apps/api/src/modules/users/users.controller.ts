@@ -57,15 +57,26 @@ export class UsersController {
   async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateUserDto: UpdateUserDto,
+    @Req() request: RequestWithUser,
   ) {
-    const user = await this.usersService.update(id, updateUserDto);
+    const user = await this.usersService.update(
+      id,
+      updateUserDto,
+      request.user.role?.key ?? RoleKey.CUSTOMER,
+    );
     return user ? presentUser(user) : null;
   }
 
   @Delete(':id')
   @Permissions([UserPermissionKey.DELETE])
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.usersService.remove(id);
+  remove(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() request: RequestWithUser,
+  ) {
+    return this.usersService.remove(
+      id,
+      request.user.role?.key ?? RoleKey.CUSTOMER,
+    );
   }
 
   @Patch(':id/role')

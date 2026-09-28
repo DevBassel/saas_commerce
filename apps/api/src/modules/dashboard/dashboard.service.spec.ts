@@ -3,6 +3,7 @@ import { DashboardService } from './dashboard.service';
 import { Order } from '../orders/entities/order.entity';
 import { User } from '../users/entities/user.entity';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
+import { TenantService } from '../tenants/tenant.service';
 import { OrderStatus } from '../orders/constants/order-status.enum';
 import { PaymentStatus } from '../payments/constants/payment-status.enum';
 import { RoleKey } from '../../common/constants/RoleKey.enum';
@@ -39,9 +40,24 @@ const buildMocks = () => {
     }),
   } as unknown as TenantManagerService;
 
-  const service = new DashboardService(tenantManager);
+  const findBySchemaName = jest.fn().mockResolvedValue({
+    storageUsedBytes: 200n,
+    storageCapacityBytes: 1000n,
+  });
+  const tenantService = { findBySchemaName } as unknown as TenantService;
 
-  return { service, tenantManager, orderRepo, userRepo, orderQb, userQb };
+  const service = new DashboardService(tenantManager, tenantService);
+
+  return {
+    service,
+    tenantManager,
+    tenantService,
+    findBySchemaName,
+    orderRepo,
+    userRepo,
+    orderQb,
+    userQb,
+  };
 };
 
 const countsByStatus = (options?: {
@@ -75,6 +91,8 @@ describe('DashboardService', () => {
       totalPaid: 123.46,
       waitingAmount: 10,
       customers: 4,
+      storageUsedBytes: 200,
+      storageCapacityBytes: 1000,
     });
   });
 
@@ -103,7 +121,12 @@ describe('DashboardService', () => {
   });
 
   it('returns zeroed money when the store has no orders', async () => {
-    const { service, orderRepo, orderQb, userQb } = buildMocks();
+    const { service, findBySchemaName, orderRepo, orderQb, userQb } =
+      buildMocks();
+    findBySchemaName.mockResolvedValue({
+      storageUsedBytes: 0n,
+      storageCapacityBytes: 0n,
+    });
     orderRepo.count.mockResolvedValue(0);
     orderQb.getRawOne.mockResolvedValue({ paid: null, waiting: null });
     userQb.getCount.mockResolvedValue(0);
@@ -117,7 +140,23 @@ describe('DashboardService', () => {
       totalPaid: 0,
       waitingAmount: 0,
       customers: 0,
+      storageUsedBytes: 0,
+      storageCapacityBytes: 0,
     });
+  });
+
+  it('falls back to zero storage when the tenant row is missing', async () => {
+    const { service, findBySchemaName, orderRepo, orderQb, userQb } =
+      buildMocks();
+    findBySchemaName.mockResolvedValue(null);
+    orderRepo.count.mockResolvedValue(0);
+    orderQb.getRawOne.mockResolvedValue({ paid: '0', waiting: '0' });
+    userQb.getCount.mockResolvedValue(0);
+
+    const stats = await service.getStats(TENANT);
+
+    expect(stats.storageUsedBytes).toBe(0);
+    expect(stats.storageCapacityBytes).toBe(0);
   });
 
   it('resolves the tenant from AsyncLocalStorage when no arg is passed', async () => {

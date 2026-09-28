@@ -1,11 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
 
 import { useLogin, useRefineOptions, useLink } from "@refinedev/core";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import {
   Card,
   CardContent,
@@ -16,23 +24,27 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { InputPassword } from "@/components/refine-ui/form/input-password";
 import { cn } from "@/lib/utils";
+import { signInSchema, type SignInFormValues } from "./auth-schema";
 
 export const SignInForm = () => {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-
   const Link = useLink();
 
   const { title } = useRefineOptions();
 
   const { mutate: login, isPending } = useLogin();
 
-  const handleSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const form = useForm<SignInFormValues>({
+    resolver: zodResolver(signInSchema),
+    defaultValues: {
+      email: "",
+      password: "",
+    },
+  });
 
+  const onSubmit = (values: SignInFormValues) => {
     login({
-      email,
-      password,
+      email: values.email,
+      password: values.password,
     });
   };
 
@@ -80,40 +92,62 @@ export const SignInForm = () => {
         <Separator />
 
         <CardContent className={cn("px-0")}>
-          <form onSubmit={handleSignIn}>
-            <div className={cn("flex", "flex-col", "gap-2")}>
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="admin@example.com"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="email"
+                        autoComplete="email"
+                        placeholder="admin@example.com"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
-            <div
-              className={cn("relative", "flex", "flex-col", "gap-2", "mt-6")}
-            >
-              <Label htmlFor="password">Password</Label>
-              <InputPassword
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={8}
-                maxLength={16}
-              />
-            </div>
 
-            <Button
-              type="submit"
-              size="lg"
-              className={cn("w-full", "mt-6")}
-              disabled={isPending}
-            >
-              {isPending ? "Signing in..." : "Sign in"}
-            </Button>
-          </form>
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem
+                    className={cn(
+                      "relative",
+                      "flex",
+                      "flex-col",
+                      "gap-2",
+                      "mt-6"
+                    )}
+                  >
+                    <FormLabel>Password</FormLabel>
+                    <FormControl>
+                      <InputPassword
+                        autoComplete="current-password"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <Button
+                type="submit"
+                size="lg"
+                className={cn("w-full", "mt-6")}
+                disabled={isPending}
+              >
+                {isPending ? "Signing in..." : "Sign in"}
+              </Button>
+            </form>
+          </Form>
         </CardContent>
 
         <Separator />

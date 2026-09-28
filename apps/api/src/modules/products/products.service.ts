@@ -6,7 +6,7 @@ import {
   PayloadTooLargeException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Product } from './entities/product.entity';
 import { ProductImage } from './entities/product-image.entity';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -18,13 +18,12 @@ import { TenantRef } from '../tenants/tenant.utils';
 import { R2Service } from '../../common/storage/r2.service';
 import { IENV, IFiles } from '../../common/config/env.interface';
 import { SerializedProduct } from './constants/products.interface';
+import { ensureUniqueProductSlug, slugifyProductName } from './products.slug';
+import { serializeProduct } from './products.serializer';
 import { ALLOWED_MIME_TYPES } from './constants/allowed-imgs-type';
 import { MAX_FILES_PER_REQUEST } from './constants/upload.constants';
 import { R2Upload } from '../../common/storage/interfaces/r2.interface';
-import {
-  CategoriesService,
-  serializeCategory,
-} from '../categories/categories.service';
+import { CategoriesService } from '../categories/categories.service';
 
 @Injectable()
 export class ProductsService {
@@ -55,21 +54,21 @@ export class ProductsService {
   }
 
   private serialize(product: Product): SerializedProduct {
-    const { images, category, ...rest } = product;
-    return {
-      ...rest,
-      category: category ? serializeCategory(category) : null,
-      images: (images ?? [])
-        .slice()
-        .sort((a, b) => a.position - b.position)
-        .map((image) => ({
-          id: image.id,
-          url: this.r2.publicUrl(image.objectKey),
-          mimeType: image.mimeType,
-          sizeBytes: image.sizeBytes,
-          position: image.position,
-        })),
-    };
+    return serializeProduct(product, this.r2);
+  }
+
+  private uniqueSlug(
+    productRepo: Repository<Product>,
+    name: string,
+    seed: string,
+    excludeId?: number,
+  ): Promise<string> {
+    return ensureUniqueProductSlug(
+      (candidate) => productRepo.findOneBy({ slug: candidate }),
+      name,
+      seed,
+      excludeId,
+    );
   }
 
   async create(dto: CreateProductDto, tenant?: TenantRef) {
@@ -83,10 +82,13 @@ export class ProductsService {
       await this.assertCategory(dto.categoryId, target);
     }
 
+    const slug = await this.uniqueSlug(productRepo, dto.name, dto.sku);
+
     const product = await productRepo.save(
       productRepo.create({
         name: dto.name,
         sku: dto.sku,
+        slug,
         description: dto.description ?? null,
         price: dto.price,
         stock: dto.stock ?? 0,
@@ -131,7 +133,21 @@ export class ProductsService {
       await this.assertCategory(dto.categoryId, target);
     }
 
-    await productRepo.update({ id }, { ...dto });
+    const patch: UpdateProductDto & { slug?: string } = { ...dto };
+
+    if (dto.name && dto.name !== product.name) {
+      if (!product.slug) {
+        patch.slug = await this.uniqueSlug(productRepo, dto.name, String(id));
+      } else {
+        const base = slugifyProductName(dto.name);
+        const owner = base ? await productRepo.findOneBy({ slug: base }) : null;
+        if (base && (!owner || owner.id === id)) patch.slug = base;
+      }
+    } else if (!product.slug) {
+      patch.slug = await this.uniqueSlug(productRepo, product.name, String(id));
+    }
+
+    await productRepo.update({ id }, patch);
     return this.findOne(id, tenant);
   }
 
@@ -206,10 +222,22 @@ export class ProductsService {
 
     const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
 
+    const registered = await this.tenantService.findBySchemaName(
+      target.schemaName,
+    );
+    if (
+      registered &&
+      BigInt(registered.storageUsedBytes) + BigInt(totalBytes) >
+        BigInt(registered.storageCapacityBytes)
+    ) {
+      throw new BadRequestException('Storage capacity exceeded');
+    }
+
     const maxPosition = await imageRepo.maximum('position', { productId });
     const basePosition = maxPosition ?? 0;
 
     const uploaded: R2Upload[] = [];
+    let savedEntities: ProductImage[] | null = null;
     try {
       const results = await Promise.all(
         files.map(async (file) => {
@@ -236,7 +264,7 @@ export class ProductsService {
           position: basePosition + index + 1,
         }),
       );
-      await imageRepo.save(entities);
+      savedEntities = await imageRepo.save(entities);
       // update capacity
       await this.tenantService.adjustStorageUsedBytes(
         target.schemaName,
@@ -246,6 +274,11 @@ export class ProductsService {
       if (uploaded.length > 0) {
         await this.r2
           .deleteMany(uploaded.map((item) => item.key))
+          .catch(() => undefined);
+      }
+      if (savedEntities?.length) {
+        await imageRepo
+          .delete({ id: In(savedEntities.map((entity) => entity.id)) })
           .catch(() => undefined);
       }
       throw error;

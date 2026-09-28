@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource, EntityTarget, ObjectLiteral, Repository } from 'typeorm';
 import { buildDataSourceOptions } from 'src/common/config/data-source.factory';
-import { IDB, IENV } from 'src/common/config/env.interface';
+import { IDB, IENV, IAPP } from 'src/common/config/env.interface';
 import { Tenant } from '../entities/tenant.entity';
 import { TENANT_ENTITIES } from '../tenant-entities';
 
@@ -34,8 +34,8 @@ export class TenantManagerService implements OnModuleDestroy {
     const promise = this.createDataSource(tenant)
       .initialize()
       .then(async (ds) => {
-        this.cache.set(key, ds);
         await this.evictIfNeeded();
+        this.cache.set(key, ds);
         return ds;
       })
       .finally(() => {
@@ -71,24 +71,29 @@ export class TenantManagerService implements OnModuleDestroy {
   }
 
   private createDataSource(tenant: TenantRef): DataSource {
-    const { tenantPoolSize } = this.config.getOrThrow<IDB>('db');
+    const { tenantPoolSize, synchronize } = this.config.getOrThrow<IDB>('db');
+    const { env } = this.config.getOrThrow<IAPP>('app');
     const options = buildDataSourceOptions(this.config, {
       schema: tenant.schemaName,
       entities: TENANT_ENTITIES,
-      synchronize: true,
+      synchronize: synchronize && env !== 'production',
       poolSize: tenantPoolSize,
     });
     return new DataSource(options);
   }
 
   private async evictIfNeeded(): Promise<void> {
-    while (this.cache.size > TENANT_CACHE_CAP) {
-      const oldestKey = this.cache.keys().next().value as string | undefined;
-      if (oldestKey === undefined) break;
-      const oldest = this.cache.get(oldestKey);
-      this.cache.delete(oldestKey);
-      if (oldest?.isInitialized) await oldest.destroy();
-      this.logger.log(`Evicted tenant datasource ${oldestKey}`);
-    }
+    if (this.cache.size < TENANT_CACHE_CAP) return;
+
+    const [oldestKey, oldest] = this.cache.entries().next().value as [
+      string,
+      DataSource,
+    ];
+
+    this.cache.delete(oldestKey);
+
+    if (oldest.isInitialized) await oldest.destroy();
+
+    this.logger.log(`Evicted tenant datasource ${oldestKey}`);
   }
 }

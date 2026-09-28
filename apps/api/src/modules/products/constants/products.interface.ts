@@ -12,6 +12,7 @@ export interface SerializedProduct {
   id: number;
   name: string;
   sku: string;
+  slug: string | null;
   description?: string | null;
   price: number;
   stock: number;

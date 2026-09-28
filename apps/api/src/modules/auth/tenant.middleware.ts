@@ -22,9 +22,8 @@ export class TenantMiddleware implements NestMiddleware {
     }
 
     (req as Request & { tenant?: Tenant }).tenant = tenant;
-    tenantStorage.run(
-      { tenant, tenantSchema: tenant.schemaName },
-      () => void next(),
-    );
+    tenantStorage.run({ tenant, tenantSchema: tenant.schemaName }, () => {
+      next();
+    });
   }
 }

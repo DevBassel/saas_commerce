@@ -28,6 +28,8 @@ const baseEnv = (overrides: Record<string, unknown> = {}) => ({
   JWT_REFRESH_SECRET: 'b'.repeat(64),
   JWT_ACCESS_EXPIRES_IN: '5h',
   JWT_REFRESH_EXPIRES_IN: '7d',
+  JWT_ISSUER: 'saas_store',
+  JWT_AUDIENCE: 'saas_store',
   BCRYPT_ROUNDS: 12,
   LOG_LEVEL: 'debug',
   CORS_ORIGIN: 'http://localhost:3000',

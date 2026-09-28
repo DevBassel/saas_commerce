@@ -11,7 +11,8 @@ import {
 import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ThemeToggle } from "@/components/refine-ui/theme/theme-toggle";
 import { UserAvatar } from "@/components/refine-ui/layout/user-avatar";
-import { useSidebar, SidebarTrigger } from "@/components/ui/sidebar";
+import { useSidebar } from "@/hooks/use-sidebar";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import { LogOutIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 

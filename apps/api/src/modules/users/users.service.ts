@@ -2,14 +2,14 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
-  Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { User } from './entities/user.entity';
-import { Repository, In } from 'typeorm';
+import { Repository, In, FindOptionsWhere } from 'typeorm';
 import { Role } from '../rbac/entities/role.entity';
 import { Permission } from '../rbac/entities/permission.entity';
 import { mergePermissions } from '../rbac/permission.utils';
@@ -18,6 +18,7 @@ import { RoleKey, ROLE_RANK } from '../../common/constants/RoleKey.enum';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
 import { tenantRefFromContext } from '../auth/tenant-context';
 import { TenantRef } from '../tenants/tenant.utils';
+import { IENV } from '../../common/config/env.interface';
 import bcrypt from 'bcrypt';
 
 type FindOneOptions = { withRole?: boolean; withPermissions?: boolean };
@@ -30,15 +31,26 @@ const ASSIGNABLE_ROLE_KEYS: RoleKey[] = [
 
 @Injectable()
 export class UsersService {
-  private readonly logger = new Logger(UsersService.name);
-
   constructor(
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     @InjectRepository(Role) private readonly roleRepo: Repository<Role>,
     @InjectRepository(Permission)
     private readonly permissionRepo: Repository<Permission>,
     private readonly tenantManager: TenantManagerService,
+    private readonly config: ConfigService<IENV>,
   ) {}
+
+  private buildWhere({
+    id,
+    email,
+  }: {
+    id?: number;
+    email?: string;
+  }): FindOptionsWhere<User> {
+    if (id != null) return { id };
+    if (email != null) return { email };
+    throw new BadRequestException('Either id or email must be provided');
+  }
 
   private async repos(tenant?: TenantRef): Promise<{
     userRepo: Repository<User>;
@@ -48,14 +60,7 @@ export class UsersService {
     const target = tenant ?? tenantRefFromContext();
 
     if (!target) {
-      this.logger.warn(
-        'UsersService: no tenant resolved; using public schema repositories',
-      );
-      return {
-        userRepo: this.userRepo,
-        roleRepo: this.roleRepo,
-        permissionRepo: this.permissionRepo,
-      };
+      throw new ForbiddenException('Tenant context is required');
     }
 
     const [userRepo, roleRepo, permissionRepo] = await Promise.all([
@@ -94,7 +99,10 @@ export class UsersService {
       ? await permissionRepo.findBy({ key: In(permissionKeys) })
       : [];
 
-    createUserDto.password = await bcrypt.hash(createUserDto.password, 12);
+    createUserDto.password = await bcrypt.hash(
+      createUserDto.password,
+      this.config.getOrThrow<IENV['bcrypt']>('bcrypt').rounds,
+    );
     return await userRepo.save(
       userRepo.create({
         ...createUserDto,
@@ -114,30 +122,58 @@ export class UsersService {
     options: FindOneOptions = {},
     tenant?: TenantRef,
   ) {
+    const { userRepo } = await this.repos(tenant);
+    return this.findOneFromRepo(userRepo, { id, email }, options);
+  }
+
+  async findOnePublic(
+    { id, email }: { id?: number; email?: string },
+    options: FindOneOptions = {},
+  ) {
+    return this.findOneFromRepo(this.userRepo, { id, email }, options);
+  }
+
+  private findOneFromRepo(
+    userRepo: Repository<User>,
+    { id, email }: { id?: number; email?: string },
+    options: FindOneOptions = {},
+  ) {
     const relations = {
       role: { permissions: true },
       ...(options.withPermissions ? { permissions: true } : {}),
     };
 
-    const { userRepo } = await this.repos(tenant);
-
     return userRepo.findOne({
-      where: [{ id }, { email }],
+      where: this.buildWhere({ id, email }),
       relations,
     });
   }
 
-  async update(id: number, updateUserDto: UpdateUserDto, tenant?: TenantRef) {
+  async update(
+    id: number,
+    updateUserDto: UpdateUserDto,
+    actorRoleKey?: RoleKey,
+    tenant?: TenantRef,
+  ) {
     const { userRepo } = await this.repos(tenant);
-    const user = await this.findOne({ id }, {}, tenant);
+    const user = await this.findOne({ id }, { withRole: true }, tenant);
     if (!user) throw new NotFoundException();
+    this.assertActorCanManage(actorRoleKey, user);
     await userRepo.update({ id }, updateUserDto);
     return this.findOne({ id }, {}, tenant);
   }
 
-  async updateSession(id: number, jti: string, tenant?: TenantRef) {
+  async updateSession(id: number, jti: string | null, tenant?: TenantRef) {
     const { userRepo } = await this.repos(tenant);
-    await userRepo.update({ id }, { jti });
+    await userRepo.update({ id }, { jti } as never);
+  }
+
+  async clearSession(id: number, tenant?: TenantRef) {
+    await this.updateSession(id, null, tenant);
+  }
+
+  async updateSessionPublic(id: number, jti: string | null) {
+    await this.userRepo.update({ id }, { jti } as never);
   }
 
   async assignRole(
@@ -283,8 +319,20 @@ export class UsersService {
       );
   }
 
-  async remove(id: number, tenant?: TenantRef) {
+  private assertActorCanManage(
+    actorRoleKey: RoleKey | undefined,
+    target: User,
+  ) {
+    if (!actorRoleKey) return;
+    const targetRoleKey = (target.role?.key ?? RoleKey.CUSTOMER) as RoleKey;
+    this.assertCanAssignToUser(actorRoleKey, targetRoleKey);
+  }
+
+  async remove(id: number, actorRoleKey?: RoleKey, tenant?: TenantRef) {
     const { userRepo } = await this.repos(tenant);
+    const user = await this.findOne({ id }, { withRole: true }, tenant);
+    if (!user) throw new NotFoundException('User not found');
+    this.assertActorCanManage(actorRoleKey, user);
     return userRepo.delete({ id });
   }
 }

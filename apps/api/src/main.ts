@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { IAPP, ICORS, IENV } from './common/config/env.interface';
 import { buildCorsOrigin } from './common/config/cors.util';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import helmet from 'helmet';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
@@ -12,6 +13,8 @@ async function bootstrap() {
   const { name, apiPrefix, apiVersion, port, rootDomain } = app
     .get(ConfigService<IENV>)
     .getOrThrow<IAPP>('app');
+
+  app.use(helmet({ contentSecurityPolicy: false }));
 
   // setup CORS
   const { origin, credentials } = app
@@ -43,6 +46,7 @@ async function bootstrap() {
   );
   app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
   app.setGlobalPrefix(`${apiPrefix}/${apiVersion}`);
+  app.enableShutdownHooks();
 
   await app.listen(port);
 }

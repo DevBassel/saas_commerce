@@ -25,6 +25,10 @@ export class Product extends BaseEntity {
   @Index({ unique: true })
   sku: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  @Index({ unique: true })
+  slug: string | null;
+
   @Column({ type: 'text', nullable: true })
   description?: string | null;
 
