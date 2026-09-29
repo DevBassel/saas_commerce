@@ -34,7 +34,7 @@ export const buildDataSourceOptions = (
     ssl,
     logging,
     logger: getSharedLogger(),
-    synchronize: overrides.synchronize ?? synchronize,
+    synchronize: synchronize,
     ...(overrides.schema ? { schema: overrides.schema } : {}),
     ...(overrides.entities ? { entities: overrides.entities } : {}),
     ...(overrides.poolSize ? { poolSize: overrides.poolSize } : {}),

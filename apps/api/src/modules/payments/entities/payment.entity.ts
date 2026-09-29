@@ -11,6 +11,7 @@ import {
 } from 'typeorm';
 import { Order } from 'src/modules/orders/entities/order.entity';
 import { PaymentStatus } from '../constants/payment-status.enum';
+import { PaymentsProviders } from '../constants/payments-providers';
 
 // Compile-only scaffold: the payment provider/service/controller land with the
 // dedicated payments module. One row per payment attempt.
@@ -27,8 +28,8 @@ export class Payment extends BaseEntity {
   @JoinColumn({ name: 'orderId' })
   order?: Order;
 
-  @Column()
-  provider: string;
+  @Column({ type: 'enum', enum: PaymentsProviders })
+  provider: PaymentsProviders;
 
   @Column({ type: 'enum', enum: PaymentStatus, default: PaymentStatus.UNPAID })
   status: PaymentStatus;
@@ -45,18 +46,8 @@ export class Payment extends BaseEntity {
   })
   amount: number;
 
-  @Column({
-    type: 'numeric',
-    precision: 10,
-    scale: 2,
-    default: 0,
-    transformer: {
-      from: (value: string | null): number | null =>
-        value === null ? null : Number(value),
-      to: (value: number | null): number | null => value,
-    },
-  })
-  applicationFeeAmount: number;
+  @Column({ nullable: true })
+  paymentRef: string;
 
   @Column({
     type: 'numeric',

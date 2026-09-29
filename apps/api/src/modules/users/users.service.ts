@@ -59,9 +59,7 @@ export class UsersService {
   }> {
     const target = tenant ?? tenantRefFromContext();
 
-    if (!target) {
-      throw new ForbiddenException('Tenant context is required');
-    }
+    if (!target) throw new ForbiddenException('Tenant context is required');
 
     const [userRepo, roleRepo, permissionRepo] = await Promise.all([
       this.tenantManager.getRepository(User, target),

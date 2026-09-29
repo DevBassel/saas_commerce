@@ -16,6 +16,7 @@ import { PermissionGuard } from './modules/auth/guards/permission.guard';
 import { JwtGuard } from './modules/auth/guards/jwt.guard';
 import { TenantGuard } from './modules/auth/guards/tenant.guard';
 import { TenantMiddleware } from './modules/auth/tenant.middleware';
+import PaymentsModule from './modules/payments/payments.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { TenantMiddleware } from './modules/auth/tenant.middleware';
     OrdersModule,
     AddressesModule,
     DashboardModule,
+    PaymentsModule,
   ],
   providers: [
     {
