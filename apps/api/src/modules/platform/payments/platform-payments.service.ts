@@ -1,4 +1,4 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { TenantService } from '../../tenants/tenant.service';
 import { TenantManagerService } from '../../tenants/services/tenant-manager.service';
 import StripePaymentService from '../../payments/stripe.payment.service';
@@ -6,14 +6,34 @@ import { Payment } from '../../payments/entities/payment.entity';
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
+const STRIPE_UNAVAILABLE = 'Stripe is unavailable';
 
 @Injectable()
 export class PlatformPaymentsService {
+  private readonly logger = new Logger(PlatformPaymentsService.name);
+
   constructor(
     private readonly tenantService: TenantService,
     private readonly tenantManager: TenantManagerService,
     private readonly stripePaymentService: StripePaymentService,
   ) {}
+
+  async getSummary() {
+    try {
+      const [account, balance] = await Promise.all([
+        this.stripePaymentService.getPlatformAccountStatus(),
+        this.stripePaymentService.getPlatformBalance(),
+      ]);
+      return { account, balance, error: null };
+    } catch (error) {
+      this.logger.warn(
+        `Platform Stripe summary failed: ${
+          error instanceof Error ? error.message : 'unknown error'
+        }`,
+      );
+      return { account: null, balance: null, error: STRIPE_UNAVAILABLE };
+    }
+  }
 
   async listTenants() {
     const tenants = await this.tenantService.findAll();

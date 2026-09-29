@@ -29,6 +29,11 @@ import type { Request } from 'express';
 import PaymentService from './payments.service';
 import { paymentMetaData } from './constants/payment-metadata';
 
+type BalanceSnapshot = {
+  available: { amount: number; currency: string }[];
+  pending: { amount: number; currency: string }[];
+};
+
 @Injectable()
 export default class StripePaymentService {
   private stripe: Stripe;
@@ -270,6 +275,17 @@ export default class StripePaymentService {
     }
   }
 
+  async getPlatformAccountStatus(): Promise<StripeAccountStatus> {
+    const account = await this.stripe.accounts.retrieve(null);
+    return {
+      connected: true,
+      accountId: account.id,
+      chargesEnabled: account.charges_enabled ?? false,
+      payoutsEnabled: account.payouts_enabled ?? false,
+      detailsSubmitted: account.details_submitted ?? false,
+    };
+  }
+
   private isMissingAccount(error: unknown): boolean {
     return (
       error instanceof Stripe.errors.StripeInvalidRequestError &&
@@ -277,29 +293,35 @@ export default class StripePaymentService {
     );
   }
 
-  async getBalance(accountId: string): Promise<{
-    available: { amount: number; currency: string }[];
-    pending: { amount: number; currency: string }[];
-  } | null> {
+  private mapBalance(balance: Stripe.Balance): BalanceSnapshot {
+    return {
+      available: balance.available.map((entry) => ({
+        amount: entry.amount,
+        currency: entry.currency,
+      })),
+      pending: balance.pending.map((entry) => ({
+        amount: entry.amount,
+        currency: entry.currency,
+      })),
+    };
+  }
+
+  async getBalance(accountId: string): Promise<BalanceSnapshot | null> {
     try {
       const balance = await this.stripe.balance.retrieve(
         {},
         { stripeAccount: accountId },
       );
-      return {
-        available: balance.available.map((entry) => ({
-          amount: entry.amount,
-          currency: entry.currency,
-        })),
-        pending: balance.pending.map((entry) => ({
-          amount: entry.amount,
-          currency: entry.currency,
-        })),
-      };
+      return this.mapBalance(balance);
     } catch (error) {
       if (this.isMissingAccount(error)) return null;
       throw error;
     }
+  }
+
+  async getPlatformBalance(): Promise<BalanceSnapshot> {
+    const balance = await this.stripe.balance.retrieve();
+    return this.mapBalance(balance);
   }
 
   async listPayouts(

@@ -93,6 +93,10 @@ export default function StripePaymentStep({
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    // React StrictMode invokes mount effects twice in development. Both
+    // invocations call CreateStripePayment, which shares one in-flight request
+    // per order, so only one PaymentIntent is created; this run still receives
+    // the shared result and drives the state below.
     let active = true;
 
     const createIntent = async () => {

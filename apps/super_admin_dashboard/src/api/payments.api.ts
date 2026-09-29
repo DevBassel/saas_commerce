@@ -5,6 +5,7 @@ import type {
   PlatformPaymentOverview,
   PlatformPaymentTenant,
   PlatformPayoutsResponse,
+  PlatformStripeSummary,
 } from "@/types/payments";
 
 export const PAYMENTS_RESOURCE = "platform/payments";
@@ -13,6 +14,13 @@ export const paymentsApi = {
   list: async (): Promise<PlatformPaymentTenant[]> => {
     const response =
       await apiClient.get<PlatformPaymentTenant[]>(PAYMENTS_RESOURCE);
+    return response.data;
+  },
+
+  getSummary: async (): Promise<PlatformStripeSummary> => {
+    const response = await apiClient.get<PlatformStripeSummary>(
+      `${PAYMENTS_RESOURCE}/summary`,
+    );
     return response.data;
   },
 

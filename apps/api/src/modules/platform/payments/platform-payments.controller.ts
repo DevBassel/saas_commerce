@@ -25,6 +25,11 @@ export class PlatformPaymentsController {
     return this.paymentsService.listTenants();
   }
 
+  @Get('summary')
+  getSummary() {
+    return this.paymentsService.getSummary();
+  }
+
   @Get(':tenantId')
   getOverview(@Param('tenantId', ParseIntPipe) tenantId: number) {
     return this.paymentsService.getOverview(tenantId);

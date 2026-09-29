@@ -1,4 +1,4 @@
-import { useList } from "@refinedev/core";
+import { useCustom, useList } from "@refinedev/core";
 import { format } from "date-fns";
 import {
   BuildingIcon,
@@ -10,12 +10,15 @@ import {
 
 import { useLink } from "@refinedev/core";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -26,8 +29,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { DetailRow } from "@/components/refine-ui/views/detail-row";
+import {
+  BalanceValue,
+  StatusRow,
+} from "@/components/payments/stripe-display";
 import { TenantStatusBadge } from "@/components/tenants/tenant-status-badge";
 import type { Tenant } from "@/types/tenant";
+import type { PlatformStripeSummary } from "@/types/payments";
 
 const StatCard = ({
   title,
@@ -59,8 +68,19 @@ export const Dashboard = () => {
     pagination: { mode: "off" },
   });
 
+  const { query: stripeQuery } = useCustom<PlatformStripeSummary>({
+    url: "platform/payments/summary",
+    method: "get",
+  });
+
   const tenants = result.data ?? [];
   const isLoading = query.isLoading;
+
+  const stripeSummary = stripeQuery.data?.data;
+  const stripeAccount = stripeSummary?.account ?? null;
+  const stripeBalance = stripeSummary?.balance ?? null;
+  const stripeUnavailableMessage =
+    stripeSummary?.error ?? "Stripe is unavailable";
 
   const activeCount = tenants.filter((t) => t.status === "active").length;
   const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
@@ -116,6 +136,85 @@ export const Dashboard = () => {
             />
           </>
         )}
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-3">
+              Platform Stripe status
+              {stripeQuery.isLoading ? (
+                <Skeleton className="h-5 w-24" />
+              ) : (
+                <Badge variant={stripeAccount ? "default" : "secondary"}>
+                  {stripeAccount ? "Connected" : "Unavailable"}
+                </Badge>
+              )}
+            </CardTitle>
+            <CardDescription>
+              Capability status of the platform's own Stripe account.
+            </CardDescription>
+          </CardHeader>
+          <Separator />
+          <CardContent>
+            {stripeQuery.isLoading ? (
+              <div className="flex flex-col gap-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} className="h-8 w-full" />
+                ))}
+              </div>
+            ) : stripeAccount ? (
+              <div className="flex flex-col">
+                <StatusRow label="Charges" enabled={stripeAccount.chargesEnabled} />
+                <Separator />
+                <StatusRow label="Payouts" enabled={stripeAccount.payoutsEnabled} />
+                <Separator />
+                <StatusRow
+                  label="Details submitted"
+                  enabled={stripeAccount.detailsSubmitted}
+                />
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                {stripeUnavailableMessage}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Platform balance</CardTitle>
+            <CardDescription>
+              Available and pending balances on the platform account.
+            </CardDescription>
+          </CardHeader>
+          <Separator />
+          <CardContent>
+            {stripeQuery.isLoading ? (
+              <div className="grid gap-6 sm:grid-cols-2">
+                {Array.from({ length: 2 }).map((_, i) => (
+                  <Skeleton key={i} className="h-10 w-full" />
+                ))}
+              </div>
+            ) : stripeBalance ? (
+              <div className="grid gap-6 sm:grid-cols-2">
+                <DetailRow
+                  label="Available"
+                  value={<BalanceValue entries={stripeBalance.available} />}
+                />
+                <DetailRow
+                  label="Pending"
+                  value={<BalanceValue entries={stripeBalance.pending} />}
+                />
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Balance is unavailable.
+              </p>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <Card>

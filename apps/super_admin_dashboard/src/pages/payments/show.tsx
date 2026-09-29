@@ -1,13 +1,17 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useCustom, useNotification, useShow } from "@refinedev/core";
 import { format } from "date-fns";
-import { Loader2, RefreshCcw } from "lucide-react";
+import { ChevronDownIcon, Loader2, RefreshCcw } from "lucide-react";
 
 import { PAYMENTS_RESOURCE, paymentsApi } from "@/api/payments.api";
 import { toApiError } from "@/api/client";
 import { DetailRow } from "@/components/refine-ui/views/detail-row";
+import {
+  BalanceValue,
+  StatusRow,
+} from "@/components/payments/stripe-display";
 import {
   ShowView,
   ShowViewHeader,
@@ -22,6 +26,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -45,7 +55,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn, formatCurrency, formatMinorUnits } from "@/lib/utils";
 import type {
-  BalanceEntry,
+  PlatformCharge,
   PlatformChargesResponse,
   PlatformPaymentOverview,
   PlatformPayout,
@@ -86,28 +96,6 @@ const RetryAction = ({ onRetry }: { onRetry: () => void }) => (
     Retry
   </Button>
 );
-
-const StatusRow = ({ label, enabled }: { label: string; enabled: boolean }) => (
-  <div className={cn("flex", "items-center", "justify-between", "py-2")}>
-    <span className="text-sm text-muted-foreground">{label}</span>
-    <Badge variant={enabled ? "default" : "secondary"}>
-      {enabled ? "Enabled" : "Pending"}
-    </Badge>
-  </div>
-);
-
-const BalanceValue = ({ entries }: { entries: BalanceEntry[] }) => {
-  if (entries.length === 0) return <span>—</span>;
-  return (
-    <span className={cn("flex", "flex-col", "gap-1")}>
-      {entries.map((entry) => (
-        <span key={entry.currency}>
-          {formatMinorUnits(entry.amount, entry.currency)}
-        </span>
-      ))}
-    </span>
-  );
-};
 
 const PauseControl = ({
   title,
@@ -503,6 +491,192 @@ const PayoutsTab = ({
   );
 };
 
+type ChargeGroup = {
+  key: string;
+  orderId: number;
+  orderNumber: string | null;
+  charges: PlatformCharge[];
+};
+
+/** Groups the page's charges by order, keeping the API's newest-first order. */
+const groupChargesByOrder = (charges: PlatformCharge[]): ChargeGroup[] => {
+  const groups = new Map<string, ChargeGroup>();
+  for (const charge of charges) {
+    const key = charge.orderNumber ?? `#${charge.orderId}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.charges.push(charge);
+    } else {
+      groups.set(key, {
+        key,
+        orderId: charge.orderId,
+        orderNumber: charge.orderNumber,
+        charges: [charge],
+      });
+    }
+  }
+  return Array.from(groups.values());
+};
+
+const CHARGE_GRID =
+  "grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,0.8fr)_minmax(0,0.6fr)_minmax(0,0.9fr)_minmax(0,1.1fr)_minmax(0,0.8fr)_1rem] items-center gap-3";
+
+const chargeOrderLabel = (charge: PlatformCharge) =>
+  charge.orderNumber ?? `#${charge.orderId}`;
+
+const formatTimestamp = (value: string | null) =>
+  value ? format(new Date(value), "MMM d, yyyy HH:mm") : "—";
+
+const ChargeSummaryCells = ({
+  charge,
+  trailing,
+}: {
+  charge: PlatformCharge;
+  trailing?: ReactNode;
+}) => (
+  <>
+    <span className="text-muted-foreground">
+      {format(new Date(charge.createdAt), "MMM d, yyyy HH:mm")}
+    </span>
+    <span className="flex min-w-0 items-center gap-2 font-medium">
+      <span className="truncate">{chargeOrderLabel(charge)}</span>
+      {trailing}
+    </span>
+    <span>{formatCurrency(charge.amount, charge.currency)}</span>
+    <span className="uppercase">{charge.currency}</span>
+    <span>{charge.status}</span>
+    <span className="truncate font-mono text-xs">
+      {charge.paymentRef ?? "—"}
+    </span>
+    <span>{formatCurrency(charge.refundedAmount, charge.currency)}</span>
+  </>
+);
+
+type ChargeBadgeVariant = "default" | "secondary" | "destructive" | "outline";
+
+const chargeBadgeVariant = (status: string): ChargeBadgeVariant => {
+  switch (status) {
+    case "PAID":
+      return "default";
+    case "FAILED":
+    case "CANCELED":
+      return "destructive";
+    case "REFUNDED":
+    case "PARTIALLY_REFUNDED":
+      return "secondary";
+    default:
+      return "outline";
+  }
+};
+
+const chargeDotClass = (status: string) =>
+  status === "PAID"
+    ? "bg-primary"
+    : status === "FAILED" || status === "CANCELED"
+      ? "bg-destructive"
+      : "bg-muted-foreground";
+
+const HistoryChild = ({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) => (
+  <span className={cn("grid", "grid-cols-[5.5rem_1fr]", "gap-2")}>
+    <span>{label}</span>
+    <span className={cn("text-foreground/80")}>{children}</span>
+  </span>
+);
+
+/** Renders the order's payment attempts as a tree, newest first. */
+const OrderHistoryTree = ({ charges }: { charges: PlatformCharge[] }) => (
+  <div className={cn("flex", "flex-col")}>
+    {charges.map((charge, index) => (
+      <div
+        key={charge.id}
+        className={cn("relative", "pb-4", "pl-6", "last:pb-0")}
+      >
+        {index < charges.length - 1 ? (
+          <span
+            aria-hidden
+            className={cn(
+              "absolute",
+              "top-4",
+              "bottom-0",
+              "left-[7px]",
+              "w-px",
+              "bg-border",
+            )}
+          />
+        ) : null}
+        <span
+          aria-hidden
+          className={cn(
+            "absolute",
+            "top-1.5",
+            "left-1",
+            "size-2",
+            "rounded-full",
+            chargeDotClass(charge.status),
+          )}
+        />
+        <div
+          className={cn(
+            "flex",
+            "flex-wrap",
+            "items-center",
+            "gap-2",
+            "text-sm",
+          )}
+        >
+          <span className="font-medium">Attempt #{charge.id}</span>
+          <Badge variant={chargeBadgeVariant(charge.status)}>
+            {charge.status}
+          </Badge>
+          <span className={cn("font-mono", "text-xs", "text-muted-foreground")}>
+            {charge.paymentRef ?? "—"}
+          </span>
+        </div>
+        <div
+          className={cn(
+            "mt-1",
+            "ml-[7px]",
+            "flex",
+            "flex-col",
+            "gap-1",
+            "border-l",
+            "border-border",
+            "py-1",
+            "pl-4",
+            "text-xs",
+            "text-muted-foreground",
+          )}
+        >
+          <HistoryChild label="Created">
+            {formatTimestamp(charge.createdAt)}
+          </HistoryChild>
+          <HistoryChild label="Paid">
+            {formatTimestamp(charge.paidAt)}
+          </HistoryChild>
+          <HistoryChild label="Refunded">
+            {formatTimestamp(charge.refundedAt)}
+          </HistoryChild>
+          <HistoryChild label="Amount">
+            {formatCurrency(charge.amount, charge.currency)}
+            {charge.refundedAmount > 0
+              ? ` · refunded ${formatCurrency(
+                  charge.refundedAmount,
+                  charge.currency,
+                )}`
+              : ""}
+          </HistoryChild>
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
 const ChargesTab = ({ tenantId }: { tenantId: number }) => {
   const [page, setPage] = useState(1);
 
@@ -513,9 +687,11 @@ const ChargesTab = ({ tenantId }: { tenantId: number }) => {
   });
 
   const result = query.data?.data;
-  const charges = result?.data ?? [];
+  const charges = useMemo(() => result?.data ?? [], [result]);
   const total = result?.total ?? 0;
   const pageCount = Math.max(Math.ceil(total / CHARGE_PAGE_SIZE), 1);
+
+  const orderGroups = useMemo(() => groupChargesByOrder(charges), [charges]);
 
   if (query.isLoading) return <LoadingRows />;
 
@@ -540,47 +716,90 @@ const ChargesTab = ({ tenantId }: { tenantId: number }) => {
 
   return (
     <div className={cn("flex", "flex-col", "gap-4")}>
-      <div className={cn("rounded-md", "border")}>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Order</TableHead>
-              <TableHead>Amount</TableHead>
-              <TableHead>Currency</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Payment ref</TableHead>
-              <TableHead>Refunded</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {charges.map((charge) => (
-              <TableRow key={charge.id}>
-                <TableCell>
-                  {format(new Date(charge.createdAt), "MMM d, yyyy HH:mm")}
-                </TableCell>
-                <TableCell>
-                  {charge.orderNumber ?? `#${charge.orderId}`}
-                </TableCell>
-                <TableCell>
-                  {formatCurrency(charge.amount, charge.currency)}
-                </TableCell>
-                <TableCell className="uppercase">{charge.currency}</TableCell>
-                <TableCell>{charge.status}</TableCell>
-                <TableCell className="font-mono text-xs">
-                  {charge.paymentRef ?? "—"}
-                </TableCell>
-                <TableCell>
-                  {formatCurrency(charge.refundedAmount, charge.currency)}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+      <Accordion
+        type="multiple"
+        className={cn("overflow-hidden", "rounded-md", "border")}
+      >
+        <div
+          className={cn(
+            CHARGE_GRID,
+            "border-b",
+            "bg-muted/40",
+            "px-4",
+            "py-2",
+            "text-xs",
+            "font-medium",
+            "text-muted-foreground",
+          )}
+        >
+          <span>Date</span>
+          <span>Order</span>
+          <span>Amount</span>
+          <span>Currency</span>
+          <span>Status</span>
+          <span>Payment ref</span>
+          <span>Refunded</span>
+          <span aria-hidden />
+        </div>
+
+        {orderGroups.map((group) => (
+          <AccordionItem key={group.key} value={group.key}>
+            <AccordionTrigger
+              className={cn(
+                "group",
+                "px-4",
+                "py-3",
+                "text-sm",
+                "hover:no-underline",
+                "[&>svg]:hidden",
+              )}
+            >
+              <div className={cn(CHARGE_GRID, "flex-1")}>
+                <ChargeSummaryCells
+                  charge={group.charges[0]}
+                  trailing={
+                    <Badge variant="secondary">
+                      {group.charges.length} payment
+                      {group.charges.length === 1 ? "" : "s"}
+                    </Badge>
+                  }
+                />
+                <ChevronDownIcon
+                  className={cn(
+                    "size-4",
+                    "text-muted-foreground",
+                    "transition-transform",
+                    "duration-200",
+                    "group-data-[state=open]:rotate-180",
+                  )}
+                />
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className={cn("px-4")}>
+              <div className={cn("flex", "flex-col", "gap-2")}>
+                <span
+                  className={cn(
+                    "text-xs",
+                    "font-medium",
+                    "tracking-wide",
+                    "text-muted-foreground",
+                    "uppercase",
+                  )}
+                >
+                  Order history
+                </span>
+                <OrderHistoryTree charges={group.charges} />
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        ))}
+      </Accordion>
+
       <div className={cn("flex", "items-center", "justify-between")}>
         <span className="text-sm text-muted-foreground">
-          Page {page} of {pageCount} · {total} charge{total === 1 ? "" : "s"}
+          Page {page} of {pageCount} · {total} charge{total === 1 ? "" : "s"} ·{" "}
+          {orderGroups.length} order{orderGroups.length === 1 ? "" : "s"} on this
+          page
         </span>
         <div className={cn("flex", "gap-2")}>
           <Button

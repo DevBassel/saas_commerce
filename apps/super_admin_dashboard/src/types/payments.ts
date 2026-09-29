@@ -27,6 +27,19 @@ export type PlatformBalance = {
   pending: BalanceEntry[];
 };
 
+export type PlatformStripeAccount = {
+  accountId: string | null;
+  chargesEnabled: boolean;
+  payoutsEnabled: boolean;
+  detailsSubmitted: boolean;
+};
+
+export type PlatformStripeSummary = {
+  account: PlatformStripeAccount | null;
+  balance: PlatformBalance | null;
+  error: string | null;
+};
+
 export type PlatformPayout = {
   id: string;
   amount: number;
