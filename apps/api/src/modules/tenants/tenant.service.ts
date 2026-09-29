@@ -120,7 +120,7 @@ export class TenantService {
       );
     }
 
-    return this.tenantRepo.save(
+    const tenant = await this.tenantRepo.save(
       this.tenantRepo.create({
         name: dto.name,
         slug: dto.slug,
@@ -131,6 +131,7 @@ export class TenantService {
         ),
       }),
     );
+    return tenant;
   }
 
   async setOwnerUserId(id: number, ownerUserId: number): Promise<void> {

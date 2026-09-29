@@ -101,4 +101,6 @@ export const EnvSchema = joi.object({
   STRIPE_SECRET_KEY: secretRule('STRIPE_SECRET_KEY').required(),
   STRIPE_PUBLISHABLE_KEY: joi.string().required(),
   STRIPE_WEBHOOK_SECRET: secretRule('STRIPE_WEBHOOK_SECRET').required(),
+  STRIPE_ONBOARDING_RETURN_URL: joi.string().uri().optional().allow(''),
+  STRIPE_ONBOARDING_REFRESH_URL: joi.string().uri().optional().allow(''),
 });

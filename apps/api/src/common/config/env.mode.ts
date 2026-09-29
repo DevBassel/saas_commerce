@@ -67,5 +67,8 @@ export const buildEnv = (): IENV => ({
     secretKey: process.env.STRIPE_SECRET_KEY!,
     publishableKey: process.env.STRIPE_PUBLISHABLE_KEY!,
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET!,
+    onboardingReturnUrl: process.env.STRIPE_ONBOARDING_RETURN_URL || undefined,
+    onboardingRefreshUrl:
+      process.env.STRIPE_ONBOARDING_REFRESH_URL || undefined,
   },
 });
