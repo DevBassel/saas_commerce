@@ -12,6 +12,7 @@ import StripePaymentService from './stripe.payment.service';
 import type { Request } from 'express';
 import type { RequestWithUser } from '../auth/interfaces/RequestWithUser.interface';
 import { Public } from '../auth/decorators/isPublic.decorator';
+import { Platform } from '../auth/decorators/isPlatform.decorator';
 import { Permissions } from '../auth/decorators/permissions.decorator';
 import { PaymentPermissionKey } from './constants/payments-permissions.enum';
 
@@ -23,6 +24,7 @@ export default class PaymentsController {
     return this.stripePaymentService.createPayment(createPaymentDto);
   }
 
+  @Platform()
   @Public()
   @Post('/stripe/webhook')
   handleWebhook(

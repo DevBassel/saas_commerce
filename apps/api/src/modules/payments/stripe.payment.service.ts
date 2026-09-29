@@ -1,7 +1,9 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   type RawBodyRequest,
 } from '@nestjs/common';
@@ -14,7 +16,7 @@ import {
   isRootDomainOrigin,
 } from 'src/common/config/cors.util';
 import { TenantRef } from '../tenants/tenant.utils';
-import { tenantRefFromContext } from '../auth/tenant-context';
+import { tenantRefFromContext, getTenantContext } from '../auth/tenant-context';
 import { RequestWithUser } from '../auth/interfaces/RequestWithUser.interface';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
 import { Tenant } from '../tenants/entities/tenant.entity';
@@ -30,6 +32,7 @@ import { paymentMetaData } from './constants/payment-metadata';
 @Injectable()
 export default class StripePaymentService {
   private stripe: Stripe;
+  private readonly logger = new Logger(StripePaymentService.name);
   constructor(
     private readonly config: ConfigService<IENV>,
     private readonly tenantManager: TenantManagerService,
@@ -64,9 +67,25 @@ export default class StripePaymentService {
     if (isPaymentExpired)
       throw new ForbiddenException('Order payment has expired');
 
-    const payment = await this.stripe.paymentIntents.create({
-      amount: order.total * 100,
+    const tenant = getTenantContext()?.tenant;
+    if (tenant?.paymentsPaused)
+      throw new ConflictException('Payments are paused for this store');
+
+    const stripeAccountId = tenant?.stripeAccountId;
+    if (!stripeAccountId)
+      throw new ConflictException('Store is not connected to Stripe');
+
+    const amount = Math.round(order.total * 100);
+    const { applicationFeeBps } = this.config.getOrThrow<IStripe>('stripe');
+    const applicationFeeAmount = Math.round(
+      (amount * applicationFeeBps) / 10000,
+    );
+
+    const params: Stripe.PaymentIntentCreateParams = {
+      amount,
       currency: 'usd',
+      transfer_data: { destination: stripeAccountId },
+      payment_method_types: ['card'],
       metadata: {
         data: JSON.stringify({
           orderId: order.id,
@@ -74,7 +93,22 @@ export default class StripePaymentService {
           tenant: tenantRefFromContext()?.schemaName,
         }),
       },
-    });
+    };
+    if (applicationFeeAmount > 0)
+      params.application_fee_amount = applicationFeeAmount;
+
+    let payment: Stripe.PaymentIntent;
+    try {
+      payment = await this.stripe.paymentIntents.create(params);
+    } catch (error) {
+      if (error instanceof Stripe.errors.StripeInvalidRequestError) {
+        this.logger.warn(
+          `Stripe payment intent create failed: ${error.code ?? error.message}`,
+        );
+        throw new BadRequestException('Store cannot accept payments right now');
+      }
+      throw error;
+    }
 
     await Promise.all([
       paymentRepo.save({
@@ -100,6 +134,7 @@ export default class StripePaymentService {
     let event: Stripe.Event;
     const { webhookSecret } = this.config.getOrThrow<IStripe>('stripe');
     try {
+      console.log('webhook call');
       event = this.stripe.webhooks.constructEvent(
         req.rawBody,
         sig,
@@ -110,29 +145,87 @@ export default class StripePaymentService {
       throw new BadRequestException('Invalid webhook signature');
     }
 
-    const payment = event.data.object as Stripe.PaymentIntent;
-    if (!payment.metadata.data)
-      throw new BadRequestException('metadata is required!');
-
-    const data = JSON.parse(payment.metadata.data) as paymentMetaData;
-
-    console.log(payment.id);
     switch (event.type) {
       case 'payment_intent.created':
         console.log('create');
         break;
       case 'payment_intent.succeeded':
-        return await this.paymentService.successPayment(data, payment.id);
       case 'payment_intent.canceled':
-        return await this.paymentService.canceledPayment(data, payment.id);
-      case 'payment_intent.payment_failed':
+      case 'payment_intent.payment_failed': {
+        const payment = event.data.object as Stripe.PaymentIntent;
+        if (!payment.metadata?.data) {
+          this.logger.warn(
+            `Stripe ${event.type} for ${payment.id} has no metadata.data; ignoring`,
+          );
+          return;
+        }
+        const data = JSON.parse(payment.metadata.data) as paymentMetaData;
+        if (event.type === 'payment_intent.succeeded')
+          return await this.paymentService.successPayment(data, payment.id);
+        if (event.type === 'payment_intent.canceled')
+          return await this.paymentService.canceledPayment(data, payment.id);
         return await this.paymentService.failedPayment(data, payment.id);
+      }
 
       default:
         console.log(`Unhandled event type ${event.type}`);
     }
 
     return;
+  }
+
+  /**
+   * Refunds the paid payment tied to an order and marks it REFUNDED.
+   *
+   * Stripe must never be called inside a DB transaction, so callers invoke this
+   * before committing the order state change. Returns null when the order has
+   * no paid payment to refund.
+   */
+  async refundOrder(
+    order: Order,
+    tenant?: TenantRef,
+  ): Promise<{ refundedAt: Date } | null> {
+    const { paymentRepo } = await this.repos(tenant);
+    const payment = await paymentRepo.findOne({
+      where: { orderId: order.id, status: PaymentStatus.PAID },
+      order: { id: 'DESC' },
+    });
+    if (!payment) return null;
+    if (!payment.paymentRef)
+      throw new BadRequestException('Payment reference is missing');
+
+    let refund: Stripe.Refund;
+    try {
+      refund = await this.stripe.refunds.create(
+        {
+          payment_intent: payment.paymentRef,
+          reverse_transfer: true,
+          refund_application_fee: true,
+        },
+        { idempotencyKey: `refund-${payment.id}` },
+      );
+    } catch (error) {
+      if (error instanceof Stripe.errors.StripeInvalidRequestError) {
+        this.logger.warn(
+          `Stripe refund failed for payment ${payment.id}: ${error.code ?? error.message}`,
+        );
+        throw new BadRequestException('Refund could not be processed');
+      }
+      throw error;
+    }
+
+    const refundedAt = new Date();
+    await paymentRepo.update(
+      { id: payment.id },
+      {
+        status: PaymentStatus.REFUNDED,
+        refundedAmount: payment.amount,
+        refundReference: refund.id,
+        refundedAt,
+      },
+    );
+
+    return { refundedAt };
   }
 
   async getAccountStatus(tenant: Tenant): Promise<StripeAccountStatus> {
@@ -175,6 +268,67 @@ export default class StripePaymentService {
       }
       throw error;
     }
+  }
+
+  private isMissingAccount(error: unknown): boolean {
+    return (
+      error instanceof Stripe.errors.StripeInvalidRequestError &&
+      (error.code === 'resource_missing' || error.code === 'account_invalid')
+    );
+  }
+
+  async getBalance(accountId: string): Promise<{
+    available: { amount: number; currency: string }[];
+    pending: { amount: number; currency: string }[];
+  } | null> {
+    try {
+      const balance = await this.stripe.balance.retrieve(
+        {},
+        { stripeAccount: accountId },
+      );
+      return {
+        available: balance.available.map((entry) => ({
+          amount: entry.amount,
+          currency: entry.currency,
+        })),
+        pending: balance.pending.map((entry) => ({
+          amount: entry.amount,
+          currency: entry.currency,
+        })),
+      };
+    } catch (error) {
+      if (this.isMissingAccount(error)) return null;
+      throw error;
+    }
+  }
+
+  async listPayouts(
+    accountId: string,
+    opts: { limit: number; startingAfter?: string },
+  ) {
+    return this.stripe.payouts.list(
+      {
+        limit: opts.limit,
+        starting_after: opts.startingAfter,
+      },
+      { stripeAccount: accountId },
+    );
+  }
+
+  async getPayoutSchedule(accountId: string): Promise<string | null> {
+    try {
+      const account = await this.stripe.accounts.retrieve(accountId);
+      return account.settings?.payouts?.schedule?.interval ?? null;
+    } catch (error) {
+      if (this.isMissingAccount(error)) return null;
+      throw error;
+    }
+  }
+
+  async setPayoutInterval(accountId: string, interval: string) {
+    return this.stripe.accounts.update(accountId, {
+      settings: { payouts: { schedule: { interval } } },
+    });
   }
 
   async createConnectedAccount(email: string, tenant: string) {

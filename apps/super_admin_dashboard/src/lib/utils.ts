@@ -47,3 +47,31 @@ export const slugify = (value: string) =>
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
 
+export function formatMinorUnits(
+  amount: number,
+  currency: string
+): string {
+  const value = Number(amount);
+  if (!Number.isFinite(value)) return "—";
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: currency.toUpperCase(),
+    }).format(value / 100);
+  } catch {
+    return `${(value / 100).toFixed(2)} ${currency.toUpperCase()}`;
+  }
+}
+
+export function formatCurrency(amount: number, currency: string): string {
+  const value = Number(amount);
+  if (!Number.isFinite(value)) return "—";
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: currency.toUpperCase(),
+    }).format(value);
+  } catch {
+    return `${value.toFixed(2)} ${currency.toUpperCase()}`;
+  }
+}

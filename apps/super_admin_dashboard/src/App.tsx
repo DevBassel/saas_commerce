@@ -14,6 +14,7 @@ import { authProvider } from "./providers/auth";
 import { Login } from "./pages/login";
 import { Dashboard } from "./pages/dashboard";
 import { TenantsList, TenantsCreate, TenantsShow } from "./pages/tenants";
+import { PaymentsList, PaymentsShow } from "./pages/payments";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ErrorComponent } from "./components/refine-ui/layout/error-component";
 import { Layout } from "./components/refine-ui/layout/layout";
@@ -63,6 +64,11 @@ function App() {
                       <Route index element={<TenantsList />} />
                       <Route path="create" element={<TenantsCreate />} />
                       <Route path="show/:id" element={<TenantsShow />} />
+                    </Route>
+
+                    <Route path="payments">
+                      <Route index element={<PaymentsList />} />
+                      <Route path="show/:id" element={<PaymentsShow />} />
                     </Route>
 
                     <Route path="*" element={<ErrorComponent />} />

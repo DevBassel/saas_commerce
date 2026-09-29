@@ -2,6 +2,7 @@ import { GetUserOrders, type IOrder } from "@/api/orderApi";
 import { toApiError } from "@/api/handelError";
 import ApiErrorFallback from "@/components/ApiErrorFallback";
 import OrderItem from "@/components/cart/orderItem";
+import OrderPaymentWatcher from "@/components/orders/OrderPaymentWatcher";
 import { BrushCleaning } from "lucide-react";
 import { apiClient } from "@/api/apiClient";
 
@@ -25,6 +26,8 @@ export default async function OrdersPage() {
           </p>
         )}
       </header>
+
+      {orders.length > 0 && <OrderPaymentWatcher orders={orders} />}
 
       {loadError ? (
         <ApiErrorFallback

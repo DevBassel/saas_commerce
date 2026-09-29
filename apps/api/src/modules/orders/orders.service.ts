@@ -21,6 +21,7 @@ import { Cart } from '../cart/entities/cart.entity';
 import { CartItem } from '../cart/entities/cart-item.entity';
 import { Address } from '../addresses/entities/address.entity';
 import { PaymentStatus } from '../payments/constants/payment-status.enum';
+import StripePaymentService from '../payments/stripe.payment.service';
 import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { OrderStatus } from './constants/order-status.enum';
@@ -71,6 +72,7 @@ export class OrdersService {
   constructor(
     private readonly tenantManager: TenantManagerService,
     private readonly r2: R2Service,
+    private readonly payments: StripePaymentService,
   ) {}
 
   private resolveTenant(tenant?: TenantRef): TenantRef {
@@ -268,26 +270,38 @@ export class OrdersService {
     const { target, orderRepo } = await this.repos(tenant);
     const manage = this.canManage(requester);
 
+    const order = await orderRepo.findOne({
+      where: { id },
+      relations: { items: true },
+    });
+    if (!order || (!manage && order.userId !== requester.id)) {
+      throw new NotFoundException('Order not found');
+    }
+
+    const cancellable = manage
+      ? MANAGER_CANCELLABLE_STATUSES.has(order.status)
+      : OWNER_CANCELLABLE_STATUSES.has(order.status);
+    if (!cancellable) {
+      throw new BadRequestException(
+        `Order cannot be cancelled from ${order.status}`,
+      );
+    }
+
+    // Stripe must not run inside the DB transaction. Refund first, so a paid
+    // order is never cancelled without the customer's money coming back.
+    const refundedAt = await this.refundIfPaid(order, target);
+
     await orderRepo.manager.transaction(async (manager: EntityManager) => {
       const orders = manager.getRepository(Order);
-      const order = await orders.findOne({
-        where: { id },
-        relations: { items: true },
-      });
-      if (!order || (!manage && order.userId !== requester.id)) {
-        throw new NotFoundException('Order not found');
-      }
-
-      const cancellable = manage
-        ? MANAGER_CANCELLABLE_STATUSES.has(order.status)
-        : OWNER_CANCELLABLE_STATUSES.has(order.status);
-      if (!cancellable) {
-        throw new BadRequestException(
-          `Order cannot be cancelled from ${order.status}`,
-        );
-      }
-
-      await orders.update({ id }, { status: OrderStatus.CANCELLED });
+      await orders.update(
+        { id },
+        {
+          status: OrderStatus.CANCELLED,
+          ...(refundedAt
+            ? { paymentStatus: PaymentStatus.REFUNDED, refundedAt }
+            : {}),
+        },
+      );
       await this.restock(manager, order.items ?? []);
     });
 
@@ -299,35 +313,49 @@ export class OrdersService {
     dto: UpdateOrderStatusDto,
     tenant?: TenantRef,
   ): Promise<SerializedOrder> {
-    const { orderRepo } = await this.repos(tenant);
+    const { target, orderRepo } = await this.repos(tenant);
 
-    const order = await orderRepo.manager.transaction(
-      async (manager: EntityManager): Promise<Order> => {
-        const orders = manager.getRepository(Order);
-        const found = await orders.findOne({
-          where: { id },
-          relations: { items: true },
-        });
-        if (!found) throw new NotFoundException('Order not found');
+    const found = await orderRepo.findOne({
+      where: { id },
+      relations: { items: true },
+    });
+    if (!found) throw new NotFoundException('Order not found');
 
-        const next = dto.status;
-        const allowed = ALLOWED_TRANSITIONS[found.status] ?? [];
-        if (!allowed.includes(next)) {
-          throw new BadRequestException(
-            `Cannot change order status from ${found.status} to ${next}`,
-          );
-        }
+    const next = dto.status;
+    const allowed = ALLOWED_TRANSITIONS[found.status] ?? [];
+    if (!allowed.includes(next)) {
+      throw new BadRequestException(
+        `Cannot change order status from ${found.status} to ${next}`,
+      );
+    }
 
-        await orders.update({ id }, { status: next });
-        if (next === OrderStatus.CANCELLED || next === OrderStatus.RETURNED) {
-          await this.restock(manager, found.items ?? []);
-        }
+    const restockable =
+      next === OrderStatus.CANCELLED || next === OrderStatus.RETURNED;
+    const refundedAt = restockable
+      ? await this.refundIfPaid(found, target)
+      : null;
 
-        return { ...found, status: next } as Order;
-      },
-    );
+    await orderRepo.manager.transaction(async (manager: EntityManager) => {
+      const orders = manager.getRepository(Order);
+      await orders.update(
+        { id },
+        {
+          status: next,
+          ...(refundedAt
+            ? { paymentStatus: PaymentStatus.REFUNDED, refundedAt }
+            : {}),
+        },
+      );
+      if (restockable) await this.restock(manager, found.items ?? []);
+    });
 
-    return this.serialize(order);
+    return this.serialize({
+      ...found,
+      status: next,
+      ...(refundedAt
+        ? { paymentStatus: PaymentStatus.REFUNDED, refundedAt }
+        : {}),
+    } as Order);
   }
 
   async requestReturn(
@@ -358,6 +386,26 @@ export class OrdersService {
     });
 
     return this.findOne(id, requester, target);
+  }
+
+  /**
+   * Refunds a paid order (full refund) and returns the refund timestamp, or
+   * null when the order was never paid. Throws before the order is cancelled
+   * when a payment is marked paid but cannot be refunded.
+   */
+  private async refundIfPaid(
+    order: Order,
+    tenant: TenantRef,
+  ): Promise<Date | null> {
+    if (order.paymentStatus !== PaymentStatus.PAID) return null;
+
+    const result = await this.payments.refundOrder(order, tenant);
+    if (!result) {
+      throw new BadRequestException(
+        'Order is marked paid but has no refundable payment',
+      );
+    }
+    return result.refundedAt;
   }
 
   private async restock(

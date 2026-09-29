@@ -72,6 +72,7 @@ export interface IStripe {
   secretKey: string;
   publishableKey: string;
   webhookSecret: string;
+  applicationFeeBps: number;
   onboardingReturnUrl?: string;
   onboardingRefreshUrl?: string;
 }

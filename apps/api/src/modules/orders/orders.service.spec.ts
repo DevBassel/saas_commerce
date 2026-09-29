@@ -15,6 +15,7 @@ import { R2Service } from '../../common/storage/r2.service';
 import { OrderStatus } from './constants/order-status.enum';
 import { OrderPermissionKey } from './constants/order-permissions.enum';
 import { PaymentStatus } from '../payments/constants/payment-status.enum';
+import StripePaymentService from '../payments/stripe.payment.service';
 import { RequestWithUser } from '../auth/interfaces/RequestWithUser.interface';
 
 const TENANT = { schemaName: 'tenant_test' };
@@ -137,7 +138,15 @@ const buildMocks = () => {
   };
   const r2 = r2Mocks as unknown as R2Service;
 
-  const service = new OrdersService(tenantManager, r2);
+  const paymentsMocks = {
+    refundOrder: jest.fn(),
+  };
+
+  const service = new OrdersService(
+    tenantManager,
+    r2,
+    paymentsMocks as unknown as StripePaymentService,
+  );
 
   return {
     service,
@@ -150,6 +159,7 @@ const buildMocks = () => {
     addressRepo,
     entityManager,
     r2Mocks,
+    paymentsMocks,
   };
 };
 
@@ -644,6 +654,77 @@ describe('OrdersService', () => {
       expect(orderRepo.update).not.toHaveBeenCalled();
       expect(productRepo.increment).not.toHaveBeenCalled();
     });
+
+    it('refunds a paid order, restocks it and mirrors the refund', async () => {
+      const { service, orderRepo, productRepo, paymentsMocks } = buildMocks();
+      orderRepo.findOne
+        .mockResolvedValueOnce(
+          orderEntity({
+            status: OrderStatus.CONFIRMED,
+            paymentStatus: PaymentStatus.PAID,
+            items: [{ id: 1, productId: 5, quantity: 2 }],
+          }),
+        )
+        .mockResolvedValueOnce(
+          orderEntity({
+            status: OrderStatus.CANCELLED,
+            paymentStatus: PaymentStatus.REFUNDED,
+            refundedAt: NOW,
+          }),
+        );
+      paymentsMocks.refundOrder.mockResolvedValue({ refundedAt: NOW });
+
+      const result = await service.cancel(1, requester(), TENANT);
+
+      expect(paymentsMocks.refundOrder).toHaveBeenCalledTimes(1);
+      expect(orderRepo.update).toHaveBeenCalledWith(
+        { id: 1 },
+        {
+          status: OrderStatus.CANCELLED,
+          paymentStatus: PaymentStatus.REFUNDED,
+          refundedAt: NOW,
+        },
+      );
+      expect(productRepo.increment).toHaveBeenCalledWith({ id: 5 }, 'stock', 2);
+      expect(result.status).toBe(OrderStatus.CANCELLED);
+    });
+
+    it('aborts the cancel when the refund fails', async () => {
+      const { service, orderRepo, productRepo, paymentsMocks } = buildMocks();
+      orderRepo.findOne.mockResolvedValue(
+        orderEntity({
+          status: OrderStatus.CONFIRMED,
+          paymentStatus: PaymentStatus.PAID,
+          items: [{ id: 1, productId: 5, quantity: 2 }],
+        }),
+      );
+      paymentsMocks.refundOrder.mockRejectedValue(
+        new BadRequestException('Refund could not be processed'),
+      );
+
+      await expect(service.cancel(1, requester(), TENANT)).rejects.toThrow(
+        'Refund could not be processed',
+      );
+      expect(orderRepo.update).not.toHaveBeenCalled();
+      expect(productRepo.increment).not.toHaveBeenCalled();
+    });
+
+    it('does not refund an unpaid order', async () => {
+      const { service, orderRepo, paymentsMocks } = buildMocks();
+      orderRepo.findOne
+        .mockResolvedValueOnce(
+          orderEntity({ status: OrderStatus.PENDING, items: [] }),
+        )
+        .mockResolvedValueOnce(orderEntity({ status: OrderStatus.CANCELLED }));
+
+      await service.cancel(1, requester(), TENANT);
+
+      expect(paymentsMocks.refundOrder).not.toHaveBeenCalled();
+      expect(orderRepo.update).toHaveBeenCalledWith(
+        { id: 1 },
+        { status: OrderStatus.CANCELLED },
+      );
+    });
   });
 
   describe('requestReturn', () => {
@@ -762,6 +843,36 @@ describe('OrdersService', () => {
 
       expect(productRepo.increment).toHaveBeenCalledWith({ id: 5 }, 'stock', 2);
       expect(result.status).toBe(OrderStatus.CANCELLED);
+    });
+
+    it('refunds a paid order when a manager cancels it', async () => {
+      const { service, orderRepo, productRepo, paymentsMocks } = buildMocks();
+      orderRepo.findOne.mockResolvedValue(
+        orderEntity({
+          status: OrderStatus.CONFIRMED,
+          paymentStatus: PaymentStatus.PAID,
+          items: [{ id: 1, productId: 5, quantity: 2 }],
+        }),
+      );
+      paymentsMocks.refundOrder.mockResolvedValue({ refundedAt: NOW });
+
+      const result = await service.updateStatus(
+        1,
+        { status: OrderStatus.CANCELLED },
+        TENANT,
+      );
+
+      expect(paymentsMocks.refundOrder).toHaveBeenCalledTimes(1);
+      expect(orderRepo.update).toHaveBeenCalledWith(
+        { id: 1 },
+        {
+          status: OrderStatus.CANCELLED,
+          paymentStatus: PaymentStatus.REFUNDED,
+          refundedAt: NOW,
+        },
+      );
+      expect(productRepo.increment).toHaveBeenCalledWith({ id: 5 }, 'stock', 2);
+      expect(result.paymentStatus).toBe(PaymentStatus.REFUNDED);
     });
 
     it('restocks when a return request is approved', async () => {

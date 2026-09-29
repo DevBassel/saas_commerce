@@ -100,7 +100,7 @@ NestJS 10 + TypeORM 0.3 + PostgreSQL 16. Package manager: pnpm.
   `OrdersModule` — order reads/updates go through `TenantManagerService.getRepository(Order, tenant)`.
 - Never call the provider inside a DB transaction: persist `Payment` + mirror first, then call Stripe with
   idempotency keys (`pi-${payment.id}`, `refund-${payment.id}`).
-- `POST /payments/webhooks/stripe` is `@Platform() @Public()` and verifies the signature against the **raw body**;
+- `POST /payments/stripe/webhook` is `@Platform() @Public()` and verifies the signature against the **raw body**;
   `main.ts` sets `NestFactory.create(AppModule, { rawBody: true })` and the handler reads `RawBodyRequest.rawBody`.
 - Keys are optional; missing keys make `StripeProvider.enabled === false` and payment endpoints return 503.
   `POST/GET /payments/connect/account` need `STRIPE_ONBOARDING_RETURN_URL`/`REFRESH_URL`.

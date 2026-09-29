@@ -1,5 +1,5 @@
 import { ResourceProps } from "@refinedev/core";
-import { BuildingIcon, LayoutDashboardIcon } from "lucide-react";
+import { BuildingIcon, CreditCardIcon, LayoutDashboardIcon } from "lucide-react";
 
 export const Resources: ResourceProps[] = [
   {
@@ -18,6 +18,15 @@ export const Resources: ResourceProps[] = [
     meta: {
       label: "Tenants",
       icon: <BuildingIcon />,
+    },
+  },
+  {
+    name: "platform/payments",
+    list: "/payments",
+    show: "/payments/show/:id",
+    meta: {
+      label: "Payments",
+      icon: <CreditCardIcon />,
     },
   },
 ];

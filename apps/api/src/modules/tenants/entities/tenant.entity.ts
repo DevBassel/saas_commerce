@@ -53,6 +53,15 @@ export class Tenant extends BaseEntity {
   })
   stripeAccountId: string | null;
 
+  @Column({ type: 'boolean', default: false })
+  paymentsPaused: boolean;
+
+  @Column({ type: 'boolean', default: false })
+  payoutsPaused: boolean;
+
+  @Column({ type: 'varchar', nullable: true })
+  stripePayoutsInterval: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

@@ -22,6 +22,7 @@ import {
 } from "@/api/orderApi";
 import { handelError } from "@/api/handelError";
 import { toast } from "sonner";
+import OrderPaymentActions from "@/components/orders/OrderPaymentActions";
 
 const STATUS_META: Record<
   OrderStatus,
@@ -70,6 +71,8 @@ const STATUS_META: Record<
 };
 
 const PAYMENT_LABELS: Record<PaymentStatus, string> = {
+  CANCELED: "Canceled",
+  PENDING: "Pending payment",
   UNPAID: "Unpaid",
   PAID: "Paid",
   PARTIALLY_REFUNDED: "Partially refunded",
@@ -132,6 +135,7 @@ export default function OrderItem({ order }: { order: IOrder }) {
           <span className="mr-1 text-xl font-bold text-primary">
             ${order.total.toFixed(2)}
           </span>
+          <OrderPaymentActions order={order} />
           {canCancel && (
             <Button
               disabled={busy}

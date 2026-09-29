@@ -106,6 +106,17 @@ export class TenantService {
     await this.tenantRepo.update({ id }, state);
   }
 
+  async updatePaymentControls(
+    id: number,
+    state: {
+      paymentsPaused?: boolean;
+      payoutsPaused?: boolean;
+      stripePayoutsInterval?: string | null;
+    },
+  ): Promise<void> {
+    await this.tenantRepo.update({ id }, state);
+  }
+
   async create(dto: CreateTenantDto): Promise<Tenant> {
     const schemaName = buildSchemaName(dto.slug);
     const subdomain = dto.subdomain ?? dto.slug;
