@@ -81,6 +81,60 @@ export default class PaymentService {
     ]);
   }
 
+  async refundedPayment(
+    { orderId, tenant, userId }: paymentMetaData,
+    refund: {
+      paymentIntentId: string;
+      amountRefunded: number;
+      refundReference: string | null;
+    },
+  ) {
+    const { paymentRepo, orderRepo } = await this.repos({ schemaName: tenant });
+    const payment = await paymentRepo.findOne({
+      where: { paymentRef: refund.paymentIntentId },
+    });
+    if (!payment)
+      throw new NotFoundException(
+        `Payment ${refund.paymentIntentId} not found`,
+      );
+    const order = await orderRepo.findOne({
+      where: { id: orderId, userId },
+    });
+    if (!order) throw new NotFoundException(`Order ${orderId} not found`);
+
+    // amount_refunded is Stripe's cumulative, authoritative total (in the
+    // smallest currency unit). Deriving the status from it makes successful,
+    // partial and reversed (failed/canceled) refunds converge on the same
+    // state, idempotently.
+    const refundedAmount = refund.amountRefunded / 100;
+    const total = Number(payment.amount);
+    const status =
+      refundedAmount <= 0
+        ? PaymentStatus.PAID
+        : refundedAmount >= total
+          ? PaymentStatus.REFUNDED
+          : PaymentStatus.PARTIALLY_REFUNDED;
+    const refundedAt =
+      refundedAmount > 0 ? (payment.refundedAt ?? new Date()) : null;
+
+    await Promise.all([
+      paymentRepo.save({
+        ...payment,
+        status,
+        refundedAmount,
+        refundReference:
+          refund.refundReference ??
+          (refundedAmount > 0 ? payment.refundReference : null),
+        refundedAt,
+      }),
+      orderRepo.save({
+        ...order,
+        paymentStatus: status,
+        refundedAt,
+      }),
+    ]);
+  }
+
   async failedPayment(
     { orderId, tenant, userId }: paymentMetaData,
     paymentId: string,

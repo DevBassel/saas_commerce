@@ -5,19 +5,13 @@ import { User } from '../users/entities/user.entity';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
 import { TenantService } from '../tenants/tenant.service';
 import { OrderStatus } from '../orders/constants/order-status.enum';
-import { PaymentStatus } from '../payments/constants/payment-status.enum';
 import { RoleKey } from '../../common/constants/RoleKey.enum';
 import { tenantStorage } from '../auth/tenant-context';
+import StripePaymentService from '../payments/stripe.payment.service';
 
 const TENANT = { schemaName: 'tenant_test' };
 
 const buildMocks = () => {
-  const orderQb = {
-    select: jest.fn().mockReturnThis(),
-    addSelect: jest.fn().mockReturnThis(),
-    setParameters: jest.fn().mockReturnThis(),
-    getRawOne: jest.fn(),
-  };
   const userQb = {
     innerJoin: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
@@ -26,7 +20,6 @@ const buildMocks = () => {
 
   const orderRepo = {
     count: jest.fn(),
-    createQueryBuilder: jest.fn(() => orderQb),
   };
   const userRepo = {
     createQueryBuilder: jest.fn(() => userQb),
@@ -41,12 +34,25 @@ const buildMocks = () => {
   } as unknown as TenantManagerService;
 
   const findBySchemaName = jest.fn().mockResolvedValue({
+    stripeAccountId: 'acct_123',
     storageUsedBytes: 200n,
     storageCapacityBytes: 1000n,
   });
   const tenantService = { findBySchemaName } as unknown as TenantService;
 
-  const service = new DashboardService(tenantManager, tenantService);
+  const getBalance = jest.fn().mockResolvedValue({
+    available: [{ amount: 12345, currency: 'usd' }],
+    pending: [{ amount: 1000, currency: 'usd' }],
+  });
+  const stripePaymentService = {
+    getBalance,
+  } as unknown as StripePaymentService;
+
+  const service = new DashboardService(
+    tenantManager,
+    tenantService,
+    stripePaymentService,
+  );
 
   return {
     service,
@@ -55,8 +61,8 @@ const buildMocks = () => {
     findBySchemaName,
     orderRepo,
     userRepo,
-    orderQb,
     userQb,
+    getBalance,
   };
 };
 
@@ -76,19 +82,19 @@ describe('DashboardService', () => {
     await expect(service.getStats()).rejects.toThrow(ForbiddenException);
   });
 
-  it('aggregates counts, money and customers for the tenant schema', async () => {
-    const { service, orderRepo, orderQb, userQb } = buildMocks();
+  it('aggregates counts and the Stripe balance for the tenant schema', async () => {
+    const { service, orderRepo, userQb, getBalance } = buildMocks();
     orderRepo.count.mockImplementation(countsByStatus);
-    orderQb.getRawOne.mockResolvedValue({ paid: '123.456', waiting: '10' });
     userQb.getCount.mockResolvedValue(4);
 
     const stats = await service.getStats(TENANT);
 
+    expect(getBalance).toHaveBeenCalledWith('acct_123');
     expect(stats).toEqual({
       totalOrders: 10,
       fulfilledOrders: 3,
       pendingOrders: 2,
-      totalPaid: 123.46,
+      totalPaid: 123.45,
       waitingAmount: 10,
       customers: 4,
       storageUsedBytes: 200,
@@ -96,10 +102,9 @@ describe('DashboardService', () => {
     });
   });
 
-  it('queries money by PAID/UNPAID and customers by the CUSTOMER role', async () => {
-    const { service, orderRepo, orderQb, userQb } = buildMocks();
+  it('queries counts by status and customers by the CUSTOMER role', async () => {
+    const { service, orderRepo, userQb } = buildMocks();
     orderRepo.count.mockImplementation(countsByStatus);
-    orderQb.getRawOne.mockResolvedValue({ paid: '0', waiting: '0' });
     userQb.getCount.mockResolvedValue(0);
 
     await service.getStats(TENANT);
@@ -110,59 +115,89 @@ describe('DashboardService', () => {
     expect(orderRepo.count).toHaveBeenCalledWith({
       where: { status: OrderStatus.PENDING },
     });
-    expect(orderQb.setParameters).toHaveBeenCalledWith({
-      paid: PaymentStatus.PAID,
-      unpaid: PaymentStatus.UNPAID,
-    });
     expect(userQb.innerJoin).toHaveBeenCalledWith('u.role', 'role');
     expect(userQb.where).toHaveBeenCalledWith('role.key = :key', {
       key: RoleKey.CUSTOMER,
     });
   });
 
-  it('returns zeroed money when the store has no orders', async () => {
-    const { service, findBySchemaName, orderRepo, orderQb, userQb } =
+  it('sums every balance entry and converts cents to dollars', async () => {
+    const { service, orderRepo, userQb, getBalance } = buildMocks();
+    orderRepo.count.mockResolvedValue(0);
+    userQb.getCount.mockResolvedValue(0);
+    getBalance.mockResolvedValue({
+      available: [
+        { amount: 1000, currency: 'usd' },
+        { amount: 250, currency: 'usd' },
+      ],
+      pending: [{ amount: 99, currency: 'usd' }],
+    });
+
+    const stats = await service.getStats(TENANT);
+
+    expect(stats.totalPaid).toBe(12.5);
+    expect(stats.waitingAmount).toBe(0.99);
+  });
+
+  it('skips Stripe and returns zero money when the store has no account', async () => {
+    const { service, orderRepo, userQb, getBalance, findBySchemaName } =
       buildMocks();
     findBySchemaName.mockResolvedValue({
+      stripeAccountId: null,
       storageUsedBytes: 0n,
       storageCapacityBytes: 0n,
     });
     orderRepo.count.mockResolvedValue(0);
-    orderQb.getRawOne.mockResolvedValue({ paid: null, waiting: null });
     userQb.getCount.mockResolvedValue(0);
 
     const stats = await service.getStats(TENANT);
 
-    expect(stats).toEqual({
-      totalOrders: 0,
-      fulfilledOrders: 0,
-      pendingOrders: 0,
-      totalPaid: 0,
-      waitingAmount: 0,
-      customers: 0,
-      storageUsedBytes: 0,
-      storageCapacityBytes: 0,
-    });
+    expect(getBalance).not.toHaveBeenCalled();
+    expect(stats.totalPaid).toBe(0);
+    expect(stats.waitingAmount).toBe(0);
+  });
+
+  it('falls back to zero money when Stripe is unavailable', async () => {
+    const { service, orderRepo, userQb, getBalance } = buildMocks();
+    orderRepo.count.mockResolvedValue(0);
+    userQb.getCount.mockResolvedValue(0);
+    getBalance.mockRejectedValue(new Error('stripe down'));
+
+    const stats = await service.getStats(TENANT);
+
+    expect(stats.totalPaid).toBe(0);
+    expect(stats.waitingAmount).toBe(0);
+  });
+
+  it('returns zero money when the connected account is empty', async () => {
+    const { service, orderRepo, userQb, getBalance } = buildMocks();
+    orderRepo.count.mockResolvedValue(0);
+    userQb.getCount.mockResolvedValue(0);
+    getBalance.mockResolvedValue(null);
+
+    const stats = await service.getStats(TENANT);
+
+    expect(stats.totalPaid).toBe(0);
+    expect(stats.waitingAmount).toBe(0);
   });
 
   it('falls back to zero storage when the tenant row is missing', async () => {
-    const { service, findBySchemaName, orderRepo, orderQb, userQb } =
+    const { service, findBySchemaName, orderRepo, userQb, getBalance } =
       buildMocks();
     findBySchemaName.mockResolvedValue(null);
     orderRepo.count.mockResolvedValue(0);
-    orderQb.getRawOne.mockResolvedValue({ paid: '0', waiting: '0' });
     userQb.getCount.mockResolvedValue(0);
 
     const stats = await service.getStats(TENANT);
 
+    expect(getBalance).not.toHaveBeenCalled();
     expect(stats.storageUsedBytes).toBe(0);
     expect(stats.storageCapacityBytes).toBe(0);
   });
 
   it('resolves the tenant from AsyncLocalStorage when no arg is passed', async () => {
-    const { service, orderRepo, orderQb, userQb } = buildMocks();
+    const { service, orderRepo, userQb } = buildMocks();
     orderRepo.count.mockResolvedValue(0);
-    orderQb.getRawOne.mockResolvedValue({ paid: '0', waiting: '0' });
     userQb.getCount.mockResolvedValue(0);
 
     const stats = await tenantStorage.run(

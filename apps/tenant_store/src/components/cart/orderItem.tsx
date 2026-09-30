@@ -4,6 +4,7 @@ import { Button } from "../ui/button";
 import {
   CheckCircle,
   ClipboardClock,
+  LoaderCircle,
   LucideIcon,
   Package,
   RotateCcw,
@@ -23,6 +24,16 @@ import {
 import { handelError } from "@/api/handelError";
 import { toast } from "sonner";
 import OrderPaymentActions from "@/components/orders/OrderPaymentActions";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 const STATUS_META: Record<
   OrderStatus,
@@ -85,6 +96,7 @@ const OWNER_CANCELLABLE: OrderStatus[] = ["PENDING", "CONFIRMED"];
 export default function OrderItem({ order }: { order: IOrder }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
 
   const meta = STATUS_META[order.status];
   const StatusIcon = meta.icon;
@@ -103,6 +115,11 @@ export default function OrderItem({ order }: { order: IOrder }) {
     } finally {
       setBusy(false);
     }
+  };
+
+  const confirmCancel = async () => {
+    await run(() => CancelOrder(order.id), "Order cancelled");
+    setCancelOpen(false);
   };
 
   return (
@@ -137,13 +154,41 @@ export default function OrderItem({ order }: { order: IOrder }) {
           </span>
           <OrderPaymentActions order={order} />
           {canCancel && (
-            <Button
-              disabled={busy}
-              variant="destructive"
-              onClick={() => run(() => CancelOrder(order.id), "Order cancelled")}
-            >
-              Cancel
-            </Button>
+            <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>
+              <DialogTrigger render={<Button variant="destructive" />}>
+                Cancel
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>
+                    Cancel order #{order.orderNumber}?
+                  </DialogTitle>
+                  <DialogDescription>
+                    This action cannot be undone. If the order has been paid, a
+                    refund will be issued to the original payment method.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <DialogClose render={<Button variant="outline" />}>
+                    Keep order
+                  </DialogClose>
+                  <Button
+                    variant="destructive"
+                    disabled={busy}
+                    onClick={confirmCancel}
+                  >
+                    {busy ? (
+                      <>
+                        <LoaderCircle className="animate-spin" />
+                        Cancelling…
+                      </>
+                    ) : (
+                      "Yes, cancel order"
+                    )}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           )}
           {canReturn && (
             <Button

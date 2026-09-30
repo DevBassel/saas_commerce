@@ -31,14 +31,14 @@ import {
   ORDER_NUMBER_PREFIX,
   ORDER_NUMBER_SUFFIX_LENGTH,
 } from './constants/order.constants';
-import {
-  SerializedDeliveryAddress,
-  SerializedOrder,
-  SerializedOrderItem,
-} from './constants/orders.interface';
+import { SerializedOrder } from './constants/orders.interface';
 import { CheckoutDto } from './dto/checkout.dto';
 import { ListOrdersQueryDto } from './dto/list-orders.query.dto';
-import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import {
+  refundOrderIfPaid,
+  restockOrderItems,
+  serializeOrder,
+} from './orders.helpers';
 
 type Requester = RequestWithUser['user'];
 
@@ -55,17 +55,6 @@ const MANAGER_CANCELLABLE_STATUSES = new Set<OrderStatus>([
   OrderStatus.PROCESSING,
   OrderStatus.SHIPPED,
 ]);
-
-const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  [OrderStatus.PENDING]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
-  [OrderStatus.CONFIRMED]: [OrderStatus.PROCESSING, OrderStatus.CANCELLED],
-  [OrderStatus.PROCESSING]: [OrderStatus.SHIPPED, OrderStatus.CANCELLED],
-  [OrderStatus.SHIPPED]: [OrderStatus.DELIVERED, OrderStatus.CANCELLED],
-  [OrderStatus.DELIVERED]: [OrderStatus.RETURN_REQUESTED],
-  [OrderStatus.RETURN_REQUESTED]: [OrderStatus.RETURNED, OrderStatus.DELIVERED],
-  [OrderStatus.RETURNED]: [],
-  [OrderStatus.CANCELLED]: [],
-};
 
 @Injectable()
 export class OrdersService {
@@ -216,7 +205,7 @@ export class OrdersService {
       ),
     );
 
-    return this.serialize(order);
+    return serializeOrder(order, this.r2);
   }
 
   async findAll(
@@ -239,7 +228,7 @@ export class OrdersService {
       relations: { items: true, user: true },
       order: { createdAt: 'DESC' },
     });
-    return orders.map((order) => this.serialize(order));
+    return orders.map((order) => serializeOrder(order, this.r2));
   }
 
   async findOne(
@@ -259,7 +248,7 @@ export class OrdersService {
     ) {
       throw new NotFoundException('Order not found');
     }
-    return this.serialize(order);
+    return serializeOrder(order, this.r2);
   }
 
   async cancel(
@@ -289,7 +278,7 @@ export class OrdersService {
 
     // Stripe must not run inside the DB transaction. Refund first, so a paid
     // order is never cancelled without the customer's money coming back.
-    const refundedAt = await this.refundIfPaid(order, target);
+    const refundedAt = await refundOrderIfPaid(order, target, this.payments);
 
     await orderRepo.manager.transaction(async (manager: EntityManager) => {
       const orders = manager.getRepository(Order);
@@ -302,60 +291,10 @@ export class OrdersService {
             : {}),
         },
       );
-      await this.restock(manager, order.items ?? []);
+      await restockOrderItems(manager, order.items ?? []);
     });
 
     return this.findOne(id, requester, target);
-  }
-
-  async updateStatus(
-    id: number,
-    dto: UpdateOrderStatusDto,
-    tenant?: TenantRef,
-  ): Promise<SerializedOrder> {
-    const { target, orderRepo } = await this.repos(tenant);
-
-    const found = await orderRepo.findOne({
-      where: { id },
-      relations: { items: true },
-    });
-    if (!found) throw new NotFoundException('Order not found');
-
-    const next = dto.status;
-    const allowed = ALLOWED_TRANSITIONS[found.status] ?? [];
-    if (!allowed.includes(next)) {
-      throw new BadRequestException(
-        `Cannot change order status from ${found.status} to ${next}`,
-      );
-    }
-
-    const restockable =
-      next === OrderStatus.CANCELLED || next === OrderStatus.RETURNED;
-    const refundedAt = restockable
-      ? await this.refundIfPaid(found, target)
-      : null;
-
-    await orderRepo.manager.transaction(async (manager: EntityManager) => {
-      const orders = manager.getRepository(Order);
-      await orders.update(
-        { id },
-        {
-          status: next,
-          ...(refundedAt
-            ? { paymentStatus: PaymentStatus.REFUNDED, refundedAt }
-            : {}),
-        },
-      );
-      if (restockable) await this.restock(manager, found.items ?? []);
-    });
-
-    return this.serialize({
-      ...found,
-      status: next,
-      ...(refundedAt
-        ? { paymentStatus: PaymentStatus.REFUNDED, refundedAt }
-        : {}),
-    } as Order);
   }
 
   async requestReturn(
@@ -388,37 +327,6 @@ export class OrdersService {
     return this.findOne(id, requester, target);
   }
 
-  /**
-   * Refunds a paid order (full refund) and returns the refund timestamp, or
-   * null when the order was never paid. Throws before the order is cancelled
-   * when a payment is marked paid but cannot be refunded.
-   */
-  private async refundIfPaid(
-    order: Order,
-    tenant: TenantRef,
-  ): Promise<Date | null> {
-    if (order.paymentStatus !== PaymentStatus.PAID) return null;
-
-    const result = await this.payments.refundOrder(order, tenant);
-    if (!result) {
-      throw new BadRequestException(
-        'Order is marked paid but has no refundable payment',
-      );
-    }
-    return result.refundedAt;
-  }
-
-  private async restock(
-    manager: EntityManager,
-    items: OrderItem[],
-  ): Promise<void> {
-    const products = manager.getRepository(Product);
-    for (const item of items) {
-      if (item.productId == null) continue;
-      await products.increment({ id: item.productId }, 'stock', item.quantity);
-    }
-  }
-
   private async resolveDeliveryAddress(
     addresses: Repository<Address>,
     userId: number,
@@ -441,65 +349,6 @@ export class OrdersService {
       throw new BadRequestException('Delivery address required');
     }
     return address;
-  }
-
-  private serialize(order: Order): SerializedOrder {
-    return {
-      id: order.id,
-      orderNumber: order.orderNumber,
-      userId: order.userId ?? null,
-      user: order.user
-        ? {
-            id: order.user.id,
-            name: order.user.name,
-          }
-        : null,
-      status: order.status,
-      paymentStatus: order.paymentStatus,
-      subtotal: order.subtotal,
-      total: order.total,
-      items: (order.items ?? [])
-        .slice()
-        .sort((a, b) => a.id - b.id)
-        .map((item) => this.serializeItem(item)),
-      deliveryAddress: this.serializeDeliveryAddress(order),
-      paidAt: order.paidAt ?? null,
-      refundedAt: order.refundedAt ?? null,
-      createdAt: order.createdAt,
-      updatedAt: order.updatedAt,
-    };
-  }
-
-  private serializeDeliveryAddress(
-    order: Order,
-  ): SerializedDeliveryAddress | null {
-    if (order.addressId == null && order.recipientName == null) return null;
-    return {
-      addressId: order.addressId ?? null,
-      recipientName: order.recipientName ?? '',
-      phone: order.phone ?? '',
-      line1: order.line1 ?? '',
-      line2: order.line2 ?? null,
-      city: order.city ?? '',
-      state: order.state ?? null,
-      postalCode: order.postalCode ?? '',
-      country: order.country ?? '',
-    };
-  }
-
-  private serializeItem(item: OrderItem): SerializedOrderItem {
-    return {
-      id: item.id,
-      productId: item.productId ?? null,
-      name: item.name,
-      sku: item.sku,
-      unitPrice: item.unitPrice,
-      quantity: item.quantity,
-      lineTotal: item.lineTotal,
-      imageUrl: item.imageObjectKey
-        ? this.r2.publicUrl(item.imageObjectKey)
-        : null,
-    };
   }
 
   private canManage(requester: Requester): boolean {

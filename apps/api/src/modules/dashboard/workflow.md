@@ -12,14 +12,14 @@ flowchart TD
         TRT -->|"none"| TRTE["403 Tenant context required"]
         TRT -->|"resolved"| TM["TenantManagerService.getRepository<br/>Order, User"]
         TM --> CNT["orderRepo.count()<br/>+ count(DELIVERED)<br/>+ count(PENDING)"]
-        TM --> SUM["orderRepo query builder:<br/>COALESCE(SUM(total) CASE paymentStatus<br/>= PAID / UNPAID), 0)<br/>→ Number() → round2"]
+        TM --> BAL["StripePaymentService.getBalance<br/>(tenant stripeAccountId)<br/>available → totalPaid<br/>pending → waitingAmount"]
         TM --> CUS["userRepo query builder:<br/>innerJoin role, role.key = CUSTOMER<br/>getCount()"]
     end
 
     subgraph DATA["Data"]
         CNT --> TDB[("PostgreSQL tenant schema<br/>orders, users, roles")]
-        SUM --> TDB
         CUS --> TDB
+        BAL --> SA[("Stripe API — connected<br/>account balance")]
     end
 ```
 
@@ -31,7 +31,7 @@ flowchart TD
         G0["resolve tenant (arg or AsyncLocalStorage)"] --> G1{"resolved?"}
         G1 -->|"no"| G1E["403 Tenant context required"]
         G1 -->|"yes"| G2["Promise.all: Order repo + User repo<br/>for the tenant schema"]
-        G2 --> G3["Promise.all: three counts,<br/>money SUM query, customers count"]
-        G3 --> G4["totalPaid / waitingAmount:<br/>Number(SUM string) → round2<br/>(NULL → 0 via COALESCE)"]
+        G2 --> G3["Promise.all: three counts,<br/>customers count, Stripe balance"]
+        G3 --> G4["totalPaid / waitingAmount:<br/>sum available / pending cents<br/>→ round2 (missing/outage → 0)"]
         G4 --> G5["plain JSON DashboardStats<br/>(no envelope, no writes)"]
 ```

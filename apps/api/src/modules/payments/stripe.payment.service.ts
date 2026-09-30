@@ -157,7 +157,7 @@ export default class StripePaymentService {
       case 'payment_intent.succeeded':
       case 'payment_intent.canceled':
       case 'payment_intent.payment_failed': {
-        const payment = event.data.object as Stripe.PaymentIntent;
+        const payment = event.data.object;
         if (!payment.metadata?.data) {
           this.logger.warn(
             `Stripe ${event.type} for ${payment.id} has no metadata.data; ignoring`,
@@ -165,11 +165,70 @@ export default class StripePaymentService {
           return;
         }
         const data = JSON.parse(payment.metadata.data) as paymentMetaData;
+
         if (event.type === 'payment_intent.succeeded')
           return await this.paymentService.successPayment(data, payment.id);
+
         if (event.type === 'payment_intent.canceled')
           return await this.paymentService.canceledPayment(data, payment.id);
+
         return await this.paymentService.failedPayment(data, payment.id);
+      }
+
+      case 'charge.refunded': {
+        const charge = event.data.object;
+        const paymentIntentId =
+          typeof charge.payment_intent === 'string'
+            ? charge.payment_intent
+            : charge.payment_intent?.id;
+
+        if (!paymentIntentId) {
+          this.logger.warn(
+            `Stripe ${event.type} for charge ${charge.id} has no payment_intent; ignoring`,
+          );
+          return;
+        }
+
+        return await this.syncRefundState(
+          paymentIntentId,
+          charge.refunds?.data?.[0]?.id ?? null,
+        );
+      }
+
+      // Refund lifecycle events carry a Refund, not a Charge. `pending` and
+      // `requires_action` are not final, so wait for a terminal status
+      // (succeeded, failed, canceled) and reconcile it against the charge.
+      case 'refund.created':
+      case 'refund.updated':
+      case 'refund.failed':
+      case 'charge.refund.updated': {
+        const refund = event.data.object;
+        if (refund.status === 'pending' || refund.status === 'requires_action')
+          return;
+
+        const paymentIntentId =
+          typeof refund.payment_intent === 'string'
+            ? refund.payment_intent
+            : refund.payment_intent?.id;
+
+        if (!paymentIntentId) {
+          this.logger.warn(
+            `Stripe ${event.type} for refund ${refund.id} has no payment_intent; ignoring`,
+          );
+          return;
+        }
+
+        if (refund.status !== 'succeeded')
+          this.logger.warn(
+            `Stripe ${event.type} for refund ${refund.id} is ${refund.status}${
+              refund.failure_reason ? ` (${refund.failure_reason})` : ''
+            }`,
+          );
+
+        return await this.syncRefundState(
+          paymentIntentId,
+          refund.status === 'succeeded' ? refund.id : null,
+        );
       }
 
       default:
@@ -177,6 +236,56 @@ export default class StripePaymentService {
     }
 
     return;
+  }
+
+  /**
+   * Mirrors a refund onto the Payment/Order by resolving the tenant/order/user
+   * payload from the PaymentIntent metadata. Cumulative refund totals are read
+   * from the charge (expanded `latest_charge`) so partial and repeated refunds
+   * stay correct and idempotent. Charges do not inherit PaymentIntent metadata,
+   * so the intent is always the source of the payload.
+   */
+  private async syncRefundState(
+    paymentIntentId: string,
+    refundReference: string | null,
+  ) {
+    const paymentIntent = await this.stripe.paymentIntents.retrieve(
+      paymentIntentId,
+      { expand: ['latest_charge'] },
+    );
+
+    if (!paymentIntent.metadata?.data) {
+      this.logger.warn(
+        `Stripe refund for ${paymentIntentId} has no metadata.data; ignoring`,
+      );
+      return;
+    }
+
+    const charge = await this.latestCharge(paymentIntent);
+    if (!charge) {
+      this.logger.warn(
+        `Stripe refund for ${paymentIntentId} has no charge; ignoring`,
+      );
+      return;
+    }
+
+    const data = JSON.parse(paymentIntent.metadata.data) as paymentMetaData;
+
+    return await this.paymentService.refundedPayment(data, {
+      paymentIntentId,
+      amountRefunded: charge.amount_refunded,
+      refundReference,
+    });
+  }
+
+  private async latestCharge(
+    paymentIntent: Stripe.PaymentIntent,
+  ): Promise<Stripe.Charge | null> {
+    const charge = paymentIntent.latest_charge;
+    if (!charge) return null;
+    if (typeof charge === 'string')
+      return await this.stripe.charges.retrieve(charge);
+    return charge;
   }
 
   /**

@@ -10,6 +10,7 @@ import {
   Req,
 } from '@nestjs/common';
 import { OrdersService } from './orders.service';
+import { ManageOrderService } from './manage-order.service';
 import { Permissions } from '../auth/decorators/permissions.decorator';
 import { OrderPermissionKey } from './constants/order-permissions.enum';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
@@ -19,7 +20,10 @@ import type { RequestWithUser } from '../auth/interfaces/RequestWithUser.interfa
 
 @Controller('orders')
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly manageOrderService: ManageOrderService,
+  ) {}
 
   @Post()
   @Permissions([OrderPermissionKey.CREATE])
@@ -57,7 +61,7 @@ export class OrdersController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateOrderStatusDto,
   ) {
-    return this.ordersService.updateStatus(id, dto);
+    return this.manageOrderService.updateStatus(id, dto);
   }
 
   @Patch(':id/return')

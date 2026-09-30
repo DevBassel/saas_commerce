@@ -22,7 +22,6 @@ import { TenantProvisionerService } from '../tenants/services/tenant-provisioner
 import { TenantStatus } from '../tenants/enums/tenantStatus.enum';
 import { getTenantContext } from './tenant-context';
 import { TenantIdentity, tenantRefFromPayload } from './tenant-ref.util';
-import StripePaymentService from '../payments/stripe.payment.service';
 
 @Injectable()
 export class AuthService {
@@ -32,7 +31,6 @@ export class AuthService {
     private readonly config: ConfigService<IENV>,
     private readonly tenantService: TenantService,
     private readonly provisioner: TenantProvisionerService,
-    private readonly paymentService: StripePaymentService,
   ) {}
 
   async register(userData: CreateUserDto) {
@@ -62,12 +60,6 @@ export class AuthService {
 
     await this.tenantService.setOwnerUserId(tenant.id, owner.id);
 
-    const stripeAcc = await this.paymentService.createConnectedAccount(
-      owner.email,
-      tenant.schemaName,
-    );
-    tenant.stripeAccountId = stripeAcc.id;
-    await tenant.save();
     return this.returnUserCredential(owner, tenant);
   }
 

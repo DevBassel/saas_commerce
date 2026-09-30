@@ -12,8 +12,8 @@ flowchart TD
         RO -->|"PATCH /orders/:id/status<br/>needs orders:manage"| US["updateStatus — transition map"]
     end
 
-    subgraph APP["Application — OrdersService"]
-        SVC["All methods"] --> TRT{"tenant context<br/>(tenantStorage or arg)?"}
+    subgraph APP["Application — OrdersService / ManageOrderService"]
+        SVC["OrdersService: checkout/findAll/findOne/cancel/requestReturn<br/>ManageOrderService: updateStatus"] --> TRT{"tenant context<br/>(tenantStorage or arg)?"}
         TRT -->|"none"| TRTE["403 Tenant context required"]
         TRT -->|"resolved"| TM["TenantManagerService.getRepository<br/>Order, OrderItem, Product, Cart, CartItem"]
         CO --> CAN["owns orders:manage?"]
