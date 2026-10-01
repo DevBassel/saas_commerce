@@ -49,6 +49,7 @@ export const EnvSchema = joi.object({
   DB_USERNAME: joi.string().required(),
   DB_PASSWORD: joi.string().required(),
   DB_SYNCHRONIZE: joi.boolean().required(),
+  DB_SYNCHRONIZE_TENANTS: joi.boolean().default(false),
   DB_LOGGING: joi.boolean().required(),
   DB_SSL: joi.boolean().required(),
   TENANT_POOL_SIZE: joi.number().required(),
@@ -94,6 +95,11 @@ export const EnvSchema = joi.object({
 
   // Logging
   LOG_LEVEL: joi.string().required(),
+
+  // Throttling
+  THROTTLE_TTL: joi.number().required(),
+  THROTTLE_LIMIT: joi.number().required(),
+
   // CORS
   CORS_ORIGIN: joi.string().required(),
   CORS_CREDENTIALS: joi.boolean().required(),

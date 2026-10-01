@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { NextConfig } from "next";
 
 const remotePatterns: NonNullable<
@@ -19,6 +20,12 @@ const remotePatterns: NonNullable<
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
+  // Emit a self-contained server bundle only for container builds; local builds
+  // skip it because tracing the pnpm store creates symlinks Windows dev
+  // machines reject. outputFileTracingRoot points at the monorepo root so the
+  // workspace dependency layout is traced into the standalone bundle.
+  output: process.env.NEXT_STANDALONE === "1" ? "standalone" : undefined,
+  outputFileTracingRoot: path.join(__dirname, "../../"),
   images: {
     remotePatterns,
   },

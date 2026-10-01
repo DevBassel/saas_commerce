@@ -24,6 +24,8 @@ import {
 import { handelError } from "@/api/handelError";
 import { toast } from "sonner";
 import OrderPaymentActions from "@/components/orders/OrderPaymentActions";
+import { useCurrency } from "@/components/currency/currency-provider";
+import { formatMoney } from "@/lib/money";
 import {
   Dialog,
   DialogClose,
@@ -95,6 +97,7 @@ const OWNER_CANCELLABLE: OrderStatus[] = ["PENDING", "CONFIRMED"];
 
 export default function OrderItem({ order }: { order: IOrder }) {
   const router = useRouter();
+  const currency = useCurrency();
   const [busy, setBusy] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
 
@@ -104,7 +107,10 @@ export default function OrderItem({ order }: { order: IOrder }) {
   const canReturn = order.status === "DELIVERED";
   const address = order.deliveryAddress;
 
-  const run = async (action: () => Promise<unknown>, successMessage: string) => {
+  const run = async (
+    action: () => Promise<unknown>,
+    successMessage: string,
+  ) => {
     setBusy(true);
     try {
       await action();
@@ -127,9 +133,7 @@ export default function OrderItem({ order }: { order: IOrder }) {
       <header className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-lg font-semibold">
-              Order #{order.orderNumber}
-            </h2>
+            <h2 className="text-lg font-semibold">{order.orderNumber}</h2>
             <span
               className={cn(
                 "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
@@ -150,7 +154,7 @@ export default function OrderItem({ order }: { order: IOrder }) {
 
         <div className="flex items-center gap-2">
           <span className="mr-1 text-xl font-bold text-primary">
-            ${order.total.toFixed(2)}
+            {formatMoney(order.total, currency)}
           </span>
           <OrderPaymentActions order={order} />
           {canCancel && (
@@ -160,9 +164,7 @@ export default function OrderItem({ order }: { order: IOrder }) {
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>
-                    Cancel order #{order.orderNumber}?
-                  </DialogTitle>
+                  <DialogTitle>Cancel order #{order.orderNumber}?</DialogTitle>
                   <DialogDescription>
                     This action cannot be undone. If the order has been paid, a
                     refund will be issued to the original payment method.
@@ -232,11 +234,11 @@ export default function OrderItem({ order }: { order: IOrder }) {
                 {item.name}
               </span>
               <span className="text-xs text-muted-foreground">
-                ${item.unitPrice} × {item.quantity}
+                {formatMoney(item.unitPrice, currency)} × {item.quantity}
               </span>
             </div>
             <span className="text-sm font-semibold">
-              ${item.lineTotal.toFixed(2)}
+              {formatMoney(item.lineTotal, currency)}
             </span>
           </div>
         ))}

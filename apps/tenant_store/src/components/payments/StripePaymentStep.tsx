@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { CreateStripePayment } from "@/api/paymentsApi";
 import { toApiError } from "@/api/handelError";
 import { stripePromise } from "@/lib/stripe";
+import { useCurrency } from "@/components/currency/currency-provider";
+import { formatMoney } from "@/lib/money";
 
 type StripePaymentStepProps = {
   orderId: number;
@@ -30,6 +32,7 @@ type PaymentFormProps = {
 function PaymentForm({ orderNumber, amount, onSuccess }: PaymentFormProps) {
   const stripe = useStripe();
   const elements = useElements();
+  const currency = useCurrency();
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (e: SyntheticEvent) => {
@@ -65,7 +68,9 @@ function PaymentForm({ orderNumber, amount, onSuccess }: PaymentFormProps) {
             Order <span className="font-medium">#{orderNumber}</span>
           </span>
         )}
-        <span className="text-lg font-semibold">${amount.toFixed(2)}</span>
+        <span className="text-lg font-semibold">
+          {formatMoney(amount, currency)}
+        </span>
       </div>
 
       <PaymentElement />
@@ -74,7 +79,7 @@ function PaymentForm({ orderNumber, amount, onSuccess }: PaymentFormProps) {
         {submitting ? (
           <LoaderCircle className="animate-spin" />
         ) : (
-          `Pay $${amount.toFixed(2)}`
+          `Pay ${formatMoney(amount, currency)}`
         )}
       </Button>
     </form>

@@ -15,14 +15,10 @@ import { OrderStatusBadge } from "@/components/orders/order-status-badge";
 import { StorageCard } from "@/components/dashboard/storage-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatMoney, useTenantCurrency } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 import type { DashboardStats } from "@/types/dashboard";
 import type { Order } from "@/types/order";
-
-const currency = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-});
 
 const formatDate = (value?: string | null) =>
   value ? new Date(value).toLocaleString() : "—";
@@ -70,6 +66,7 @@ export const Dashboard = () => {
     url: "dashboard/stats",
     method: "get",
   });
+  const currencyCode = useTenantCurrency();
 
   const orders = ordersQuery.query.data?.data ?? [];
   const stats = statsQuery.query.data?.data;
@@ -102,14 +99,14 @@ export const Dashboard = () => {
         />
         <StatCard
           title="Total Paid"
-          value={currency.format(stats?.totalPaid ?? 0)}
+          value={formatMoney(stats?.totalPaid ?? 0, currencyCode)}
           icon={CreditCardIcon}
           isLoading={statsQuery.query.isLoading}
           isError={statsQuery.query.isError}
         />
         <StatCard
           title="Waiting Money"
-          value={currency.format(stats?.waitingAmount ?? 0)}
+          value={formatMoney(stats?.waitingAmount ?? 0, currencyCode)}
           icon={HourglassIcon}
           isLoading={statsQuery.query.isLoading}
           isError={statsQuery.query.isError}
@@ -177,7 +174,7 @@ export const Dashboard = () => {
                   <div className={cn("flex", "items-center", "gap-3")}>
                     <OrderStatusBadge status={order.status} />
                     <span className="text-sm font-semibold">
-                      {currency.format(order.total)}
+                      {formatMoney(order.total, currencyCode)}
                     </span>
                   </div>
                 </Link>

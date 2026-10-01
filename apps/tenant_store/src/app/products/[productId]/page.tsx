@@ -5,6 +5,8 @@ import AddToCart from "@/components/products/AddToCart";
 import ProductGallery from "@/components/products/ProductGallery";
 import { ProductsSlider } from "@/components/products/products_slider";
 import { buttonVariants } from "@/components/ui/button";
+import { formatMoney } from "@/lib/money";
+import { getStoreInfo } from "@/lib/tenant";
 import { cn } from "@/lib/utils";
 import { BrushCleaning } from "lucide-react";
 import Link from "next/link";
@@ -69,6 +71,8 @@ export default async function ProductPage({
     );
   }
 
+  const store = await getStoreInfo();
+
   return (
     <div className="flex flex-col gap-12">
       <nav className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -98,7 +102,7 @@ export default async function ProductPage({
 
           <div className="flex items-center gap-3">
             <span className="text-3xl font-bold text-primary">
-              ${product.price}
+              {formatMoney(product.price, store?.currency)}
             </span>
             <StockBadge stock={product.stock} />
           </div>

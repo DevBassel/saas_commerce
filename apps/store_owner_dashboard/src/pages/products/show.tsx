@@ -8,16 +8,13 @@ import { DetailRow } from "@/components/refine-ui/views/detail-row";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatMoney, useTenantCurrency } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 import type { Product } from "@/types/product";
 
-const currency = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-});
-
 export const ProductsShow = () => {
   const { query } = useShow<Product>({ resource: "products" });
+  const currencyCode = useTenantCurrency();
   const record = query.data?.data;
 
   const title =
@@ -75,7 +72,10 @@ export const ProductsShow = () => {
             <CardContent>
               <DetailRow label="SKU" value={record.sku} />
               <Separator />
-              <DetailRow label="Price" value={currency.format(record.price)} />
+              <DetailRow
+                label="Price"
+                value={formatMoney(record.price, currencyCode)}
+              />
               <Separator />
               <DetailRow label="Stock" value={record.stock} />
               <Separator />

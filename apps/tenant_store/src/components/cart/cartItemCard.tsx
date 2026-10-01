@@ -5,9 +5,12 @@ import { Button } from "../ui/button";
 import { Eye, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { useCurrency } from "@/components/currency/currency-provider";
+import { formatMoney } from "@/lib/money";
 
 export default function CartItemCard({ item }: { item: ICartItem }) {
   const router = useRouter();
+  const currency = useCurrency();
 
   const removeItem = async () => {
     try {
@@ -37,7 +40,9 @@ export default function CartItemCard({ item }: { item: ICartItem }) {
 
       <div className="flex w-full flex-col gap-1">
         <h3 className="line-clamp-1 font-semibold">{item.name}</h3>
-        <p className="text-sm text-muted-foreground">${item.unitPrice} each</p>
+        <p className="text-sm text-muted-foreground">
+          {formatMoney(item.unitPrice, currency)} each
+        </p>
         <p className="text-sm text-muted-foreground">
           Quantity: {item.quantity}
         </p>
@@ -47,7 +52,7 @@ export default function CartItemCard({ item }: { item: ICartItem }) {
           </p>
         )}
         <p className="mt-1 font-medium text-primary">
-          ${item.lineTotal.toFixed(2)}
+          {formatMoney(item.lineTotal, currency)}
         </p>
       </div>
 

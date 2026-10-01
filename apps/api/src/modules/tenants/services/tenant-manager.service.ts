@@ -71,12 +71,13 @@ export class TenantManagerService implements OnModuleDestroy {
   }
 
   private createDataSource(tenant: TenantRef): DataSource {
-    const { tenantPoolSize, synchronize } = this.config.getOrThrow<IDB>('db');
+    const { tenantPoolSize, synchronize, syncTenants } =
+      this.config.getOrThrow<IDB>('db');
     const { env } = this.config.getOrThrow<IAPP>('app');
     const options = buildDataSourceOptions(this.config, {
       schema: tenant.schemaName,
       entities: TENANT_ENTITIES,
-      synchronize: synchronize && env !== 'production',
+      synchronize: synchronize && (env !== 'production' || syncTenants),
       poolSize: tenantPoolSize,
     });
     return new DataSource(options);

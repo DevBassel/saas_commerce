@@ -28,6 +28,7 @@ const dbConfig: IDB = {
   username: 'postgres',
   password: 'root',
   synchronize: true,
+  syncTenants: false,
   logging: false,
   ssl: false,
   tenantStorageCapacityBytes: 1000,

@@ -15,14 +15,10 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatMoney, useTenantCurrency } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 import type { DeliveryAddress, Order } from "@/types/order";
 import { Link } from "react-router";
-
-const currency = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-});
 
 const formatDate = (value?: string | null) =>
   value ? new Date(value).toLocaleString() : "—";
@@ -40,6 +36,7 @@ const formatAddress = (address: DeliveryAddress) =>
 
 export const OrdersShow = () => {
   const { query } = useShow<Order>({ resource: "orders" });
+  const currencyCode = useTenantCurrency();
   const record = query.data?.data;
   const items = record?.items ?? [];
 
@@ -120,10 +117,10 @@ export const OrdersShow = () => {
               <Separator />
               <DetailRow
                 label="Subtotal"
-                value={currency.format(record.subtotal)}
+                value={formatMoney(record.subtotal, currencyCode)}
               />
               <Separator />
-              <DetailRow label="Total" value={currency.format(record.total)} />
+              <DetailRow label="Total" value={formatMoney(record.total, currencyCode)} />
               <Separator />
               <DetailRow label="Created" value={formatDate(record.createdAt)} />
               <Separator />
@@ -196,10 +193,10 @@ export const OrdersShow = () => {
                         </div>
                         <div className={cn("text-right", "text-sm")}>
                           <span className="text-muted-foreground">
-                            {currency.format(item.unitPrice)} × {item.quantity}
+                            {formatMoney(item.unitPrice, currencyCode)} × {item.quantity}
                           </span>
                           <span className={cn("block", "font-medium")}>
-                            {currency.format(item.lineTotal)}
+                            {formatMoney(item.lineTotal, currencyCode)}
                           </span>
                         </div>
                       </div>
@@ -209,13 +206,13 @@ export const OrdersShow = () => {
                 <Separator className="bg-primary" />
                 <div className={cn("flex", "justify-between", "text-sm")}>
                   <span className="text-muted-foreground">Subtotal</span>
-                  <span>{currency.format(record.subtotal)}</span>
+                  <span>{formatMoney(record.subtotal, currencyCode)}</span>
                 </div>
                 <div
                   className={cn("flex", "justify-between", "font-semibold")}
                 >
                   <span>Total</span>
-                  <span>{currency.format(record.total)}</span>
+                  <span>{formatMoney(record.total, currencyCode)}</span>
                 </div>
               </CardContent>
             </Card>

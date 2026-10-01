@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Noto_Sans } from "next/font/google";
 import { Providers } from "@/components/providers";
+import { CurrencyProvider } from "@/components/currency/currency-provider";
+import { DEFAULT_CURRENCY } from "@/lib/money";
+import { getStoreInfo } from "@/lib/tenant";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { Toaster } from "sonner";
@@ -23,11 +26,13 @@ export const metadata: Metadata = {
   description: "Sleek store management and catalog interface",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const store = await getStoreInfo();
+
   return (
     <html
       lang="en"
@@ -39,17 +44,19 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <Providers>
-          <div className="flex min-h-dvh flex-col">
-            <NavBar />
-            <main className="container mx-auto w-full flex-1 px-4 py-8">
-              {children}
-            </main>
-            <footer className="border-t border-border/60 py-6">
-              <p className="container mx-auto px-4 text-center text-xs text-muted-foreground">
-                Powered by SaaS Commerce
-              </p>
-            </footer>
-          </div>
+          <CurrencyProvider currency={store?.currency ?? DEFAULT_CURRENCY}>
+            <div className="flex min-h-dvh flex-col">
+              <NavBar />
+              <main className="container mx-auto w-full flex-1 px-4 py-8">
+                {children}
+              </main>
+              <footer className="border-t border-border/60 py-6">
+                <p className="container mx-auto px-4 text-center text-xs text-muted-foreground">
+                  Powered by SaaS Commerce
+                </p>
+              </footer>
+            </div>
+          </CurrencyProvider>
           <Toaster theme="dark" richColors />
         </Providers>
       </body>

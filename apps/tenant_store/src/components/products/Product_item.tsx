@@ -3,9 +3,12 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "../ui/card";
 import { IProduct } from "@/api/productsApi";
+import { useCurrency } from "@/components/currency/currency-provider";
+import { formatMoney } from "@/lib/money";
 
 export function ProductItem(product: IProduct) {
   const router = useRouter();
+  const currency = useCurrency();
   const imageUrl = product.images[0]?.url;
   const soldOut = product.stock <= 0;
 
@@ -30,7 +33,7 @@ export function ProductItem(product: IProduct) {
           </div>
         )}
         <span className="absolute left-3 top-3 rounded-full bg-primary px-3 py-1 text-sm font-semibold text-primary-foreground shadow">
-          ${product.price}
+          {formatMoney(product.price, currency)}
         </span>
         {soldOut && (
           <span className="absolute right-3 top-3 rounded-full bg-destructive/90 px-3 py-1 text-xs font-medium text-destructive-foreground">

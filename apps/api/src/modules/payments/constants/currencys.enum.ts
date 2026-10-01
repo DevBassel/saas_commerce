@@ -1,5 +1,1 @@
-export enum Currency {
-  USD = 'usd',
-  EUR = 'eur',
-  EGP = 'egp',
-}
+export { Currency } from '../../../common/constants/currency.enum';

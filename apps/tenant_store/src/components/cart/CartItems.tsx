@@ -5,9 +5,12 @@ import { BrushCleaning } from "lucide-react";
 import { useRouter } from "next/navigation";
 import CartItemCard from "./cartItemCard";
 import PlaceOrder from "./PlaceOrder";
+import { useCurrency } from "@/components/currency/currency-provider";
+import { formatMoney } from "@/lib/money";
 
 export default function CartItems({ items }: { items: ICartItem[] }) {
   const router = useRouter();
+  const currency = useCurrency();
   const subtotal = items.reduce((acc, item) => acc + item.lineTotal, 0);
   const totalQuantity = items.reduce((acc, item) => acc + item.quantity, 0);
 
@@ -38,13 +41,13 @@ export default function CartItems({ items }: { items: ICartItem[] }) {
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Subtotal</span>
-            <span>${subtotal.toFixed(2)}</span>
+            <span>{formatMoney(subtotal, currency)}</span>
           </div>
         </div>
         <div className="flex items-center justify-between border-t border-border pt-4">
           <span className="font-medium">Total</span>
           <span className="text-xl font-bold text-primary">
-            ${subtotal.toFixed(2)}
+            {formatMoney(subtotal, currency)}
           </span>
         </div>
         <PlaceOrder />

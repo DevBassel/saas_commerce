@@ -146,14 +146,20 @@ Per-app `.env` files stay per-app and are gitignored; only `.env.example` is com
 
 ## Docker
 
-All images build from the repository root:
+All images build from the repository root. The four `Dockerfile`s are production images
+(Railway-ready); the API's watch-mode image lives in `Dockerfile.dev`:
 
 ```bash
 docker build -f apps/api/Dockerfile .
 docker build -f apps/store_owner_dashboard/Dockerfile .
 docker build -f apps/super_admin_dashboard/Dockerfile .
 docker build -f apps/tenant_store/Dockerfile .
+
+# Development API image (watch mode, used by the commented compose service):
+docker build -f apps/api/Dockerfile.dev .
 ```
+
+See `RAILWAY.md` for deploying the four services plus a Postgres plugin to Railway.
 
 ## Source archives
 

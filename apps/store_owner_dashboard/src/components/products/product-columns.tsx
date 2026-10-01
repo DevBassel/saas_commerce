@@ -3,16 +3,12 @@
 import type { ColumnDef } from "@tanstack/react-table";
 
 import { ActiveBadge } from "@/components/refine-ui/data-table/active-badge";
+import { CurrencyCell } from "@/components/currency/currency-cell";
 import { DateCell } from "@/components/refine-ui/data-table/date-cell";
 import { RowActions } from "@/components/refine-ui/data-table/row-actions";
 import { sortableHeader } from "@/components/refine-ui/data-table/sortable-header";
 import { cn } from "@/lib/utils";
 import type { Product } from "@/types/product";
-
-const currency = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-});
 
 export const productColumns: ColumnDef<Product>[] = [
   {
@@ -58,7 +54,9 @@ export const productColumns: ColumnDef<Product>[] = [
     accessorKey: "price",
     header: sortableHeader<Product>("Price"),
     size: 120,
-    cell: ({ getValue }) => currency.format(Number(getValue() ?? 0)),
+    cell: ({ getValue }) => (
+      <CurrencyCell value={Number(getValue() ?? 0)} />
+    ),
   },
   {
     accessorKey: "stock",

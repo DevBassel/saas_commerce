@@ -106,6 +106,10 @@ export class TenantService {
     await this.tenantRepo.update({ id }, state);
   }
 
+  async updateCurrency(id: number, currency: string): Promise<void> {
+    await this.tenantRepo.update({ id }, { currency });
+  }
+
   async updatePaymentControls(
     id: number,
     state: {

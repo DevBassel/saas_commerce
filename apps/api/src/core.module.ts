@@ -4,7 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { EnvSchema } from './common/config/env.schema';
 import { ConfigEnv } from './common/config/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { IENV, IJWT } from './common/config/env.interface';
+import { IENV, IJWT, IThrottling } from './common/config/env.interface';
 import { AppLoggerModule } from './common/logger/logger.module';
 import { R2Module } from './common/storage/r2.module';
 import { HealthController } from './common/health/health.controller';
@@ -13,10 +13,12 @@ import { Tenant } from './modules/tenants/entities/tenant.entity';
 import { User } from './modules/users/entities/user.entity';
 import { Role } from './modules/rbac/entities/role.entity';
 import { Permission } from './modules/rbac/entities/permission.entity';
+import { CurrencyChangeRequest } from './modules/currency-requests/entities/currency-change-request.entity';
+import { seconds, ThrottlerModule } from '@nestjs/throttler';
 
 // Public schema entities only. Tenant-scoped entities live in
 // tenant-entities.ts and must never be registered here.
-const PUBLIC_ENTITIES = [Tenant, User, Role, Permission];
+const PUBLIC_ENTITIES = [Tenant, User, Role, Permission, CurrencyChangeRequest];
 
 @Module({
   imports: [
@@ -24,6 +26,20 @@ const PUBLIC_ENTITIES = [Tenant, User, Role, Permission];
       isGlobal: true,
       validationSchema: EnvSchema,
       load: [ConfigEnv],
+    }),
+    ThrottlerModule.forRootAsync({
+      useFactory: (config: ConfigService<IENV>) => {
+        const { ttl, limit } = config.getOrThrow<IThrottling>('throttling');
+        return {
+          throttlers: [
+            {
+              ttl: seconds(ttl),
+              limit,
+            },
+          ],
+        };
+      },
+      inject: [ConfigService],
     }),
     AppLoggerModule,
     R2Module,

@@ -23,6 +23,8 @@ export const buildEnv = (): IENV => ({
     password: process.env.DB_PASSWORD!,
     synchronize:
       String(process.env.DB_SYNCHRONIZE).toLocaleLowerCase() === 'true',
+    syncTenants:
+      String(process.env.DB_SYNCHRONIZE_TENANTS).toLocaleLowerCase() === 'true',
     logging: String(process.env.DB_LOGGING).toLocaleLowerCase() === 'true',
     ssl: String(process.env.DB_SSL).toLocaleLowerCase() === 'true',
     tenantPoolSize: process.env.TENANT_POOL_SIZE
@@ -45,6 +47,10 @@ export const buildEnv = (): IENV => ({
   },
   log: {
     level: process.env.LOG_LEVEL!,
+  },
+  throttling: {
+    ttl: Number(process.env.THROTTLE_TTL),
+    limit: Number(process.env.THROTTLE_LIMIT),
   },
   cors: {
     origin: process.env.CORS_ORIGIN!,

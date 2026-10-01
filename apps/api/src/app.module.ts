@@ -11,12 +11,15 @@ import { CartModule } from './modules/cart/cart.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { AddressesModule } from './modules/addresses/addresses.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { CurrencyRequestsModule } from './modules/currency-requests/currency-requests.module';
+import { StorefrontModule } from './modules/storefront/storefront.module';
 import { APP_GUARD } from '@nestjs/core';
 import { PermissionGuard } from './modules/auth/guards/permission.guard';
 import { JwtGuard } from './modules/auth/guards/jwt.guard';
 import { TenantGuard } from './modules/auth/guards/tenant.guard';
 import { TenantMiddleware } from './modules/auth/tenant.middleware';
 import PaymentsModule from './modules/payments/payments.module';
+import { ThrottlerGuard } from '@nestjs/throttler';
 
 @Module({
   imports: [
@@ -33,6 +36,8 @@ import PaymentsModule from './modules/payments/payments.module';
     AddressesModule,
     DashboardModule,
     PaymentsModule,
+    CurrencyRequestsModule,
+    StorefrontModule,
   ],
   providers: [
     {
@@ -46,6 +51,10 @@ import PaymentsModule from './modules/payments/payments.module';
     {
       provide: APP_GUARD,
       useClass: PermissionGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
     },
   ],
 })

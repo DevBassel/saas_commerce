@@ -6,6 +6,7 @@ export interface IENV {
     rounds: number;
   };
   log: Ilog;
+  throttling: IThrottling;
   cors: ICORS;
   r2: IR2;
   files: IFiles;
@@ -31,6 +32,7 @@ export interface IDB {
   username: string;
   password: string;
   synchronize: boolean;
+  syncTenants: boolean;
   logging: boolean;
   ssl: boolean;
   tenantPoolSize?: number;
@@ -75,4 +77,9 @@ export interface IStripe {
   applicationFeeBps: number;
   onboardingReturnUrl?: string;
   onboardingRefreshUrl?: string;
+}
+
+export interface IThrottling {
+  ttl: number;
+  limit: number;
 }

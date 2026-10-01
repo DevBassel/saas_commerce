@@ -67,10 +67,12 @@ export default class StripePaymentService {
 
     // allow order payment for 24h after created time
     const isPaymentExpired =
-      order.createdAt.getDate() < new Date().getDate() - 1;
+      Date.now() - order.createdAt.getTime() > 24 * 60 * 60 * 1000;
 
     if (isPaymentExpired)
-      throw new ForbiddenException('Order payment has expired');
+      throw new BadRequestException(
+        'Payment window has expired. Orders can only be paid within 24 hours of creation.',
+      );
 
     const tenant = getTenantContext()?.tenant;
     if (tenant?.paymentsPaused)
@@ -88,7 +90,7 @@ export default class StripePaymentService {
 
     const params: Stripe.PaymentIntentCreateParams = {
       amount,
-      currency: 'usd',
+      currency: tenant.currency,
       transfer_data: { destination: stripeAccountId },
       payment_method_types: ['card'],
       metadata: {

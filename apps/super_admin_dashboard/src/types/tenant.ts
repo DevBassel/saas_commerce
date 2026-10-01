@@ -27,6 +27,7 @@ export type Tenant = {
   owner?: TenantOwner | null;
   storageUsedBytes: string;
   storageCapacityBytes: string;
+  currency: string;
   createdAt: string;
   updatedAt: string;
 };

@@ -43,7 +43,7 @@ NestJS 10 + TypeORM 0.3 + PostgreSQL 16. Package manager: pnpm.
   Middleware sets `req.tenant` + AsyncLocalStorage (`tenant-context.ts`); guard enforces on non-platform API routes
   (400 when no identifier at all, 404 when identifier does not resolve).
 - **TenantManagerService**: per-schema DataSource LRU cache (cap 100), in-flight dedupe,
-  `synchronize = DB_SYNCHRONIZE && NODE_ENV !== 'production'`,
+  `synchronize = DB_SYNCHRONIZE && (NODE_ENV !== 'production' || DB_SYNCHRONIZE_TENANTS)`,
   explicit `TENANT_ENTITIES`, `poolSize = TENANT_POOL_SIZE`; `release()` on deactivate and destroy-all on module destroy.
   Tenant services resolve repos via `getRepository(entity, tenant)` and **throw** when neither an explicit tenant nor
   AsyncLocalStorage context is present. Platform paths use explicit `findOnePublic` / `updateSessionPublic` helpers.
@@ -121,7 +121,8 @@ NestJS 10 + TypeORM 0.3 + PostgreSQL 16. Package manager: pnpm.
 - Inject repositories for tenant data via `TenantManagerService.getRepository(entity, tenant)`; public/global data uses
   standard `@InjectRepository` on the public DataSource.
 - DTO validation with class-validator; global pipe rejects unknown fields (no extra body props).
-- `synchronize` per tenant schema is gated to `DB_SYNCHRONIZE && NODE_ENV !== 'production'`; there is no migrations infrastructure yet.
+- `synchronize` per tenant schema is gated to `DB_SYNCHRONIZE && (NODE_ENV !== 'production' || DB_SYNCHRONIZE_TENANTS)`;
+  `DB_SYNCHRONIZE_TENANTS` (default `false`) is an explicit production opt-in until a migrations system exists.
 - Security middleware: helmet (CSP disabled to keep Swagger UI working), global `@nestjs/throttler` (20 req/min; login routes 5/min),
   `POST /auth/logout` clears `user.jti`, and `GET /api/v1/health` reports db + R2.
 - `src/...` import alias works via tsconfig `baseUrl` + jest `moduleNameMapper`; relative imports also used.

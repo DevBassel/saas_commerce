@@ -27,6 +27,7 @@ import {
 } from "./pages/categories";
 import { OrdersList, OrdersShow } from "./pages/orders";
 import { StripePayments } from "./pages/settings/payments";
+import { StoreSettings } from "./pages/settings/store";
 import {
   UsersList,
   UsersAdminsList,
@@ -114,6 +115,7 @@ function App() {
 
                     <Route path="settings">
                       <Route path="payments" element={<StripePayments />} />
+                      <Route path="store" element={<StoreSettings />} />
                     </Route>
 
                     <Route path="*" element={<ErrorComponent />} />

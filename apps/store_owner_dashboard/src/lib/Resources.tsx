@@ -9,6 +9,7 @@ import {
   ClipboardListIcon,
   SettingsIcon,
   CreditCardIcon,
+  StoreIcon,
 } from "lucide-react";
 
 export const Resources: ResourceProps[] = [
@@ -112,6 +113,15 @@ export const Resources: ResourceProps[] = [
     meta: {
       label: "Payments",
       icon: <CreditCardIcon />,
+      parent: "settings",
+    },
+  },
+  {
+    name: "store-settings",
+    list: "/settings/store",
+    meta: {
+      label: "Store",
+      icon: <StoreIcon />,
       parent: "settings",
     },
   },

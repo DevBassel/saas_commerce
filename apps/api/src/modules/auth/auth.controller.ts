@@ -22,6 +22,7 @@ export class AuthController {
 
   @Public()
   @Post('register')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   register(@Body() registerData: CreateUserDto) {
     return this.authService.register(registerData);
   }
@@ -29,6 +30,7 @@ export class AuthController {
   @Platform()
   @Public()
   @Post('register-store')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   registerStore(@Body() registerData: RegisterStoreDto) {
     return this.authService.registerStore(registerData);
   }
@@ -43,7 +45,7 @@ export class AuthController {
   @Public()
   @Platform()
   @Post('login/platform')
-  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   loginPlatform(@Body() loginData: LoginUserDto) {
     return this.authService.loginPlatform(loginData);

@@ -57,7 +57,8 @@ section only records what the monorepo changed.
   `http://my-store.localhost:5174` pass preflight. Keep `.env` and `.env.example` in sync with the
   SPA dev ports (5173, 5174) and the storefront (3000); no glob/`*` entries are supported.
 - `test:e2e`, `test/verify-*.ts`, and `test/reset-dev-db.ts` are manual and need a live Postgres.
-- `synchronize: true` per tenant schema is dev-only; there is no migrations infrastructure.
+- `synchronize: true` per tenant schema is dev-only; production can opt in with
+  `DB_SYNCHRONIZE_TENANTS=true` until a migrations infrastructure exists.
 - Never add tenant entities to `PUBLIC_ENTITIES` in `src/core.module.ts`; add them to
   `src/modules/tenants/tenant-entities.ts`.
 

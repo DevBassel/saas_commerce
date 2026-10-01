@@ -8,9 +8,12 @@ import { toast } from "sonner";
 import { Input } from "../ui/input";
 import { useRouter } from "next/navigation";
 import { Minus, Plus, ShoppingCart } from "lucide-react";
+import { useCurrency } from "@/components/currency/currency-provider";
+import { formatMoney } from "@/lib/money";
 
 export default function AddToCart({ product }: { product: IProduct }) {
   const router = useRouter();
+  const currency = useCurrency();
   const [quantity, setQuantity] = useState(1);
   const [submitting, setSubmitting] = useState(false);
 
@@ -72,7 +75,7 @@ export default function AddToCart({ product }: { product: IProduct }) {
       <div className="flex items-center justify-between border-t border-border pt-4">
         <span className="text-sm text-muted-foreground">Total</span>
         <span className="text-2xl font-bold text-primary">
-          ${(quantity * product.price).toFixed(2)}
+          {formatMoney(quantity * product.price, currency)}
         </span>
       </div>
 

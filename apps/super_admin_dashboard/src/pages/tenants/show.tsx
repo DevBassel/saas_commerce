@@ -114,6 +114,10 @@ export const TenantsShow = () => {
                 />
                 <DetailRow label="Status" value={tenant.status} />
                 <DetailRow
+                  label="Currency"
+                  value={tenant.currency?.toUpperCase() ?? "—"}
+                />
+                <DetailRow
                   label="Created"
                   value={format(
                     new Date(tenant.createdAt),

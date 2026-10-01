@@ -3,6 +3,7 @@
 import type { ColumnDef } from "@tanstack/react-table";
 
 import { DateCell } from "@/components/refine-ui/data-table/date-cell";
+import { CurrencyCell } from "@/components/currency/currency-cell";
 import { sortableHeader } from "@/components/refine-ui/data-table/sortable-header";
 import {
   OrderStatusBadge,
@@ -11,11 +12,6 @@ import {
 import { OrderRowActions } from "@/components/orders/order-row-actions";
 import type { Order } from "@/types/order";
 import { Link } from "react-router";
-
-const currency = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-});
 
 export const orderColumns: ColumnDef<Order>[] = [
   {
@@ -57,7 +53,9 @@ export const orderColumns: ColumnDef<Order>[] = [
     accessorKey: "total",
     header: sortableHeader<Order>("Total"),
     size: 120,
-    cell: ({ getValue }) => currency.format(Number(getValue() ?? 0)),
+    cell: ({ getValue }) => (
+      <CurrencyCell value={Number(getValue() ?? 0)} />
+    ),
   },
   {
     accessorKey: "status",

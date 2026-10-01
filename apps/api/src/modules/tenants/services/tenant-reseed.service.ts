@@ -2,7 +2,6 @@ import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { TenantService } from '../tenant.service';
 import { TenantManagerService } from './tenant-manager.service';
 import { TENANT_ROLE_KEYS, seedRbac } from '../../rbac/rbac.seed';
-import { seedCategories } from '../../categories/categories.seed';
 import { TenantStatus } from '../enums/tenantStatus.enum';
 
 @Injectable()
@@ -29,7 +28,6 @@ export class TenantReseedService implements OnApplicationBootstrap {
       try {
         const ds = await this.tenantManager.getDataSource(tenant);
         await seedRbac(ds, { roles: TENANT_ROLE_KEYS });
-        await seedCategories(ds);
       } catch (error) {
         this.logger.error(
           `Failed to re-seed tenant ${tenant.slug} (${tenant.schemaName}): ${String(error)}`,

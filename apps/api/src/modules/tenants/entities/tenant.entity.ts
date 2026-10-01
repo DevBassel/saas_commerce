@@ -62,6 +62,9 @@ export class Tenant extends BaseEntity {
   @Column({ type: 'varchar', nullable: true })
   stripePayoutsInterval: string | null;
 
+  @Column({ type: 'varchar', length: 3, default: 'usd' })
+  currency: string;
+
   @CreateDateColumn()
   createdAt: Date;
 

@@ -2,38 +2,38 @@ name: saas_store
 
 services:
 
-  # api:
-  #   build:
-  #     context: .
-  #     dockerfile: apps/api/Dockerfile
-  #   container_name: saas_store_api
-  #   env_file:
-  #     - .env
-  #     - apps/api/.env
-  #   environment:
-  #     # Container networking: reach Postgres by service name, not the host loopback.
-  #     DB_HOST: postgres
-  #     DB_PORT: 5432
-  #     NODE_ENV: ${NODE_ENV:-development}
-  #     # Bind-mounted source on Windows/macOS does not emit inotify events reliably,
-  #     # so tell the TypeScript watcher to poll instead.
-  #     TSC_WATCHFILE: DynamicPriorityPolling
-  #     TSC_WATCHDIRECTORY: DynamicPriorityPolling
-  #     CHOKIDAR_USEPOLLING: "true"
-  #   ports:
-  #     - "${APP_PORT:-4000}:${APP_PORT:-4000}"
-  #   volumes:
-  #     # Live reload: host source over the image, with container node_modules preserved
-  #     # (the root workspace store plus the per-app symlink trees).
-  #     - .:/repo
-  #     - /repo/node_modules
-  #     - /repo/apps/api/node_modules
-  #     - /repo/apps/store_owner_dashboard/node_modules
-  #     - /repo/apps/super_admin_dashboard/node_modules
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #   command: pnpm --filter saas_store_api dev
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile.dev
+    container_name: saas_store_api
+    env_file:
+      - .env
+      - apps/api/.env
+    environment:
+      # Container networking: reach Postgres by service name, not the host loopback.
+      DB_HOST: postgres
+      DB_PORT: 5432
+      NODE_ENV: ${NODE_ENV:-development}
+      # Bind-mounted source on Windows/macOS does not emit inotify events reliably,
+      # so tell the TypeScript watcher to poll instead.
+      TSC_WATCHFILE: DynamicPriorityPolling
+      TSC_WATCHDIRECTORY: DynamicPriorityPolling
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "${APP_PORT:-4000}:${APP_PORT:-4000}"
+    volumes:
+      # Live reload: host source over the image, with container node_modules preserved
+      # (the root workspace store plus the per-app symlink trees).
+      - .:/repo
+      - /repo/node_modules
+      - /repo/apps/api/node_modules
+      - /repo/apps/store_owner_dashboard/node_modules
+      - /repo/apps/super_admin_dashboard/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: pnpm --filter saas_store_api dev
 
   postgres:
     image: postgres:16-alpine
