@@ -10,6 +10,10 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { Order } from 'src/modules/orders/entities/order.entity';
+import {
+  moneyColumn,
+  moneyColumnWithDefault,
+} from 'src/common/db/money-column';
 import { PaymentStatus } from '../constants/payment-status.enum';
 import { PaymentsProviders } from '../constants/payments-providers';
 
@@ -34,32 +38,13 @@ export class Payment extends BaseEntity {
   @Column({ type: 'enum', enum: PaymentStatus, default: PaymentStatus.UNPAID })
   status: PaymentStatus;
 
-  @Column({
-    type: 'numeric',
-    precision: 10,
-    scale: 2,
-    transformer: {
-      from: (value: string | null): number | null =>
-        value === null ? null : Number(value),
-      to: (value: number | null): number | null => value,
-    },
-  })
+  @Column(moneyColumn)
   amount: number;
 
   @Column({ nullable: true })
   paymentRef: string;
 
-  @Column({
-    type: 'numeric',
-    precision: 10,
-    scale: 2,
-    default: 0,
-    transformer: {
-      from: (value: string | null): number | null =>
-        value === null ? null : Number(value),
-      to: (value: number | null): number | null => value,
-    },
-  })
+  @Column(moneyColumnWithDefault(0))
   refundedAmount: number;
 
   @Column()

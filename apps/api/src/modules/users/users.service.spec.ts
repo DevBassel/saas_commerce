@@ -1,4 +1,8 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Repository } from 'typeorm';
 import bcrypt from 'bcrypt';
 import { UsersService } from './users.service';
@@ -326,5 +330,184 @@ describe('UsersService rank guards on update/remove', () => {
       ForbiddenException,
     );
     expect(userRepo.delete).not.toHaveBeenCalled();
+  });
+
+  it('rejects removing a user with equal rank', async () => {
+    const { service, userRepo } = buildMocks();
+    userRepo.findOne.mockResolvedValue({
+      id: 5,
+      role: { key: RoleKey.STORE_OWNER },
+    });
+
+    await expect(
+      service.remove(5, RoleKey.STORE_OWNER, TENANT),
+    ).rejects.toThrow(ForbiddenException);
+    expect(userRepo.delete).not.toHaveBeenCalled();
+  });
+});
+
+describe('UsersService.assignRole SUPER_ADMIN rank', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('allows the SUPER_ADMIN actor to assign the SUPER_ADMIN role', async () => {
+    const { service, userRepo, roleRepo, permissionRepo } = buildMocks();
+    roleRepo.findOneBy.mockResolvedValue({
+      id: 10,
+      key: RoleKey.SUPER_ADMIN,
+    });
+    userRepo.findOne
+      .mockResolvedValueOnce({ id: 5, roleId: 1 })
+      .mockResolvedValueOnce({ id: 5, permissions: [] })
+      .mockResolvedValueOnce({ id: 5, roleId: 10 });
+
+    await service.assignRole(5, 10, RoleKey.SUPER_ADMIN, TENANT);
+
+    const [[where]] = permissionRepo.findBy.mock.calls as unknown as Array<
+      [{ key: { value: string[] } }]
+    >;
+    expect(where.key.value).toEqual(SEED_ROLE_PERMISSIONS[RoleKey.SUPER_ADMIN]);
+    expect(userRepo.save).toHaveBeenCalledTimes(1);
+    expect(userRepo.save.mock.calls[0][0]).toMatchObject({ roleId: 10 });
+  });
+
+  it('forbids a STORE_OWNER actor from assigning the SUPER_ADMIN role', async () => {
+    const { service, userRepo, roleRepo } = buildMocks();
+    roleRepo.findOneBy.mockResolvedValue({
+      id: 10,
+      key: RoleKey.SUPER_ADMIN,
+    });
+    userRepo.findOne.mockResolvedValueOnce({ id: 5, roleId: 1 });
+
+    await expect(
+      service.assignRole(5, 10, RoleKey.STORE_OWNER, TENANT),
+    ).rejects.toThrow(ForbiddenException);
+    expect(userRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('forbids an actor from assigning a role of equal rank', async () => {
+    const { service, userRepo, roleRepo } = buildMocks();
+    roleRepo.findOneBy.mockResolvedValue({ id: 10, key: RoleKey.ADMIN });
+    userRepo.findOne.mockResolvedValueOnce({ id: 5, roleId: 1 });
+
+    await expect(
+      service.assignRole(5, 10, RoleKey.ADMIN, TENANT),
+    ).rejects.toThrow(ForbiddenException);
+    expect(userRepo.save).not.toHaveBeenCalled();
+  });
+});
+
+describe('UsersService.grantPermissions', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  const TARGET = { id: 5, role: { key: RoleKey.CUSTOMER } };
+  const REQUESTED = permissionObjects(['product.read']);
+
+  it('forbids a non-bypass actor from granting a permission they do not own', async () => {
+    const { service, userRepo, permissionRepo } = buildMocks();
+    userRepo.findOne.mockResolvedValueOnce(TARGET);
+    permissionRepo.findBy.mockResolvedValue(REQUESTED);
+
+    await expect(
+      service.grantPermissions(5, [1], RoleKey.ADMIN, [], TENANT),
+    ).rejects.toThrow(ForbiddenException);
+    expect(userRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('allows a non-bypass actor to grant a permission they do own', async () => {
+    const { service, userRepo, permissionRepo } = buildMocks();
+    userRepo.findOne
+      .mockResolvedValueOnce(TARGET)
+      .mockResolvedValueOnce({ id: 5, permissions: [] })
+      .mockResolvedValueOnce({ id: 5 });
+    permissionRepo.findBy.mockResolvedValue(REQUESTED);
+
+    await service.grantPermissions(
+      5,
+      [1],
+      RoleKey.ADMIN,
+      ['product.read'],
+      TENANT,
+    );
+
+    expect(userRepo.save).toHaveBeenCalledWith({
+      id: 5,
+      permissions: REQUESTED,
+    });
+  });
+
+  it.each([RoleKey.STORE_OWNER, RoleKey.SUPER_ADMIN])(
+    'allows the %s bypass actor to grant a permission they do not own',
+    async (actorRoleKey) => {
+      const { service, userRepo, permissionRepo } = buildMocks();
+      userRepo.findOne
+        .mockResolvedValueOnce(TARGET)
+        .mockResolvedValueOnce({ id: 5, permissions: [] })
+        .mockResolvedValueOnce({ id: 5 });
+      permissionRepo.findBy.mockResolvedValue(REQUESTED);
+
+      await service.grantPermissions(5, [1], actorRoleKey, [], TENANT);
+
+      expect(userRepo.save).toHaveBeenCalledWith({
+        id: 5,
+        permissions: REQUESTED,
+      });
+    },
+  );
+
+  it('rejects when some requested permission ids do not exist', async () => {
+    const { service, userRepo, permissionRepo } = buildMocks();
+    userRepo.findOne.mockResolvedValueOnce(TARGET);
+    permissionRepo.findBy.mockResolvedValue(REQUESTED);
+
+    await expect(
+      service.grantPermissions(5, [1, 2], RoleKey.STORE_OWNER, [], TENANT),
+    ).rejects.toThrow(BadRequestException);
+    expect(userRepo.save).not.toHaveBeenCalled();
+  });
+});
+
+describe('UsersService.revokePermissions', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  const TARGET = { id: 5, role: { key: RoleKey.CUSTOMER } };
+
+  it('clears all direct grants when given an empty id list', async () => {
+    const { service, userRepo } = buildMocks();
+    const existing = permissionObjects(['product.read', 'order.read']);
+    userRepo.findOne
+      .mockResolvedValueOnce(TARGET)
+      .mockResolvedValueOnce({ id: 5, permissions: existing })
+      .mockResolvedValueOnce({ id: 5 });
+
+    await service.revokePermissions(5, [], RoleKey.STORE_OWNER, TENANT);
+
+    expect(userRepo.save).toHaveBeenCalledWith({ id: 5, permissions: [] });
+  });
+
+  it('removes only the requested permission ids', async () => {
+    const { service, userRepo } = buildMocks();
+    const [first, second] = permissionObjects(['product.read', 'order.read']);
+    userRepo.findOne
+      .mockResolvedValueOnce(TARGET)
+      .mockResolvedValueOnce({ id: 5, permissions: [first, second] })
+      .mockResolvedValueOnce({ id: 5 });
+
+    await service.revokePermissions(
+      5,
+      [second.id],
+      RoleKey.STORE_OWNER,
+      TENANT,
+    );
+
+    expect(userRepo.save).toHaveBeenCalledWith({
+      id: 5,
+      permissions: [first],
+    });
   });
 });

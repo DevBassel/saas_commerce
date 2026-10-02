@@ -136,6 +136,18 @@ describe('AddressesService', () => {
       );
       expect(addressRepo.save).not.toHaveBeenCalled();
     });
+
+    it('makes the first address the default even when isDefault is false', async () => {
+      const { service, addressRepo } = buildMocks();
+      addressRepo.count.mockResolvedValue(0);
+
+      await service.create(7, newAddress({ isDefault: false }), TENANT);
+
+      expect(addressRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ isDefault: true }),
+      );
+      expect(addressRepo.update).not.toHaveBeenCalled();
+    });
   });
 
   describe('findAll', () => {
@@ -150,6 +162,23 @@ describe('AddressesService', () => {
         order: { isDefault: 'DESC', createdAt: 'ASC', id: 'ASC' },
       });
     });
+
+    it('serializes addresses with null optional fields', async () => {
+      const { service, addressRepo } = buildMocks();
+      addressRepo.find.mockResolvedValue([
+        addressEntity({ line2: undefined, state: undefined, label: undefined }),
+      ]);
+
+      const [result] = await service.findAll(7, TENANT);
+
+      expect(result).toMatchObject({
+        id: 1,
+        userId: 7,
+        line2: null,
+        state: null,
+        label: null,
+      });
+    });
   });
 
   describe('findOne', () => {
@@ -162,6 +191,20 @@ describe('AddressesService', () => {
       );
       expect(addressRepo.findOne).toHaveBeenCalledWith({
         where: { id: 1, userId: 7 },
+      });
+    });
+
+    it('returns the serialized address for its owner', async () => {
+      const { service, addressRepo } = buildMocks();
+      addressRepo.findOne.mockResolvedValue(addressEntity());
+
+      const result = await service.findOne(7, 1, TENANT);
+
+      expect(result).toMatchObject({
+        id: 1,
+        userId: 7,
+        country: 'US',
+        isDefault: true,
       });
     });
   });
@@ -209,6 +252,35 @@ describe('AddressesService', () => {
         NotFoundException,
       );
       expect(addressRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('skips the update when the patch is empty', async () => {
+      const { service, addressRepo } = buildMocks();
+      addressRepo.findOne.mockResolvedValue(addressEntity());
+
+      const result = await service.update(7, 1, {}, TENANT);
+
+      expect(addressRepo.update).not.toHaveBeenCalled();
+      expect(result.id).toBe(1);
+    });
+
+    it('clears optional fields when null is supplied', async () => {
+      const { service, addressRepo } = buildMocks();
+      addressRepo.findOne.mockResolvedValue(
+        addressEntity({ line2: 'Apt 5', state: 'IL', label: 'Home' }),
+      );
+
+      await service.update(
+        7,
+        1,
+        { line2: null, state: null, label: null } as never,
+        TENANT,
+      );
+
+      expect(addressRepo.update).toHaveBeenCalledWith(
+        { id: 1, userId: 7 },
+        { line2: null, state: null, label: null },
+      );
     });
   });
 
@@ -294,6 +366,18 @@ describe('AddressesService', () => {
         NotFoundException,
       );
       expect(addressRepo.delete).not.toHaveBeenCalled();
+    });
+
+    it('does not promote when the removed default was the last address', async () => {
+      const { service, addressRepo } = buildMocks();
+      addressRepo.findOne
+        .mockResolvedValueOnce(addressEntity({ id: 1, isDefault: true }))
+        .mockResolvedValueOnce(null);
+
+      await service.remove(7, 1, TENANT);
+
+      expect(addressRepo.delete).toHaveBeenCalledWith({ id: 1, userId: 7 });
+      expect(addressRepo.update).not.toHaveBeenCalled();
     });
   });
 });

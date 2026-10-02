@@ -61,6 +61,15 @@ const lastClientOptions = (): ClientOptions => {
 
 const sendCall = <T>(index: number): T => mockSend.mock.calls[index][0] as T;
 
+const buildServiceWithR2 = (r2: IR2): R2Service => {
+  const config = {
+    get: (key: string) => (key === 'r2' ? r2 : undefined),
+    getOrThrow: (key: string) => (key === 'r2' ? r2 : filesConfig),
+  } as unknown as ConfigService<IENV>;
+  mockSend.mockReset();
+  return new R2Service(config);
+};
+
 describe('R2Service', () => {
   it('configures the S3Client with the R2 endpoint', () => {
     buildService();
@@ -161,5 +170,116 @@ describe('R2Service', () => {
     mockSend.mockRejectedValue(new Error('boom'));
 
     await expect(service.healthy()).resolves.toBe(false);
+  });
+
+  it('propagates an upload failure', async () => {
+    const service = buildService();
+    mockSend.mockRejectedValue(new Error('upload failed'));
+
+    await expect(
+      service.upload('k', Buffer.from('data'), 'image/png'),
+    ).rejects.toThrow('upload failed');
+  });
+
+  it('destroys the S3 client on module destroy', () => {
+    const service = buildService();
+    const instance = (S3Client as unknown as jest.Mock).mock.results.at(-1)
+      ?.value as { destroy: jest.Mock };
+
+    service.onModuleDestroy();
+
+    expect(instance.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not send a request when there is nothing to delete', async () => {
+    const service = buildService();
+
+    await service.deleteMany([]);
+
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  it('sends exactly one batch at the 50-key boundary', async () => {
+    const service = buildService();
+    mockSend.mockResolvedValue({});
+
+    const keys = Array.from({ length: 50 }, (_, i) => `k${i}`);
+    await service.deleteMany(keys);
+
+    expect(mockSend).toHaveBeenCalledTimes(1);
+    expect(
+      sendCall<DeleteObjectsCommand>(0).input.Delete?.Objects,
+    ).toHaveLength(50);
+  });
+
+  it('splits one key over the boundary into a second batch', async () => {
+    const service = buildService();
+    mockSend.mockResolvedValue({});
+
+    const keys = Array.from({ length: 51 }, (_, i) => `k${i}`);
+    await service.deleteMany(keys);
+
+    expect(mockSend).toHaveBeenCalledTimes(2);
+    expect(
+      sendCall<DeleteObjectsCommand>(0).input.Delete?.Objects,
+    ).toHaveLength(50);
+    expect(sendCall<DeleteObjectsCommand>(1).input.Delete?.Objects).toEqual([
+      { Key: 'k50' },
+    ]);
+  });
+
+  it('keeps a trailing slash in the configured public URL as-is', () => {
+    const service = buildServiceWithR2({
+      ...r2Config,
+      publicUrl: 'https://cdn.example.com/',
+    });
+
+    expect(service.publicUrl('a.png')).toBe('https://cdn.example.com//a.png');
+  });
+
+  it('falls back to bin when the extension has no safe characters', () => {
+    const service = buildService();
+
+    expect(service.buildObjectKey('t', 'products', 'photo.@@@')).toMatch(
+      /\.bin$/,
+    );
+  });
+
+  it('falls back to bin for a filename ending in a dot', () => {
+    const service = buildService();
+
+    expect(service.buildObjectKey('t', 'products', 'photo.')).toMatch(/\.bin$/);
+  });
+
+  it('truncates a long extension to ten safe characters', () => {
+    const service = buildService();
+
+    expect(
+      service.buildObjectKey('t', 'products', 'file.abcdefghijklmnop'),
+    ).toMatch(/\.abcdefghij$/);
+  });
+
+  it('sanitizes the folder segment too', () => {
+    const service = buildService();
+
+    const key = service.buildObjectKey('t', 'My Folder!', 'x.png');
+
+    expect(key.startsWith('tenants/t/my-folder-/')).toBe(true);
+  });
+
+  it('throws when the schema segment is empty after sanitization', () => {
+    const service = buildService();
+
+    expect(() => service.buildObjectKey('', 'products', 'x')).toThrow(
+      'Invalid object key segment',
+    );
+  });
+
+  it('throws when the folder segment is empty after sanitization', () => {
+    const service = buildService();
+
+    expect(() => service.buildObjectKey('t', '', 'x')).toThrow(
+      'Invalid object key segment',
+    );
   });
 });

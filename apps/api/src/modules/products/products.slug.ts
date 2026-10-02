@@ -1,10 +1,7 @@
+import { slugify } from '../../common/slug';
+
 export const slugifyProductName = (value: string): string =>
-  value
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 200);
+  slugify(value, 200);
 
 const sanitizeSeed = (seed: string): string =>
   seed
@@ -14,7 +11,7 @@ const sanitizeSeed = (seed: string): string =>
     .slice(0, 64);
 
 export const buildProductSlugBase = (name: string, seed: string): string => {
-  const base = slugifyProductName(name);
+  const base = slugify(name, 200);
   if (base) return base;
   const fallback = sanitizeSeed(seed);
   return fallback ? `product-${fallback}` : 'product';

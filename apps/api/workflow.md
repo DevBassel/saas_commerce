@@ -68,7 +68,9 @@ flowchart TD
     P5 -->|"yes"| P5E["403 You are not allowed to access this resource"]
     P5 -->|"no"| PSKIP
 
-    PSKIP --> V0{"ValidationPipe<br/>whitelist + forbidNonWhitelisted + transform"}
+    PSKIP --> TH0{"ThrottlerGuard<br/>global 20 req/min; register / login 5/min"}
+    TH0 -->|"rate exceeded"| THE["429 Too Many Requests"]
+    TH0 -->|"ok"| V0{"ValidationPipe<br/>whitelist + forbidNonWhitelisted + transform"}
     V0 -->|"invalid/unknown field"| V0E["400 Bad Request"]
     V0 -->|"valid"| CTRL["Controller handler"]
     CTRL --> REPO["TenantManagerService.getRepository<br/>(tenant DataSource, LRU-cached per schema)"]

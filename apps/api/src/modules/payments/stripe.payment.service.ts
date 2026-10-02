@@ -16,7 +16,9 @@ import {
   isRootDomainOrigin,
 } from 'src/common/config/cors.util';
 import { TenantRef } from '../tenants/tenant.utils';
-import { tenantRefFromContext, getTenantContext } from '../auth/tenant-context';
+import { getTenantContext, tenantRefFromContext } from '../auth/tenant-context';
+import { resolveTenantScope } from '../tenants/tenant-scope';
+import { toMinorUnit } from '../../common/money';
 import { RequestWithUser } from '../auth/interfaces/RequestWithUser.interface';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
 import { Tenant } from '../tenants/entities/tenant.entity';
@@ -48,8 +50,7 @@ export default class StripePaymentService {
   }
 
   async repos(tenant?: TenantRef) {
-    const target = tenant ?? tenantRefFromContext();
-    if (!target) throw new ForbiddenException('Tenant context is required');
+    const target = resolveTenantScope(tenant);
     const [paymentRepo, orderRepo] = await Promise.all([
       this.tenantManager.getRepository(Payment, target),
       this.tenantManager.getRepository(Order, target),
@@ -82,7 +83,7 @@ export default class StripePaymentService {
     if (!stripeAccountId)
       throw new ConflictException('Store is not connected to Stripe');
 
-    const amount = Math.round(order.total * 100);
+    const amount = toMinorUnit(order.total);
     const { applicationFeeBps } = this.config.getOrThrow<IStripe>('stripe');
     const applicationFeeAmount = Math.round(
       (amount * applicationFeeBps) / 10000,
@@ -121,7 +122,7 @@ export default class StripePaymentService {
       paymentRepo.save({
         order,
         amount: order.total,
-        currency: 'usd',
+        currency: tenant.currency,
         provider: PaymentsProviders.STRIPE,
         status: PaymentStatus.PENDING,
         paymentRef: payment.id,

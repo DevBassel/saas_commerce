@@ -15,12 +15,14 @@ flowchart TD
     subgraph TG["TenantGuard — APP_GUARD 1"]
         T0{"@Platform() route<br/>or non-API path?"} -->|"yes"| TSKIP["pass"]
         T0 -->|"no"| T1{"req.tenant or<br/>resolveFromRequest() ?"}
-        T1 -->|"tenant found"| T2["request.tenant = tenant"]
+        T1 -->|"tenant found"| T2{"tenant.status ACTIVE?"}
+        T2 -->|"INACTIVE"| T2E["403 Tenant is inactive or suspended.<br/>Please contact the administrator."]
+        T2 -->|"ACTIVE"| T2B["request.tenant = tenant"]
         T1 -->|"no identifier in request"| T3E["400 Tenant not resolvable<br/>(missing x-tenant-id / x-tenant-slug / subdomain)"]
         T1 -->|"identifier sent, lookup failed"| T3N["404 Tenant not found"]
     end
 
-    T2 --> J0
+    T2B --> J0
     TSKIP --> J0
 
     subgraph JG["JwtGuard — APP_GUARD 2"]
@@ -86,7 +88,7 @@ flowchart TD
 
     subgraph RS["POST /auth/register-store — @Public @Platform"]
         S0["ValidationPipe: RegisterStoreDto<br/>storeName, storeSlug (slug format), subdomain? + user fields"] --> S1["TenantService.create<br/>schemaName = tenant_ + slug, subdomain defaults to slug"]
-        S1 --> S2["TenantProvisionerService.provision<br/>CREATE SCHEMA IF NOT EXISTS<br/>seedRbac: STORE_OWNER, ADMIN, MANAGER, EMPLOYEE, CUSTOMER"]
+        S1 --> S2["TenantProvisionerService.provision<br/>CREATE SCHEMA IF NOT EXISTS<br/>seedRbac tenant roles: STORE_OWNER, ADMIN, CUSTOMER<br/>+ seedCategories (8 base categories)"]
         S2 --> S3["UsersService.create owner<br/>role = STORE_OWNER, bcrypt hash"]
         S3 --> S4["TenantService.setOwnerUserId"]
         S4 --> CRED
@@ -114,7 +116,13 @@ flowchart TD
         F1{"jwt.verifyAsync<br/>refresh secret + issuer + audience"} -->|"fails"| F1E["401 Invalid refresh token"]
         F1 -->|"valid"| F2{"type == refresh ?"}
         F2 -->|"no"| F2E["401 token not valid"]
-        F2 -->|"yes"| F3{"user by token id<br/>in token tenant schema, or public"}
+        F2 -->|"yes"| F2B{"token carries tenant claims?"}
+        F2B -->|"yes"| F2C{"tenant registry by schemaName<br/>exists and id matches?"}
+        F2C -->|"no"| F2E2["401 Invalid refresh token"]
+        F2C -->|"yes"| F2D{"tenant status INACTIVE?"}
+        F2D -->|"yes"| F2E3["403 Tenant is inactive or suspended"]
+        F2D -->|"no"| F3
+        F2B -->|"no (platform)"| F3{"user by token id<br/>in token tenant schema, or public"}
         F3 -->|"none"| F3E["404 Not Found"]
         F3 -->|"found"| F4{"payload.jti == user.jti ?"}
         F4 -->|"no"| F4E["401 Token revoked"]
@@ -122,9 +130,20 @@ flowchart TD
     end
 
     subgraph CR["returnUserCredential (AuthService)"]
-        CRED["jti = randomUUID()"] --> C1["UsersService.updateSession(id, jti)"]
-        C1 --> C2["sign access_token<br/>type=access, id, role, tenantId, tenantSchema"]
+        CRED["jti = randomUUID()"] --> C2["sign access_token<br/>type=access, id, role, tenantId, tenantSchema"]
         C2 --> C3["sign refresh_token<br/>type=refresh, jti + same claims"]
-        C3 --> OUT["{ access_token, refresh_token }"]
+        C3 --> C4{"tenant context?"}
+        C4 -->|"tenant"| C1["UsersService.updateSession(id, jti)"]
+        C4 -->|"platform"| C1P["UsersService.updateSessionPublic(id, jti)"]
+        C1 --> OUT["{ id, access_token, refresh_token }"]
+        C1P --> OUT
+    end
+
+    subgraph LO["Logout"]
+        LO1["POST /auth/logout"] --> LO2["AuthService.logout(userId, tenant)<br/>UsersService.updateSession(id, null)"]
+        LO3["POST /auth/logout/platform"] --> LO4["AuthService.logout(userId)<br/>UsersService.updateSessionPublic(id, null)"]
     end
 ```
+
+`POST /auth/register`, `POST /auth/register-store`, and `POST /auth/login/platform` are throttled to 5 requests/min; the rest of the API is 20 requests/min.
+

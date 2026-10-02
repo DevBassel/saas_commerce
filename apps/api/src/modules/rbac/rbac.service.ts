@@ -1,6 +1,5 @@
 import {
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -14,8 +13,8 @@ import { UpdateRoleDto } from './dto/update-role.dto';
 import { CreatePermissionDto } from './dto/create-permission.dto';
 import { UpdatePermissionDto } from './dto/update-permission.dto';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
-import { tenantRefFromContext } from '../auth/tenant-context';
 import { TenantRef } from '../tenants/tenant.utils';
+import { resolveTenantScope } from '../tenants/tenant-scope';
 
 const SYSTEM_ROLES: RoleKey[] = [
   RoleKey.SUPER_ADMIN,
@@ -29,11 +28,7 @@ export class RbacService {
   constructor(private readonly tenantManager: TenantManagerService) {}
 
   private resolveTenant(tenant?: TenantRef): TenantRef {
-    const target = tenant ?? tenantRefFromContext();
-    if (!target) {
-      throw new ForbiddenException('Tenant context is required');
-    }
-    return target;
+    return resolveTenantScope(tenant);
   }
 
   private async repos(tenant?: TenantRef): Promise<{

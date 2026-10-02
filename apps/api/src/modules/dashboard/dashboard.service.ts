@@ -1,8 +1,9 @@
-import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
 import { TenantService } from '../tenants/tenant.service';
-import { tenantRefFromContext } from '../auth/tenant-context';
 import { TenantRef } from '../tenants/tenant.utils';
+import { resolveTenantScope } from '../tenants/tenant-scope';
+import { round2, toMajorUnit } from '../../common/money';
 import { RoleKey } from '../../common/constants/RoleKey.enum';
 import { User } from '../users/entities/user.entity';
 import { Order } from '../orders/entities/order.entity';
@@ -10,11 +11,11 @@ import { OrderStatus } from '../orders/constants/order-status.enum';
 import StripePaymentService from '../payments/stripe.payment.service';
 import { DashboardStats } from './constants/dashboard.interface';
 
-const round2 = (value: number): number => Math.round(value * 100) / 100;
-
 // Stripe balance amounts are in the smallest currency unit (cents).
 const sumCents = (entries: { amount: number }[]): number =>
-  round2(entries.reduce((total, entry) => total + entry.amount, 0) / 100);
+  round2(
+    toMajorUnit(entries.reduce((total, entry) => total + entry.amount, 0)),
+  );
 
 @Injectable()
 export class DashboardService {
@@ -27,9 +28,7 @@ export class DashboardService {
   ) {}
 
   private resolveTenant(tenant?: TenantRef): TenantRef {
-    const target = tenant ?? tenantRefFromContext();
-    if (!target) throw new ForbiddenException('Tenant context required');
-    return target;
+    return resolveTenantScope(tenant);
   }
 
   /**

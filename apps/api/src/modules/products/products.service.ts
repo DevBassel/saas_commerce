@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
   PayloadTooLargeException,
@@ -13,8 +12,8 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
 import { TenantService } from '../tenants/tenant.service';
-import { tenantRefFromContext } from '../auth/tenant-context';
 import { TenantRef } from '../tenants/tenant.utils';
+import { resolveTenantScope } from '../tenants/tenant-scope';
 import { R2Service } from '../../common/storage/r2.service';
 import { IENV, IFiles } from '../../common/config/env.interface';
 import { SerializedProduct } from './constants/products.interface';
@@ -36,9 +35,7 @@ export class ProductsService {
   ) {}
 
   private resolveTenant(tenant?: TenantRef): TenantRef {
-    const target = tenant ?? tenantRefFromContext();
-    if (!target) throw new ForbiddenException('Tenant context required');
-    return target;
+    return resolveTenantScope(tenant);
   }
 
   private async repos(tenant?: TenantRef): Promise<{

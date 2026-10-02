@@ -15,29 +15,34 @@ flowchart TD
     BYSUB -->|"not found"| UNDEF
     BYSUB -->|"found"| TEN
     SUB -->|"absent"| UNDEF
-    TEN --> OUT["TenantMiddleware: req.tenant + tenantStorage context<br/>TenantGuard: request.tenant (or 400 / 404)"]
+    TEN --> OUT["TenantMiddleware: req.tenant + tenantStorage context<br/>TenantGuard: 400 missing identifier / 404 unresolved /<br/>403 INACTIVE, else request.tenant"]
 ```
+
+Resolution order is `x-tenant-id` → `x-tenant-slug` → subdomain (`resolveSubdomain`: host stripped of port and `APP_ROOT_DOMAIN`). The `Host` path is what lets tenant dashboards (`my-store.localhost:5174`) and the storefront (`my-store.localhost:3000`) resolve without headers.
+
+---
 
 ```mermaid
 flowchart TD
-    REG["AuthService.registerStore"] --> TC["TenantService.create<br/>name, slug, subdomain = slug<br/>schemaName = buildSchemaName(slug) = tenant_slug"]
-    TC --> PROV["TenantProvisionerService.provision"]
+    REG["AuthService.registerStore"] --> TC["TenantService.create<br/>name, slug, subdomain = slug<br/>schemaName = buildSchemaName(slug) = tenant_slug<br/>storageCapacityBytes = TENANT_STORAGE_CAPACITY_BYTES"]
+    TC --> TC1{"schemaName already exists?"} -->|"yes"| TC1E["409 Schema name already exists"]
+    TC1 -->|"no"| TC2{"schemaName.length >= 63?"} -->|"yes"| TC2W["warn: truncated slugs can collide"]
+    TC2 --> PROV["TenantProvisionerService.provision"]
+    TC2W --> PROV
     PROV --> SAN["sanitizeSchemaName<br/>lowercase, a-z 0-9 underscore, max 63 chars"]
     SAN --> DDL["CREATE SCHEMA IF NOT EXISTS<br/>via public DataSource"]
     DDL --> GDS["TenantManagerService.getDataSource"]
-    GDS --> SEED["seedRbac then seedCategories on tenant DataSource<br/>TENANT_ROLE_KEYS: STORE_OWNER, ADMIN,<br/>MANAGER, EMPLOYEE, CUSTOMER + permissions,<br/>8 base product categories"]
+    GDS --> SEED["seedRbac then seedCategories on tenant DataSource<br/>TENANT_ROLE_KEYS: STORE_OWNER, ADMIN, CUSTOMER + permissions,<br/>8 base product categories"]
     SEED --> DONE["log: Provisioned tenant slug (schema)"]
 
-    subgraph MGR["TenantManagerService — per-schema DataSource cache"]
-        GA["getDataSource(schemaName)"] --> CH{"cached DataSource?"}
+    subgraph MGR["TenantManagerService — per-schema DataSource cache (cap 100, LRU)"]
+        GA["getDataSource(tenant)"] --> CH{"cached DataSource?"}
         CH -->|"yes"| REFRESH["LRU refresh (re-insert)<br/>and return it"]
         CH -->|"no"| INF{"in-flight promise<br/>for same schema?"}
         INF -->|"yes"| WAIT["await and return the same promise"]
-        INF -->|"no"| NEW["new DataSource<br/>schema override, TENANT_ENTITIES,<br/>synchronize = true, TENANT_POOL_SIZE"]
-        NEW --> INIT["initialize() and cache.set"]
-        INIT --> EVICT{"cache size > 100 ?"}
-        EVICT -->|"yes"| EVD["evict and destroy oldest DataSource"]
-        EVICT -->|"no"| RET["return DataSource"]
+        INF -->|"no"| NEW["new DataSource<br/>schema override, TENANT_ENTITIES,<br/>synchronize = DB_SYNCHRONIZE AND<br/>(NODE_ENV != production OR DB_SYNCHRONIZE_TENANTS),<br/>poolSize = TENANT_POOL_SIZE"]
+        NEW --> INIT["initialize(); if cache >= cap,<br/>destroy oldest entry; cache.set"]
+        INIT --> RET["return DataSource"]
         REL["release(tenant) — drop from cache<br/>and destroy the DataSource"]
         DEST["onModuleDestroy — destroy<br/>all cached DataSources"]
     end
@@ -46,16 +51,30 @@ flowchart TD
     RET --> SEED
 ```
 
+---
+
 ```mermaid
 flowchart TD
-    LIST["TenantService.findAll"] --> L1["tenants ordered by createdAt DESC"]
-    GETID["TenantService.findById"] --> G1{"tenant exists?"}
-    G1 -->|"no"| G1E["404 Tenant not found"]
-    G1 -->|"yes"| G2["return tenant"]
-    GETOWN["TenantService.findByIdWithOwner"] --> G1
-    G2 --> OW1{"ownerUserId set?"}
-    OW1 -->|"yes"| OW2["TenantManagerService.getRepository(User, tenant)<br/>load owner with role + permissions<br/>(only id, email, name exposed)"]
-    OW1 -->|"no"| OW3["owner = null"]
-    OW2 --> OUT["tenant + owner"]
-    OW3 --> OUT
+    subgraph READS["TenantService reads"]
+        LIST["findAll — tenants ordered by createdAt DESC"]
+        GETID["findById — 404 Tenant not found when missing"]
+        GETOWN["findByIdWithOwner — tenant + owner<br/>(owner role + permissions, selected fields)"]
+        LOOKUP["findBySlug / findBySchemaName / findBySubdomain /<br/>findByStripeAccountId"]
+        SIZES["getSchemaSizes(schemas)<br/>SUM(pg_total_relation_size) per pg_namespace"]
+    end
+
+    subgraph WRITES["TenantService writes"]
+        CREATE["create(dto) — schemaName uniqueness + capacity from env"]
+        OWNER["setOwnerUserId(id, ownerUserId)"]
+        TOGGLE["toggleActiveTenant(id)"]
+        TOGGLE --> T1{"status ACTIVE?"}
+        T1 -->|"yes"| T2["status = INACTIVE + TenantManager.release(tenant)"]
+        T1 -->|"no"| T3["status = ACTIVE"]
+        CURRENCY["updateCurrency(id, currency)"]
+        CONTROLS["updatePaymentControls(id, { paymentsPaused,<br/>payoutsPaused, stripePayoutsInterval })"]
+        STRIPE["updateStripeAccountState(id, { stripeAccountId,<br/>stripeChargesEnabled, stripePayoutsEnabled, stripeDetailsSubmitted })"]
+        STORAGE["adjustStorageUsedBytes(schemaName, deltaBytes)<br/>transaction + pessimistic_write on tenant:<br/>clamp below 0 to 0, > capacity -> 400 Storage capacity exceeded"]
+    end
 ```
+
+`storageCapacityBytes` is set at tenant creation from `TENANT_STORAGE_CAPACITY_BYTES`; `storageUsedBytes` is then maintained incrementally by `adjustStorageUsedBytes` on every product image upload/delete (never recomputed from `pg_total_relation_size` in normal operation).

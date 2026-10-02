@@ -491,4 +491,257 @@ describe('ProductsService', () => {
     expect(imageRepo.update).toHaveBeenCalledWith({ id: 5 }, { position: 1 });
     expect(result.images.map((image) => image.id)).toEqual([6, 5]);
   });
+
+  it('dedupes the product slug on create with a numeric suffix', async () => {
+    const { service, productRepo } = buildMocks();
+    productRepo.findOneBy.mockImplementation(
+      (where: Record<string, unknown>) => {
+        if ('sku' in where) return Promise.resolve(null);
+        if (where.slug === 'shirt') return Promise.resolve({ id: 9 });
+        return Promise.resolve(null);
+      },
+    );
+    productRepo.create.mockImplementation(
+      (data: Record<string, unknown>) => data,
+    );
+    productRepo.save.mockImplementation((data: Record<string, unknown>) => ({
+      id: 1,
+      ...data,
+    }));
+
+    const result = await service.create(
+      { name: 'Shirt', sku: 'SHIRT-1', price: 9.99 },
+      TENANT,
+    );
+
+    expect(result.slug).toBe('shirt-2');
+  });
+
+  it('falls back to a seeded slug when the name has no alphanumerics', async () => {
+    const { service, productRepo } = buildMocks();
+    productRepo.findOneBy.mockResolvedValue(null);
+    productRepo.create.mockImplementation(
+      (data: Record<string, unknown>) => data,
+    );
+    productRepo.save.mockImplementation((data: Record<string, unknown>) => ({
+      id: 1,
+      ...data,
+    }));
+
+    const result = await service.create(
+      { name: '!!!', sku: 'SKU-9', price: 1 },
+      TENANT,
+    );
+
+    expect(result.slug).toBe('product-sku-9');
+  });
+
+  it('throws 404 when updating a missing product', async () => {
+    const { service, productRepo } = buildMocks();
+    productRepo.findOneBy.mockResolvedValue(null);
+
+    await expect(service.update(1, { name: 'X' }, TENANT)).rejects.toThrow(
+      NotFoundException,
+    );
+    expect(productRepo.update).not.toHaveBeenCalled();
+  });
+
+  it('backfills a slug when the stored product has none', async () => {
+    const { service, productRepo } = buildMocks();
+    productRepo.findOneBy
+      .mockResolvedValueOnce({ id: 1, name: 'Shirt', sku: 'S', slug: null })
+      .mockResolvedValueOnce(null);
+    productRepo.update.mockResolvedValue(undefined);
+    productRepo.findOne.mockResolvedValue({
+      id: 1,
+      name: 'Shirt',
+      slug: 'shirt',
+      images: [],
+    });
+
+    await service.update(1, { price: 5 }, TENANT);
+
+    expect(productRepo.update).toHaveBeenCalledWith(
+      { id: 1 },
+      expect.objectContaining({ slug: 'shirt' }),
+    );
+  });
+
+  it('re-slugifies when the name changes and the base slug is free', async () => {
+    const { service, productRepo } = buildMocks();
+    productRepo.findOneBy
+      .mockResolvedValueOnce({ id: 1, name: 'Old', sku: 'S', slug: 'old' })
+      .mockResolvedValueOnce(null);
+    productRepo.update.mockResolvedValue(undefined);
+    productRepo.findOne.mockResolvedValue({
+      id: 1,
+      name: 'New',
+      slug: 'new',
+      images: [],
+    });
+
+    await service.update(1, { name: 'New' }, TENANT);
+
+    expect(productRepo.update).toHaveBeenCalledWith(
+      { id: 1 },
+      expect.objectContaining({ slug: 'new' }),
+    );
+  });
+
+  it('keeps the base slug when it is owned by the same product', async () => {
+    const { service, productRepo } = buildMocks();
+    productRepo.findOneBy
+      .mockResolvedValueOnce({ id: 1, name: 'Old', sku: 'S', slug: 'new' })
+      .mockResolvedValueOnce({ id: 1 });
+    productRepo.update.mockResolvedValue(undefined);
+    productRepo.findOne.mockResolvedValue({
+      id: 1,
+      name: 'New',
+      slug: 'new',
+      images: [],
+    });
+
+    await service.update(1, { name: 'New' }, TENANT);
+
+    expect(productRepo.update).toHaveBeenCalledWith(
+      { id: 1 },
+      expect.objectContaining({ slug: 'new' }),
+    );
+  });
+
+  it('leaves the slug untouched when the new base is owned by another product', async () => {
+    const { service, productRepo } = buildMocks();
+    productRepo.findOneBy
+      .mockResolvedValueOnce({ id: 1, name: 'Old', sku: 'S', slug: 'old' })
+      .mockResolvedValueOnce({ id: 2 });
+    productRepo.update.mockResolvedValue(undefined);
+    productRepo.findOne.mockResolvedValue({
+      id: 1,
+      name: 'Taken',
+      slug: 'old',
+      images: [],
+    });
+
+    await service.update(1, { name: 'Taken' }, TENANT);
+
+    expect(productRepo.update).toHaveBeenCalledWith(
+      { id: 1 },
+      { name: 'Taken' },
+    );
+  });
+
+  it('rolls back every uploaded object when persisting image rows fails', async () => {
+    const { service, productRepo, imageRepo, r2Mocks } = buildMocks();
+    productRepo.findOneBy.mockResolvedValue({ id: 1 });
+    imageRepo.count.mockResolvedValue(0);
+    imageRepo.maximum.mockResolvedValue(0);
+    r2Mocks.upload.mockImplementation((key: string) =>
+      Promise.resolve({ key, sizeBytes: 4 }),
+    );
+    r2Mocks.deleteMany.mockResolvedValue(undefined);
+    imageRepo.create.mockImplementation(
+      (data: Record<string, unknown>) => data,
+    );
+    const failure = new Error('db down');
+    imageRepo.save.mockRejectedValue(failure);
+
+    await expect(
+      service.uploadImages(
+        1,
+        [file({ originalname: 'a.png' }), file({ originalname: 'b.png' })],
+        TENANT,
+      ),
+    ).rejects.toBe(failure);
+
+    expect(r2Mocks.deleteMany).toHaveBeenCalledWith([
+      'tenants/tenant_test/products/a.png',
+      'tenants/tenant_test/products/b.png',
+    ]);
+    expect(imageRepo.delete).not.toHaveBeenCalled();
+  });
+
+  it('removes saved image rows when quota accounting fails after upload', async () => {
+    const { service, productRepo, imageRepo, tenantService, r2Mocks } =
+      buildMocks();
+    productRepo.findOneBy.mockResolvedValue({ id: 1 });
+    imageRepo.count.mockResolvedValue(0);
+    imageRepo.maximum.mockResolvedValue(0);
+    r2Mocks.upload.mockImplementation((key: string) =>
+      Promise.resolve({ key, sizeBytes: 4 }),
+    );
+    r2Mocks.deleteMany.mockResolvedValue(undefined);
+    imageRepo.create.mockImplementation(
+      (data: Record<string, unknown>) => data,
+    );
+    imageRepo.save.mockResolvedValue([{ id: 11 }, { id: 12 }]);
+    imageRepo.delete.mockResolvedValue(undefined);
+    tenantService.adjustStorageUsedBytes.mockRejectedValue(new Error('quota'));
+
+    await expect(
+      service.uploadImages(
+        1,
+        [file({ originalname: 'a.png' }), file({ originalname: 'b.png' })],
+        TENANT,
+      ),
+    ).rejects.toThrow('quota');
+
+    expect(r2Mocks.deleteMany).toHaveBeenCalledWith([
+      'tenants/tenant_test/products/a.png',
+      'tenants/tenant_test/products/b.png',
+    ]);
+    expect(imageRepo.delete).toHaveBeenCalled();
+  });
+
+  it('serializes the category and sorts images by position', async () => {
+    const { service, productRepo } = buildMocks();
+    productRepo.findOne.mockResolvedValue({
+      id: 1,
+      name: 'Shirt',
+      slug: 'shirt',
+      category: {
+        id: 3,
+        name: 'Tops',
+        slug: 'tops',
+        description: null,
+        isActive: true,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+      },
+      images: [
+        {
+          id: 5,
+          objectKey: 'k2',
+          mimeType: 'image/png',
+          sizeBytes: 4,
+          position: 2,
+        },
+        {
+          id: 6,
+          objectKey: 'k1',
+          mimeType: 'image/png',
+          sizeBytes: 5,
+          position: 1,
+        },
+      ],
+    });
+
+    const result = await service.findOne(1, TENANT);
+
+    expect(result.category).toMatchObject({
+      id: 3,
+      name: 'Tops',
+      slug: 'tops',
+    });
+    expect(result.images.map((image) => image.id)).toEqual([6, 5]);
+  });
+
+  it('serializes a missing category as null and defaults images to empty', async () => {
+    const { service, productRepo } = buildMocks();
+    productRepo.findOne.mockResolvedValue({ id: 1, name: 'Shirt' });
+
+    const result = await service.findOne(1, TENANT);
+
+    expect(result.category).toBeNull();
+    expect(result.images).toEqual([]);
+  });
 });

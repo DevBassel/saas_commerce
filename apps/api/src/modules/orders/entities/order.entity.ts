@@ -13,6 +13,7 @@ import {
 import { User } from 'src/modules/users/entities/user.entity';
 import { PaymentStatus } from 'src/modules/payments/constants/payment-status.enum';
 import { Address } from 'src/modules/addresses/entities/address.entity';
+import { moneyColumn } from 'src/common/db/money-column';
 import { OrderStatus } from '../constants/order-status.enum';
 import { OrderItem } from './order-item.entity';
 
@@ -39,28 +40,10 @@ export class Order extends BaseEntity {
   @Column({ type: 'enum', enum: PaymentStatus, default: PaymentStatus.UNPAID })
   paymentStatus: PaymentStatus;
 
-  @Column({
-    type: 'numeric',
-    precision: 10,
-    scale: 2,
-    transformer: {
-      from: (value: string | null): number | null =>
-        value === null ? null : Number(value),
-      to: (value: number | null): number | null => value,
-    },
-  })
+  @Column(moneyColumn)
   subtotal: number;
 
-  @Column({
-    type: 'numeric',
-    precision: 10,
-    scale: 2,
-    transformer: {
-      from: (value: string | null): number | null =>
-        value === null ? null : Number(value),
-      to: (value: number | null): number | null => value,
-    },
-  })
+  @Column(moneyColumn)
   total: number;
 
   @Column({ type: 'timestamp', nullable: true })

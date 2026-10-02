@@ -1,23 +1,19 @@
-import {
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { TenantRef } from '../tenants/tenant.utils';
-import { tenantRefFromContext } from '../auth/tenant-context';
+import { resolveTenantScope } from '../tenants/tenant-scope';
 import { Payment } from './entities/payment.entity';
 import { Order } from '../orders/entities/order.entity';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
 import { PaymentStatus } from './constants/payment-status.enum';
 import { paymentMetaData } from './constants/payment-metadata';
+import { toMajorUnit } from '../../common/money';
 
 @Injectable()
 export default class PaymentService {
   constructor(private readonly tenantManager: TenantManagerService) {}
 
   async repos(tenant?: TenantRef) {
-    const target = tenant ?? tenantRefFromContext();
-    if (!target) throw new ForbiddenException('Tenant context is required');
+    const target = resolveTenantScope(tenant);
     const [paymentRepo, orderRepo] = await Promise.all([
       this.tenantManager.getRepository(Payment, target),
       this.tenantManager.getRepository(Order, target),
@@ -106,7 +102,7 @@ export default class PaymentService {
     // smallest currency unit). Deriving the status from it makes successful,
     // partial and reversed (failed/canceled) refunds converge on the same
     // state, idempotently.
-    const refundedAmount = refund.amountRefunded / 100;
+    const refundedAmount = toMajorUnit(refund.amountRefunded);
     const total = Number(payment.amount);
     const status =
       refundedAmount <= 0

@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -9,17 +8,10 @@ import { Category } from './entities/category.entity';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
-import { tenantRefFromContext } from '../auth/tenant-context';
 import { TenantRef } from '../tenants/tenant.utils';
+import { resolveTenantScope } from '../tenants/tenant-scope';
+import { slugify } from '../../common/slug';
 import { SerializedCategory } from './constants/categories.interface';
-
-const slugify = (value: string): string =>
-  value
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 255);
 
 export const serializeCategory = (category: Category): SerializedCategory => ({
   id: category.id,
@@ -36,9 +28,7 @@ export class CategoriesService {
   constructor(private readonly tenantManager: TenantManagerService) {}
 
   private resolveTenant(tenant?: TenantRef): TenantRef {
-    const target = tenant ?? tenantRefFromContext();
-    if (!target) throw new ForbiddenException('Tenant context required');
-    return target;
+    return resolveTenantScope(tenant);
   }
 
   private repo(tenant?: TenantRef): Promise<Repository<Category>> {
@@ -51,7 +41,7 @@ export class CategoriesService {
   async create(dto: CreateCategoryDto, tenant?: TenantRef) {
     const categoryRepo = await this.repo(tenant);
 
-    const slug = dto.slug ?? slugify(dto.name);
+    const slug = dto.slug ?? slugify(dto.name, 255);
     if (!slug) {
       throw new BadRequestException(
         'name must contain alphanumeric characters',

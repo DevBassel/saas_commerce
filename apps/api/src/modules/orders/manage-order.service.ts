@@ -1,13 +1,12 @@
 import {
   BadRequestException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { EntityManager, Repository } from 'typeorm';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
-import { tenantRefFromContext } from '../auth/tenant-context';
 import { TenantRef } from '../tenants/tenant.utils';
+import { resolveTenantScope } from '../tenants/tenant-scope';
 import { R2Service } from '../../common/storage/r2.service';
 import { PaymentStatus } from '../payments/constants/payment-status.enum';
 import StripePaymentService from '../payments/stripe.payment.service';
@@ -41,9 +40,7 @@ export class ManageOrderService {
   ) {}
 
   private resolveTenant(tenant?: TenantRef): TenantRef {
-    const target = tenant ?? tenantRefFromContext();
-    if (!target) throw new ForbiddenException('Tenant context required');
-    return target;
+    return resolveTenantScope(tenant);
   }
 
   private async repos(tenant?: TenantRef): Promise<{

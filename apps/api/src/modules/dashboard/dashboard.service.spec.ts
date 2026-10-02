@@ -207,4 +207,74 @@ describe('DashboardService', () => {
 
     expect(stats.totalOrders).toBe(0);
   });
+
+  it('degrades gracefully when Stripe rejects with a non-Error', async () => {
+    const { service, orderRepo, userQb, getBalance } = buildMocks();
+    orderRepo.count.mockResolvedValue(0);
+    userQb.getCount.mockResolvedValue(0);
+    getBalance.mockRejectedValue('stripe exploded');
+
+    const stats = await service.getStats(TENANT);
+
+    expect(stats.totalPaid).toBe(0);
+    expect(stats.waitingAmount).toBe(0);
+  });
+
+  it('returns zero money when the balance payload has no entry arrays', async () => {
+    const { service, orderRepo, userQb, getBalance } = buildMocks();
+    orderRepo.count.mockResolvedValue(0);
+    userQb.getCount.mockResolvedValue(0);
+    getBalance.mockResolvedValue({ available: undefined, pending: [] });
+
+    const stats = await service.getStats(TENANT);
+
+    expect(stats.totalPaid).toBe(0);
+    expect(stats.waitingAmount).toBe(0);
+  });
+
+  it('returns zero money when both balance lists are empty', async () => {
+    const { service, orderRepo, userQb, getBalance } = buildMocks();
+    orderRepo.count.mockResolvedValue(0);
+    userQb.getCount.mockResolvedValue(0);
+    getBalance.mockResolvedValue({ available: [], pending: [] });
+
+    const stats = await service.getStats(TENANT);
+
+    expect(stats.totalPaid).toBe(0);
+    expect(stats.waitingAmount).toBe(0);
+  });
+
+  it('sums multiple pending entries as well as available ones', async () => {
+    const { service, orderRepo, userQb, getBalance } = buildMocks();
+    orderRepo.count.mockResolvedValue(0);
+    userQb.getCount.mockResolvedValue(0);
+    getBalance.mockResolvedValue({
+      available: [{ amount: 500, currency: 'usd' }],
+      pending: [
+        { amount: 250, currency: 'usd' },
+        { amount: 2500, currency: 'usd' },
+      ],
+    });
+
+    const stats = await service.getStats(TENANT);
+
+    expect(stats.totalPaid).toBe(5);
+    expect(stats.waitingAmount).toBe(27.5);
+  });
+
+  it('coerces null storage counters to zero', async () => {
+    const { service, findBySchemaName, orderRepo, userQb } = buildMocks();
+    findBySchemaName.mockResolvedValue({
+      stripeAccountId: null,
+      storageUsedBytes: null,
+      storageCapacityBytes: null,
+    });
+    orderRepo.count.mockResolvedValue(0);
+    userQb.getCount.mockResolvedValue(0);
+
+    const stats = await service.getStats(TENANT);
+
+    expect(stats.storageUsedBytes).toBe(0);
+    expect(stats.storageCapacityBytes).toBe(0);
+  });
 });

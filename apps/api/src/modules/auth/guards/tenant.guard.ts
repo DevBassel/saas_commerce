@@ -2,7 +2,6 @@ import {
   BadRequestException,
   CanActivate,
   ExecutionContext,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -10,7 +9,7 @@ import { Reflector } from '@nestjs/core';
 import { RequestWithUser } from '../interfaces/RequestWithUser.interface';
 import { IS_PLATFORM } from '../decorators/isPlatform.decorator';
 import { TenantResolutionService } from 'src/modules/tenants/services/tenant-resolution.service';
-import { TenantStatus } from 'src/modules/tenants/enums/tenantStatus.enum';
+import { assertTenantActive } from 'src/modules/tenants/tenant-policy';
 
 @Injectable()
 export class TenantGuard implements CanActivate {
@@ -43,10 +42,7 @@ export class TenantGuard implements CanActivate {
       throw new NotFoundException('Tenant not found');
     }
 
-    if (tenant.status === TenantStatus.INACTIVE)
-      throw new ForbiddenException(
-        'Tenant is inactive or suspended. Please contact the administrator.',
-      );
+    assertTenantActive(tenant);
 
     request.tenant = tenant;
     return true;

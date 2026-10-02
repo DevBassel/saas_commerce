@@ -12,6 +12,7 @@ import {
 } from 'typeorm';
 import { ProductImage } from './product-image.entity';
 import { Category } from '../../categories/entities/category.entity';
+import { moneyColumn } from '../../../common/db/money-column';
 
 @Entity('products')
 export class Product extends BaseEntity {
@@ -32,16 +33,7 @@ export class Product extends BaseEntity {
   @Column({ type: 'text', nullable: true })
   description?: string | null;
 
-  @Column({
-    type: 'numeric',
-    precision: 10,
-    scale: 2,
-    transformer: {
-      from: (value: string | null): number | null =>
-        value === null ? null : Number(value),
-      to: (value: number | null): number | null => value,
-    },
-  })
+  @Column(moneyColumn)
   price: number;
 
   @Column({ type: 'int', default: 0 })

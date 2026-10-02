@@ -16,8 +16,8 @@ import { mergePermissions } from '../rbac/permission.utils';
 import { SEED_ROLE_PERMISSIONS } from '../rbac/constants/seed-data';
 import { RoleKey, ROLE_RANK } from '../../common/constants/RoleKey.enum';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
-import { tenantRefFromContext } from '../auth/tenant-context';
 import { TenantRef } from '../tenants/tenant.utils';
+import { resolveTenantScope } from '../tenants/tenant-scope';
 import { IENV } from '../../common/config/env.interface';
 import bcrypt from 'bcrypt';
 
@@ -57,9 +57,7 @@ export class UsersService {
     roleRepo: Repository<Role>;
     permissionRepo: Repository<Permission>;
   }> {
-    const target = tenant ?? tenantRefFromContext();
-
-    if (!target) throw new ForbiddenException('Tenant context is required');
+    const target = resolveTenantScope(tenant);
 
     const [userRepo, roleRepo, permissionRepo] = await Promise.all([
       this.tenantManager.getRepository(User, target),

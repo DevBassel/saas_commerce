@@ -19,10 +19,11 @@ interface UserShape {
 const buildGuard = (
   requiredRoles: RoleKey[] | undefined,
   requiredPermissions: PermissionKey[] | undefined,
+  isPublic = false,
 ): PermissionGuard => {
   const reflector = {
     getAllAndOverride: jest.fn((key: unknown) => {
-      if (key === IS_PUBLIC) return false;
+      if (key === IS_PUBLIC) return isPublic;
       if (key === Roles) return requiredRoles;
       if (key === Permissions) return requiredPermissions;
       return undefined;
@@ -31,7 +32,7 @@ const buildGuard = (
   return new PermissionGuard(reflector as never);
 };
 
-const buildContext = (user: UserShape): ExecutionContext =>
+const buildContext = (user: UserShape | undefined): ExecutionContext =>
   ({
     getHandler: () => ({}),
     getClass: () => ({}) as never,
@@ -73,6 +74,74 @@ describe('PermissionGuard (C2)', () => {
       [RoleKey.SUPER_ADMIN],
       ['nonexistent:perm' as PermissionKey],
     );
+    const ctx = buildContext({
+      id: 2,
+      name: 'Super',
+      email: 'super@test.dev',
+      role: { id: 99, key: RoleKey.SUPER_ADMIN },
+      permissions: [],
+    });
+    expect(guard.canActivate(ctx)).toBe(true);
+  });
+
+  it('bypasses when @Public even with no authenticated user', () => {
+    const guard = buildGuard(undefined, undefined, true);
+    expect(guard.canActivate(buildContext(undefined))).toBe(true);
+  });
+
+  it('rejects an unauthenticated request when not public', () => {
+    const guard = buildGuard(undefined, [UserPermissionKey.READ]);
+    expect(() => guard.canActivate(buildContext(undefined))).toThrow(
+      ForbiddenException,
+    );
+  });
+
+  it('requires exact @Roles membership', () => {
+    const guard = buildGuard([RoleKey.SUPER_ADMIN], undefined);
+    const ctx = buildContext({
+      id: 3,
+      name: 'Admin',
+      email: 'admin@test.dev',
+      role: { id: 2, key: RoleKey.ADMIN },
+      permissions: ownerPermissions,
+    });
+    expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
+  });
+
+  it('allows a role listed in @Roles', () => {
+    const guard = buildGuard([RoleKey.ADMIN, RoleKey.STORE_OWNER], undefined);
+    const ctx = buildContext({
+      id: 3,
+      name: 'Admin',
+      email: 'admin@test.dev',
+      role: { id: 2, key: RoleKey.ADMIN },
+      permissions: [],
+    });
+    expect(guard.canActivate(ctx)).toBe(true);
+  });
+
+  it('requires all @Permissions to be held', () => {
+    const guard = buildGuard(undefined, [
+      UserPermissionKey.READ,
+      UserPermissionKey.UPDATE,
+    ]);
+    const ctx = buildContext(owner([UserPermissionKey.READ]));
+    expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
+  });
+
+  it('allows when every @Permissions entry is held', () => {
+    const guard = buildGuard(undefined, [
+      UserPermissionKey.READ,
+      UserPermissionKey.UPDATE,
+    ]);
+    const ctx = buildContext(
+      owner([UserPermissionKey.READ, UserPermissionKey.UPDATE]),
+    );
+    expect(guard.canActivate(ctx)).toBe(true);
+  });
+
+  it('lets SUPER_ADMIN bypass a plain @Roles check', () => {
+    const guard = buildGuard([RoleKey.ADMIN], undefined);
     const ctx = buildContext({
       id: 2,
       name: 'Super',

@@ -1,9 +1,9 @@
 import { ForbiddenException } from '@nestjs/common';
 import { JwtPayload } from './dto/jwt-payload.dto';
+import { TenantRef } from '../tenants/tenant.utils';
 
-export interface TenantIdentity {
+export interface TenantIdentity extends TenantRef {
   id: number;
-  schemaName: string;
 }
 
 export const tenantRefFromPayload = (

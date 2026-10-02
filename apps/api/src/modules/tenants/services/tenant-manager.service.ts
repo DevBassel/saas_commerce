@@ -3,10 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { DataSource, EntityTarget, ObjectLiteral, Repository } from 'typeorm';
 import { buildDataSourceOptions } from 'src/common/config/data-source.factory';
 import { IDB, IENV, IAPP } from 'src/common/config/env.interface';
-import { Tenant } from '../entities/tenant.entity';
 import { TENANT_ENTITIES } from '../tenant-entities';
-
-type TenantRef = Pick<Tenant, 'schemaName'>;
+import { TenantRef } from '../tenant.utils';
 
 const TENANT_CACHE_CAP = 100;
 

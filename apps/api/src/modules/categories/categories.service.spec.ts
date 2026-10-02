@@ -92,4 +92,86 @@ describe('CategoriesService', () => {
     });
     expect(categoryRepo.delete).toHaveBeenCalledWith({ id: 1 });
   });
+
+  it('rejects a name that slugifies to an empty string', async () => {
+    const { service, categoryRepo } = buildMocks();
+
+    await expect(service.create({ name: '!!!' }, TENANT)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(categoryRepo.findOneBy).not.toHaveBeenCalled();
+    expect(categoryRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('rejects a derived slug that already exists', async () => {
+    const { service, categoryRepo } = buildMocks();
+    categoryRepo.findOneBy.mockResolvedValue({ id: 2, slug: 'books' });
+
+    await expect(service.create({ name: 'Books' }, TENANT)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(categoryRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('lists categories ordered by name', async () => {
+    const { service, categoryRepo } = buildMocks();
+    categoryRepo.find.mockResolvedValue([]);
+
+    await service.findAll(TENANT);
+
+    expect(categoryRepo.find).toHaveBeenCalledWith({ order: { name: 'ASC' } });
+  });
+
+  it('updates fields and returns the refreshed category', async () => {
+    const { service, categoryRepo } = buildMocks();
+    categoryRepo.findOneBy
+      .mockResolvedValueOnce({ id: 1, slug: 'old' })
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 1, name: 'New', slug: 'new' });
+
+    const result = await service.update(
+      1,
+      { name: 'New', slug: 'new' },
+      TENANT,
+    );
+
+    expect(categoryRepo.update).toHaveBeenCalledWith(
+      { id: 1 },
+      { name: 'New', slug: 'new' },
+    );
+    expect(result).toMatchObject({ id: 1, name: 'New', slug: 'new' });
+  });
+
+  it('does not re-check the slug when it is unchanged', async () => {
+    const { service, categoryRepo } = buildMocks();
+    categoryRepo.findOneBy
+      .mockResolvedValueOnce({ id: 1, slug: 'same' })
+      .mockResolvedValueOnce({ id: 1, name: 'Same', slug: 'same' });
+
+    await service.update(1, { name: 'Same', slug: 'same' }, TENANT);
+
+    expect(categoryRepo.findOneBy).toHaveBeenCalledTimes(2);
+    expect(categoryRepo.update).toHaveBeenCalledWith(
+      { id: 1 },
+      { name: 'Same', slug: 'same' },
+    );
+  });
+
+  it('throws 404 when updating a missing category', async () => {
+    const { service, categoryRepo } = buildMocks();
+    categoryRepo.findOneBy.mockResolvedValue(null);
+
+    await expect(service.update(1, { name: 'X' }, TENANT)).rejects.toThrow(
+      NotFoundException,
+    );
+    expect(categoryRepo.update).not.toHaveBeenCalled();
+  });
+
+  it('throws 404 when removing a missing category', async () => {
+    const { service, categoryRepo } = buildMocks();
+    categoryRepo.findOneBy.mockResolvedValue(null);
+
+    await expect(service.remove(1, TENANT)).rejects.toThrow(NotFoundException);
+    expect(categoryRepo.delete).not.toHaveBeenCalled();
+  });
 });

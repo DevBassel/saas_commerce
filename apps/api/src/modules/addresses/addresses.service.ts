@@ -1,13 +1,13 @@
 import {
   BadRequestException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
-import { tenantRefFromContext } from '../auth/tenant-context';
 import { TenantRef } from '../tenants/tenant.utils';
+import { resolveTenantScope } from '../tenants/tenant-scope';
+import { withUniqueRetry } from '../../common/db/unique-retry';
 import { Address } from './entities/address.entity';
 import { CreateAddressDto } from './dto/create-address.dto';
 import { UpdateAddressDto } from './dto/update-address.dto';
@@ -36,9 +36,7 @@ export class AddressesService {
   constructor(private readonly tenantManager: TenantManagerService) {}
 
   private resolveTenant(tenant?: TenantRef): TenantRef {
-    const target = tenant ?? tenantRefFromContext();
-    if (!target) throw new ForbiddenException('Tenant context required');
-    return target;
+    return resolveTenantScope(tenant);
   }
 
   private repo(tenant?: TenantRef): Promise<Repository<Address>> {
@@ -55,7 +53,7 @@ export class AddressesService {
   ): Promise<SerializedAddress> {
     const addressRepo = await this.repo(tenant);
 
-    const address = await this.withUniqueRetry(() =>
+    const address = await withUniqueRetry(() =>
       addressRepo.manager.transaction(async (manager) => {
         const addresses = manager.getRepository(Address);
 
@@ -154,7 +152,7 @@ export class AddressesService {
     const addressRepo = await this.repo(tenant);
     const target = this.resolveTenant(tenant);
 
-    await this.withUniqueRetry(() =>
+    await withUniqueRetry(() =>
       addressRepo.manager.transaction(async (manager) => {
         const addresses = manager.getRepository(Address);
         const address = await addresses.findOne({ where: { id, userId } });
@@ -179,7 +177,7 @@ export class AddressesService {
   ): Promise<{ deleted: boolean }> {
     const addressRepo = await this.repo(tenant);
 
-    await this.withUniqueRetry(() =>
+    await withUniqueRetry(() =>
       addressRepo.manager.transaction(async (manager) => {
         const addresses = manager.getRepository(Address);
         const address = await addresses.findOne({ where: { id, userId } });
@@ -212,21 +210,5 @@ export class AddressesService {
   ): Promise<Address | null> {
     const addressRepo = await this.repo(tenant);
     return addressRepo.findOne({ where: { id, userId } });
-  }
-
-  private async withUniqueRetry<T>(operation: () => Promise<T>): Promise<T> {
-    try {
-      return await operation();
-    } catch (error) {
-      if (!this.isUniqueViolation(error)) throw error;
-      return operation();
-    }
-  }
-
-  private isUniqueViolation(error: unknown): boolean {
-    const code =
-      (error as { code?: string } | null)?.code ??
-      (error as { driverError?: { code?: string } } | null)?.driverError?.code;
-    return code === '23505';
   }
 }

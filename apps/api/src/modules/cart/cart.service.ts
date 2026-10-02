@@ -1,18 +1,19 @@
 import {
   BadRequestException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { In, Repository } from 'typeorm';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
-import { tenantRefFromContext } from '../auth/tenant-context';
 import { TenantRef } from '../tenants/tenant.utils';
+import { resolveTenantScope } from '../tenants/tenant-scope';
+import { withUniqueRetry } from '../../common/db/unique-retry';
+import { round2 } from '../../common/money';
 import { R2Service } from '../../common/storage/r2.service';
 import { Cart } from './entities/cart.entity';
 import { CartItem } from './entities/cart-item.entity';
 import { Product } from '../products/entities/product.entity';
-import { ProductImage } from '../products/entities/product-image.entity';
+import { primaryImage } from '../products/product-image.util';
 import { AddCartItemDto } from './dto/add-cart-item.dto';
 import { UpdateCartItemDto } from './dto/update-cart-item.dto';
 import {
@@ -20,8 +21,6 @@ import {
   MAX_CART_ITEM_QUANTITY,
 } from './constants/cart.constants';
 import { SerializedCart, SerializedCartItem } from './constants/cart.interface';
-
-const round2 = (value: number): number => Math.round(value * 100) / 100;
 
 @Injectable()
 export class CartService {
@@ -31,9 +30,7 @@ export class CartService {
   ) {}
 
   private resolveTenant(tenant?: TenantRef): TenantRef {
-    const target = tenant ?? tenantRefFromContext();
-    if (!target) throw new ForbiddenException('Tenant context required');
-    return target;
+    return resolveTenantScope(tenant);
   }
 
   private async repos(tenant?: TenantRef): Promise<{
@@ -78,7 +75,7 @@ export class CartService {
       const product = productsById.get(item.productId);
       if (!product) continue;
 
-      const image = this.primaryImage(product.images);
+      const image = primaryImage(product.images);
       const unitPrice = product.price;
       serialized.push({
         productId: product.id,
@@ -125,7 +122,7 @@ export class CartService {
 
     const quantity = dto.quantity ?? 1;
 
-    await this.withUniqueRetry(() =>
+    await withUniqueRetry(() =>
       cartRepo.manager.transaction(async (manager) => {
         const carts = manager.getRepository(Cart);
         const items = manager.getRepository(CartItem);
@@ -253,30 +250,5 @@ export class CartService {
     if (quantity > stock) {
       throw new BadRequestException('Insufficient stock');
     }
-  }
-
-  private primaryImage(images?: ProductImage[]): ProductImage | undefined {
-    if (!images || images.length === 0) return undefined;
-    return images.reduce((best, image) => {
-      if (image.position < best.position) return image;
-      if (image.position === best.position && image.id < best.id) return image;
-      return best;
-    });
-  }
-
-  private async withUniqueRetry<T>(operation: () => Promise<T>): Promise<T> {
-    try {
-      return await operation();
-    } catch (error) {
-      if (!this.isUniqueViolation(error)) throw error;
-      return operation();
-    }
-  }
-
-  private isUniqueViolation(error: unknown): boolean {
-    const code =
-      (error as { code?: string } | null)?.code ??
-      (error as { driverError?: { code?: string } } | null)?.driverError?.code;
-    return code === '23505';
   }
 }

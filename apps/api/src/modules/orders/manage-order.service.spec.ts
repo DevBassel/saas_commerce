@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { OrderStatus } from './constants/order-status.enum';
 import { PaymentStatus } from '../payments/constants/payment-status.enum';
 import { NOW, TENANT, buildMocks, orderEntity } from './orders.spec-helpers';
@@ -157,6 +157,79 @@ describe('ManageOrderService', () => {
           TENANT,
         ),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('refunds a paid order when a return is approved', async () => {
+      const { manageService, orderRepo, productRepo, paymentsMocks } =
+        buildMocks();
+      orderRepo.findOne.mockResolvedValue(
+        orderEntity({
+          status: OrderStatus.RETURN_REQUESTED,
+          paymentStatus: PaymentStatus.PAID,
+          items: [{ id: 1, productId: 5, quantity: 2 }],
+        }),
+      );
+      paymentsMocks.refundOrder.mockResolvedValue({ refundedAt: NOW });
+
+      const result = await manageService.updateStatus(
+        1,
+        { status: OrderStatus.RETURNED },
+        TENANT,
+      );
+
+      expect(paymentsMocks.refundOrder).toHaveBeenCalledTimes(1);
+      expect(orderRepo.update).toHaveBeenCalledWith(
+        { id: 1 },
+        {
+          status: OrderStatus.RETURNED,
+          paymentStatus: PaymentStatus.REFUNDED,
+          refundedAt: NOW,
+        },
+      );
+      expect(productRepo.increment).toHaveBeenCalledWith({ id: 5 }, 'stock', 2);
+      expect(result.paymentStatus).toBe(PaymentStatus.REFUNDED);
+    });
+
+    it('does not mutate the order when a paid order cannot be refunded', async () => {
+      const { manageService, orderRepo, productRepo, paymentsMocks } =
+        buildMocks();
+      orderRepo.findOne.mockResolvedValue(
+        orderEntity({
+          status: OrderStatus.CONFIRMED,
+          paymentStatus: PaymentStatus.PAID,
+          items: [{ id: 1, productId: 5, quantity: 2 }],
+        }),
+      );
+      paymentsMocks.refundOrder.mockResolvedValue(null);
+
+      await expect(
+        manageService.updateStatus(
+          1,
+          { status: OrderStatus.CANCELLED },
+          TENANT,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(orderRepo.update).not.toHaveBeenCalled();
+      expect(productRepo.increment).not.toHaveBeenCalled();
+    });
+
+    it('does not refund an unpaid order that is cancelled', async () => {
+      const { manageService, orderRepo, paymentsMocks } = buildMocks();
+      orderRepo.findOne.mockResolvedValue(
+        orderEntity({
+          status: OrderStatus.CONFIRMED,
+          paymentStatus: PaymentStatus.UNPAID,
+        }),
+      );
+
+      await manageService.updateStatus(
+        1,
+        { status: OrderStatus.CANCELLED },
+        TENANT,
+      );
+
+      expect(paymentsMocks.refundOrder).not.toHaveBeenCalled();
     });
   });
 });

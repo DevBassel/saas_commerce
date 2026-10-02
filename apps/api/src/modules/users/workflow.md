@@ -24,12 +24,11 @@ flowchart TD
     subgraph APP["Application — UsersService"]
         SVC --> TRT{"tenant argument or<br/>tenantStorage context?"}
         TRT -->|"tenant resolved"| TM["TenantManagerService.getRepository<br/>User, Role, Permission"]
-        TRT -->|"none"| DEF["default repositories (public schema)<br/>warning logged outside production"]
+        TRT -->|"none"| DEF["403 Tenant context is required<br/>(no public-schema fallback)"]
     end
 
     subgraph DATA["Data"]
         TM --> TDB[("PostgreSQL tenant schema<br/>user, user_permissions, roles, permissions")]
-        DEF --> PDB[("PostgreSQL public schema")]
     end
 ```
 
@@ -68,7 +67,8 @@ Every user-returning endpoint (`GET /users/profile`, `GET /users/profile/:id`, `
 ```mermaid
 flowchart TD
 CREATE["create (auth register / register-store, platform create)"]
-        C1{"roleKey in CUSTOMER / STORE_OWNER / ADMIN ?"} -->|"no"| C1E["400 Role cannot be assigned"]
+        C0{"roleKey == SUPER_ADMIN ?"} -->|"yes"| C0E["403 You are not allowed to create super admin"]
+        C0 -->|"no"| C1{"roleKey in CUSTOMER / STORE_OWNER / ADMIN ?"} -->|"no"| C1E["400 Role cannot be assigned"]
         C1 -->|"yes"| C2{"email already used in schema?"}
         C2 -->|"yes"| C2E["400 user already exists"]
         C2 -->|"no"| C3{"role seeded in target schema?"}

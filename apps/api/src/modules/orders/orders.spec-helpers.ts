@@ -85,6 +85,10 @@ export const buildMocks = () => {
   };
   const orderItemRepo = {
     create: jest.fn((data: unknown) => data),
+    insert: jest.fn((data: unknown) => {
+      const rows = Array.isArray(data) ? data : [data];
+      return { identifiers: rows.map((_, index) => ({ id: index + 1 })) };
+    }),
     save: jest.fn((data: unknown) =>
       Array.isArray(data)
         ? data.map((item, index) => ({
@@ -110,6 +114,14 @@ export const buildMocks = () => {
   const cartItemRepo = { delete: jest.fn() };
   const addressRepo = { findOne: jest.fn() };
 
+  const productUpdateQb = {
+    update: jest.fn().mockReturnThis(),
+    set: jest.fn().mockReturnThis(),
+    whereInIds: jest.fn().mockReturnThis(),
+    setParameters: jest.fn().mockReturnThis(),
+    execute: jest.fn(),
+  };
+
   const entityManager = {
     getRepository: jest.fn((entity: unknown) => {
       if (entity === Order) return orderRepo;
@@ -120,6 +132,7 @@ export const buildMocks = () => {
       if (entity === Address) return addressRepo;
       return orderRepo;
     }),
+    createQueryBuilder: jest.fn(() => productUpdateQb),
   };
   orderRepo.manager.transaction = jest.fn((callback: (m: unknown) => unknown) =>
     callback(entityManager),
@@ -156,6 +169,7 @@ export const buildMocks = () => {
     orderItemRepo,
     productRepo,
     productQb,
+    productUpdateQb,
     cartRepo,
     cartItemRepo,
     addressRepo,

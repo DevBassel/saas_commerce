@@ -1,6 +1,4 @@
 import {
-  BadRequestException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -19,8 +17,8 @@ import { randomUUID } from 'crypto';
 import { compare } from 'bcrypt';
 import { TenantService } from '../tenants/tenant.service';
 import { TenantProvisionerService } from '../tenants/services/tenant-provisioner.service';
-import { TenantStatus } from '../tenants/enums/tenantStatus.enum';
-import { getTenantContext } from './tenant-context';
+import { assertTenantActive } from '../tenants/tenant-policy';
+import { requireTenantContext } from '../tenants/tenant-scope';
 import { TenantIdentity, tenantRefFromPayload } from './tenant-ref.util';
 
 @Injectable()
@@ -120,10 +118,7 @@ export class AuthService {
       );
       if (!registered || registered.id !== tenant.id)
         throw new UnauthorizedException('Invalid refresh token');
-      if (registered.status === TenantStatus.INACTIVE)
-        throw new ForbiddenException(
-          'Tenant is inactive or suspended. Please contact the administrator.',
-        );
+      assertTenantActive(registered);
     }
 
     const user = tenant
@@ -200,8 +195,6 @@ export class AuthService {
   }
 
   private requireTenant(): TenantIdentity {
-    const ctx = getTenantContext();
-    if (!ctx) throw new BadRequestException('Tenant context is required');
-    return ctx.tenant;
+    return requireTenantContext().tenant;
   }
 }

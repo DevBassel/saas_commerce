@@ -107,6 +107,7 @@ describe('OrdersService', () => {
         cartRepo,
         productQb,
         productRepo,
+        productUpdateQb,
         orderRepo,
         orderItemRepo,
         cartItemRepo,
@@ -160,7 +161,7 @@ describe('OrdersService', () => {
       const savedOrder = orderRepo.save.mock.calls[0]?.[0] as
         Record<string, unknown> | undefined;
       expect(savedOrder?.orderNumber).toMatch(/^ORD-\d{8}-[A-Z2-7]{6}$/);
-      expect(orderItemRepo.save).toHaveBeenCalledWith([
+      expect(orderItemRepo.insert).toHaveBeenCalledWith([
         expect.objectContaining({
           orderId: 10,
           productId: 6,
@@ -180,8 +181,21 @@ describe('OrdersService', () => {
           imageObjectKey: 'a.jpg',
         }),
       ]);
-      expect(productRepo.update).toHaveBeenCalledWith({ id: 6 }, { stock: 1 });
-      expect(productRepo.update).toHaveBeenCalledWith({ id: 5 }, { stock: 9 });
+      expect(productUpdateQb.whereInIds).toHaveBeenCalledWith([6, 5]);
+      expect(productUpdateQb.setParameters).toHaveBeenCalledWith({
+        pid_0: 6,
+        qty_0: 3,
+        pid_1: 5,
+        qty_1: 1,
+      });
+      const setCalls = productUpdateQb.set.mock.calls as unknown as Array<
+        [{ stock: () => string }]
+      >;
+      expect(setCalls[0]?.[0]?.stock()).toBe(
+        '"stock" - CASE "id" WHEN :pid_0 THEN :qty_0 WHEN :pid_1 THEN :qty_1 ELSE 0 END',
+      );
+      expect(productUpdateQb.execute).toHaveBeenCalledTimes(1);
+      expect(productRepo.update).not.toHaveBeenCalled();
       expect(cartItemRepo.delete).toHaveBeenCalledWith({ cartId: 1 });
 
       expect(result).toMatchObject({

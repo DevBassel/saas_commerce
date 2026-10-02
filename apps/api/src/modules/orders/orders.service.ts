@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -11,12 +10,14 @@ import {
   Repository,
 } from 'typeorm';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
-import { tenantRefFromContext } from '../auth/tenant-context';
 import { TenantRef } from '../tenants/tenant.utils';
+import { resolveTenantScope } from '../tenants/tenant-scope';
+import { withUniqueRetry } from '../../common/db/unique-retry';
+import { round2 } from '../../common/money';
 import { R2Service } from '../../common/storage/r2.service';
 import { RequestWithUser } from '../auth/interfaces/RequestWithUser.interface';
 import { Product } from '../products/entities/product.entity';
-import { ProductImage } from '../products/entities/product-image.entity';
+import { primaryImage } from '../products/product-image.util';
 import { Cart } from '../cart/entities/cart.entity';
 import { CartItem } from '../cart/entities/cart-item.entity';
 import { Address } from '../addresses/entities/address.entity';
@@ -42,8 +43,6 @@ import {
 
 type Requester = RequestWithUser['user'];
 
-const round2 = (value: number): number => Math.round(value * 100) / 100;
-
 const OWNER_CANCELLABLE_STATUSES = new Set<OrderStatus>([
   OrderStatus.PENDING,
   OrderStatus.CONFIRMED,
@@ -65,9 +64,7 @@ export class OrdersService {
   ) {}
 
   private resolveTenant(tenant?: TenantRef): TenantRef {
-    const target = tenant ?? tenantRefFromContext();
-    if (!target) throw new ForbiddenException('Tenant context required');
-    return target;
+    return resolveTenantScope(tenant);
   }
 
   private async repos(tenant?: TenantRef): Promise<{
@@ -86,7 +83,7 @@ export class OrdersService {
   ): Promise<SerializedOrder> {
     const { orderRepo } = await this.repos(tenant);
 
-    const order = await this.withUniqueRetry(() =>
+    const order = await withUniqueRetry(() =>
       orderRepo.manager.transaction(
         async (manager: EntityManager): Promise<Order> => {
           const carts = manager.getRepository(Cart);
@@ -110,7 +107,7 @@ export class OrdersService {
           const productIds = [
             ...new Set(ordered.map((item) => item.productId)),
           ];
-
+          // lock row for hande users checkout in same time
           const lockedProducts = await products
             .createQueryBuilder('product')
             .leftJoinAndSelect('product.images', 'image')
@@ -125,27 +122,24 @@ export class OrdersService {
           let subtotal = 0;
           for (const item of ordered) {
             const product = productsById.get(item.productId);
-            if (!product) {
+            if (!product)
               throw new BadRequestException(
                 `Product ${item.productId} is no longer available`,
               );
-            }
-            if (!product.isActive) {
-              throw new BadRequestException(
-                `Product ${product.sku} is not available`,
-              );
-            }
-            if (product.stock < item.quantity) {
+
+            if (!product.isActive)
+              throw new BadRequestException(`${product.sku} is not available`);
+
+            if (product.stock < item.quantity)
               throw new BadRequestException(
                 `Insufficient stock for ${product.sku}`,
               );
-            }
 
             const unitPrice = product.price;
             const lineTotal = round2(unitPrice * item.quantity);
             subtotal = round2(subtotal + lineTotal);
 
-            const image = this.primaryImage(product.images);
+            const image = primaryImage(product.images);
             snapshots.push({
               productId: product.id,
               name: product.name,
@@ -183,20 +177,35 @@ export class OrdersService {
             }),
           );
 
-          const savedItems = await orderLines.save(
-            snapshots.map((snapshot) =>
-              orderLines.create({ ...snapshot, orderId: savedOrder.id }),
-            ),
+          const lineRows = snapshots.map((snapshot) =>
+            orderLines.create({ ...snapshot, orderId: savedOrder.id }),
           );
+          const { identifiers } = await orderLines.insert(lineRows);
+          const generatedIds = identifiers as { id: number }[];
+          const savedItems = lineRows.map((row, index) => ({
+            ...row,
+            id: generatedIds[index]?.id ?? row.id,
+          }));
 
-          for (const item of ordered) {
-            const product = productsById.get(item.productId);
-            if (!product) continue;
-            await products.update(
-              { id: product.id },
-              { stock: product.stock - item.quantity },
-            );
-          }
+          const stockCases = ordered
+            .map((_, index) => `WHEN :pid_${index} THEN :qty_${index}`)
+            .join(' ');
+          const stockParams: Record<string, number> = {};
+          ordered.forEach((item, index) => {
+            stockParams[`pid_${index}`] = item.productId;
+            stockParams[`qty_${index}`] = item.quantity;
+          });
+
+          // Single UPDATE ... CASE instead of one UPDATE per line.
+          await manager
+            .createQueryBuilder()
+            .update(Product)
+            .set({
+              stock: () => `"stock" - CASE "id" ${stockCases} ELSE 0 END`,
+            })
+            .whereInIds(productIds)
+            .setParameters(stockParams)
+            .execute();
 
           await cartItems.delete({ cartId: cart.id });
 
@@ -369,30 +378,5 @@ export class OrdersService {
     }
 
     return `${ORDER_NUMBER_PREFIX}-${year}${month}${day}-${suffix}`;
-  }
-
-  private primaryImage(images?: ProductImage[]): ProductImage | undefined {
-    if (!images || images.length === 0) return undefined;
-    return images.reduce((best, image) => {
-      if (image.position < best.position) return image;
-      if (image.position === best.position && image.id < best.id) return image;
-      return best;
-    });
-  }
-
-  private async withUniqueRetry<T>(operation: () => Promise<T>): Promise<T> {
-    try {
-      return await operation();
-    } catch (error) {
-      if (!this.isUniqueViolation(error)) throw error;
-      return operation();
-    }
-  }
-
-  private isUniqueViolation(error: unknown): boolean {
-    const code =
-      (error as { code?: string } | null)?.code ??
-      (error as { driverError?: { code?: string } } | null)?.driverError?.code;
-    return code === '23505';
   }
 }

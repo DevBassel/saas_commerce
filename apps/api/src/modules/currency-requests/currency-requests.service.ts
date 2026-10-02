@@ -12,18 +12,15 @@ import { CurrencyChangeRequest } from './entities/currency-change-request.entity
 import { CurrencyChangeRequestStatus } from './enums/currency-change-request-status.enum';
 import { CreateCurrencyChangeRequestDto } from './dto/create-currency-change-request.dto';
 import { ReviewCurrencyChangeRequestDto } from './dto/review-currency-change-request.dto';
+import { isUniqueViolation } from '../../common/db/unique-retry';
 
 export interface RequestActor {
   id: number;
   email: string;
 }
 
-const PG_UNIQUE_VIOLATION = '23505';
-
-const isUniqueViolation = (error: unknown): boolean =>
-  typeof error === 'object' &&
-  error !== null &&
-  (error as { code?: string }).code === PG_UNIQUE_VIOLATION;
+const PENDING_REQUEST_EXISTS =
+  'A pending currency change request already exists for this store';
 
 @Injectable()
 export class CurrencyRequestsService {
@@ -68,9 +65,7 @@ export class CurrencyRequestsService {
 
     const pending = await this.findPendingForTenant(tenant.id);
     if (pending) {
-      throw new ConflictException(
-        'A pending currency change request already exists for this store',
-      );
+      throw new ConflictException(PENDING_REQUEST_EXISTS);
     }
 
     try {
@@ -90,9 +85,7 @@ export class CurrencyRequestsService {
       );
     } catch (error) {
       if (isUniqueViolation(error)) {
-        throw new ConflictException(
-          'A pending currency change request already exists for this store',
-        );
+        throw new ConflictException(PENDING_REQUEST_EXISTS);
       }
       throw error;
     }

@@ -6,7 +6,11 @@ import { CategoryPermissionKey } from 'src/modules/categories/constants/category
 import { CartPermissionKey } from 'src/modules/cart/constants/cart-permissions.enum';
 import { OrderPermissionKey } from 'src/modules/orders/constants/order-permissions.enum';
 import { PaymentPermissionKey } from 'src/modules/payments/constants/payments-permissions.enum';
-import { SEED_PERMISSIONS, SEED_ROLE_PERMISSIONS } from './seed-data';
+import {
+  SEED_PERMISSIONS,
+  SEED_ROLES,
+  SEED_ROLE_PERMISSIONS,
+} from './seed-data';
 
 describe('role × permission seed matrix', () => {
   const knownKeys = new Set(SEED_PERMISSIONS.map((p) => p.key));
@@ -19,9 +23,36 @@ describe('role × permission seed matrix', () => {
     }
   });
 
+  it('defines a permission list for every seeded role', () => {
+    for (const role of SEED_ROLES) {
+      expect(SEED_ROLE_PERMISSIONS[role.key]).toBeDefined();
+    }
+  });
+
+  it('seeds every role key exactly once', () => {
+    const keys = SEED_ROLES.map((role) => role.key);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(new Set(keys)).toEqual(new Set(Object.values(RoleKey)));
+  });
+
+  it('seeds unique permission keys with non-empty metadata', () => {
+    const keys = SEED_PERMISSIONS.map((p) => p.key);
+    expect(new Set(keys).size).toBe(keys.length);
+    for (const permission of SEED_PERMISSIONS) {
+      expect(permission.name).toBeTruthy();
+      expect(permission.description).toBeTruthy();
+    }
+  });
+
   it('grants STORE_OWNER every seeded permission', () => {
     const grants = SEED_ROLE_PERMISSIONS[RoleKey.STORE_OWNER];
     expect(new Set(grants).size).toBe(SEED_PERMISSIONS.length);
+  });
+
+  it('grants SUPER_ADMIN every seeded permission', () => {
+    const grants = SEED_ROLE_PERMISSIONS[RoleKey.SUPER_ADMIN];
+    expect(new Set(grants).size).toBe(SEED_PERMISSIONS.length);
+    expect(grants).toEqual(SEED_ROLE_PERMISSIONS[RoleKey.STORE_OWNER]);
   });
 
   it('grants CUSTOMER the cart permissions', () => {

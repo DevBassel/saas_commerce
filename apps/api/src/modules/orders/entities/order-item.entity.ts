@@ -9,6 +9,7 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { Product } from 'src/modules/products/entities/product.entity';
+import { moneyColumn } from 'src/common/db/money-column';
 import { Order } from './order.entity';
 
 @Entity('order_items')
@@ -38,31 +39,13 @@ export class OrderItem extends BaseEntity {
   @Column()
   sku: string;
 
-  @Column({
-    type: 'numeric',
-    precision: 10,
-    scale: 2,
-    transformer: {
-      from: (value: string | null): number | null =>
-        value === null ? null : Number(value),
-      to: (value: number | null): number | null => value,
-    },
-  })
+  @Column(moneyColumn)
   unitPrice: number;
 
   @Column({ type: 'int' })
   quantity: number;
 
-  @Column({
-    type: 'numeric',
-    precision: 10,
-    scale: 2,
-    transformer: {
-      from: (value: string | null): number | null =>
-        value === null ? null : Number(value),
-      to: (value: number | null): number | null => value,
-    },
-  })
+  @Column(moneyColumn)
   lineTotal: number;
 
   @Column({ type: 'varchar', nullable: true })
