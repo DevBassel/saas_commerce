@@ -9,7 +9,7 @@ import { Reflector } from '@nestjs/core';
 import { RequestWithUser } from '../interfaces/RequestWithUser.interface';
 import { IS_PLATFORM } from '../decorators/isPlatform.decorator';
 import { TenantResolutionService } from 'src/modules/tenants/services/tenant-resolution.service';
-import { assertTenantActive } from 'src/modules/tenants/tenant-policy';
+import { assertTenantActive } from 'src/modules/tenants/utils/tenant-policy';
 
 @Injectable()
 export class TenantGuard implements CanActivate {

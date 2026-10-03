@@ -33,6 +33,8 @@ const permissionObjects = (keys: string[]) =>
 
 const buildMocks = () => {
   const userRepo = {
+    find: jest.fn(),
+    findAndCount: jest.fn(),
     findOne: jest.fn().mockResolvedValue(null),
     create: jest.fn((data: unknown) => data),
     save: jest.fn((data: unknown) => data),
@@ -509,5 +511,68 @@ describe('UsersService.revokePermissions', () => {
       id: 5,
       permissions: [first],
     });
+  });
+});
+
+describe('UsersService.findAll', () => {
+  it('returns a legacy array when no pagination is requested', async () => {
+    const { service, userRepo } = buildMocks();
+    userRepo.find.mockResolvedValue([{ id: 1 }]);
+
+    const result = await service.findAll({}, TENANT);
+
+    expect(Array.isArray(result)).toBe(true);
+    expect(userRepo.find).toHaveBeenCalledWith({
+      where: {},
+      relations: { role: true, permissions: true },
+    });
+    expect(userRepo.findAndCount).not.toHaveBeenCalled();
+  });
+
+  it('filters by role key in the legacy array mode', async () => {
+    const { service, userRepo } = buildMocks();
+    userRepo.find.mockResolvedValue([]);
+
+    await service.findAll({ role: RoleKey.ADMIN }, TENANT);
+
+    expect(userRepo.find).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { role: { key: RoleKey.ADMIN } } }),
+    );
+  });
+
+  it('returns a paginated envelope when page/limit are sent', async () => {
+    const { service, userRepo } = buildMocks();
+    userRepo.findAndCount.mockResolvedValue([[{ id: 1 }], 1]);
+
+    const result = await service.findAll({ page: 2, limit: 20 }, TENANT);
+
+    expect(userRepo.findAndCount).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {},
+        order: { createdAt: 'DESC' },
+        skip: 20,
+        take: 20,
+        relationLoadStrategy: 'query',
+      }),
+    );
+    expect(result).toMatchObject({ total: 1, page: 2, limit: 20 });
+  });
+
+  it('clamps the limit and falls back for an unknown sort field', async () => {
+    const { service, userRepo } = buildMocks();
+    userRepo.findAndCount.mockResolvedValue([[], 0]);
+
+    await service.findAll(
+      { page: 1, limit: 999, sortBy: 'password', sortOrder: 'asc' },
+      TENANT,
+    );
+
+    expect(userRepo.findAndCount).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skip: 0,
+        take: 50,
+        order: { createdAt: 'ASC' },
+      }),
+    );
   });
 });

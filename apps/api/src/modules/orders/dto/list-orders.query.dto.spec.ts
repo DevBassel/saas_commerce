@@ -32,6 +32,23 @@ describe('ListOrdersQueryDto', () => {
     expect(errors).toHaveLength(0);
   });
 
+  it('accepts inherited pagination params alongside the filters', async () => {
+    const dto = plainToInstance(ListOrdersQueryDto, {
+      status: OrderStatus.PENDING,
+      userId: '42',
+      page: '2',
+      limit: '20',
+      sortBy: 'createdAt',
+      sortOrder: 'desc',
+    });
+
+    expect(await validate(dto)).toHaveLength(0);
+    expect(dto.page).toBe(2);
+    expect(dto.limit).toBe(20);
+    expect(dto.sortBy).toBe('createdAt');
+    expect(dto.sortOrder).toBe('desc');
+  });
+
   it.each([0, -5])('rejects userId below the minimum (%p)', async (value) => {
     const errors = await check({ userId: value });
     expect(errors.some((e) => e.property === 'userId')).toBe(true);

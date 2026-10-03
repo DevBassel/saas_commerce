@@ -13,8 +13,8 @@ import { UpdateRoleDto } from './dto/update-role.dto';
 import { CreatePermissionDto } from './dto/create-permission.dto';
 import { UpdatePermissionDto } from './dto/update-permission.dto';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
-import { TenantRef } from '../tenants/tenant.utils';
-import { resolveTenantScope } from '../tenants/tenant-scope';
+import { TenantRef } from '../tenants/utils/tenant.utils';
+import { resolveTenantScope } from '../tenants/utils/tenant-scope';
 
 const SYSTEM_ROLES: RoleKey[] = [
   RoleKey.SUPER_ADMIN,

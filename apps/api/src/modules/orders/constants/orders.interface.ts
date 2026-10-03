@@ -1,4 +1,5 @@
 import { PaymentStatus } from 'src/modules/payments/constants/payment-status.enum';
+import { DiscountType } from 'src/modules/coupons/constants/discount-type.enum';
 import { OrderStatus } from './order-status.enum';
 
 export interface SerializedOrderItem {
@@ -24,6 +25,13 @@ export interface SerializedDeliveryAddress {
   country: string;
 }
 
+export interface SerializedOrderCoupon {
+  id: number;
+  code: string | null;
+  type: DiscountType | null;
+  value: number | null;
+}
+
 export interface SerializedOrder {
   id: number;
   orderNumber: string;
@@ -35,6 +43,8 @@ export interface SerializedOrder {
   status: OrderStatus;
   paymentStatus: PaymentStatus;
   subtotal: number;
+  discountAmount: number;
+  coupon: SerializedOrderCoupon | null;
   total: number;
   items: SerializedOrderItem[];
   deliveryAddress: SerializedDeliveryAddress | null;

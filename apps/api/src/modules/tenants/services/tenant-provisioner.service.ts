@@ -3,8 +3,8 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { Tenant } from '../entities/tenant.entity';
 import { TenantManagerService } from './tenant-manager.service';
-import { TENANT_ROLE_KEYS, seedRbac } from '../../rbac/rbac.seed';
-import { sanitizeSchemaName } from '../tenant.utils';
+import { TENANT_ROLE_KEYS, seedRbac } from '../../rbac/utils/rbac.seed';
+import { sanitizeSchemaName } from '../utils/tenant.utils';
 
 @Injectable()
 export class TenantProvisionerService {

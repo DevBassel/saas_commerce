@@ -2,12 +2,12 @@ import { DataSource } from 'typeorm';
 import { TenantProvisionerService } from './tenant-provisioner.service';
 import { TenantManagerService } from './tenant-manager.service';
 import { Tenant } from '../entities/tenant.entity';
-import { TENANT_ROLE_KEYS, seedRbac } from '../../rbac/rbac.seed';
+import { TENANT_ROLE_KEYS, seedRbac } from '../../rbac/utils/rbac.seed';
 
-jest.mock('../../rbac/rbac.seed', () => {
-  const actual = jest.requireActual<typeof import('../../rbac/rbac.seed')>(
-    '../../rbac/rbac.seed',
-  );
+jest.mock('../../rbac/utils/rbac.seed', () => {
+  const actual = jest.requireActual<
+    typeof import('../../rbac/utils/rbac.seed')
+  >('../../rbac/utils/rbac.seed');
   return { ...actual, seedRbac: jest.fn() };
 });
 

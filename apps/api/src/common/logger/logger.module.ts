@@ -16,6 +16,7 @@ import { IENV, Ilog } from '../config/env.interface';
 
         const logDirectory = join(process.cwd(), 'logs/app');
         mkdirSync(logDirectory, { recursive: true });
+        console.log('k6');
 
         const logStream = createStream(
           () => {

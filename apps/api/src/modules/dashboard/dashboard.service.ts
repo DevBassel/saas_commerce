@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
 import { TenantService } from '../tenants/tenant.service';
-import { TenantRef } from '../tenants/tenant.utils';
-import { resolveTenantScope } from '../tenants/tenant-scope';
-import { round2, toMajorUnit } from '../../common/money';
+import { TenantRef } from '../tenants/utils/tenant.utils';
+import { resolveTenantScope } from '../tenants/utils/tenant-scope';
+import { round2, toMajorUnit } from '../../common/utils/money';
 import { RoleKey } from '../../common/constants/RoleKey.enum';
 import { User } from '../users/entities/user.entity';
 import { Order } from '../orders/entities/order.entity';
@@ -26,10 +26,6 @@ export class DashboardService {
     private readonly tenantService: TenantService,
     private readonly stripePaymentService: StripePaymentService,
   ) {}
-
-  private resolveTenant(tenant?: TenantRef): TenantRef {
-    return resolveTenantScope(tenant);
-  }
 
   /**
    * Reads the tenant's connected-account balance. Available funds map to
@@ -61,7 +57,7 @@ export class DashboardService {
   }
 
   async getStats(tenant?: TenantRef): Promise<DashboardStats> {
-    const target = this.resolveTenant(tenant);
+    const target = resolveTenantScope(tenant);
 
     const [orderRepo, userRepo, tenantRow] = await Promise.all([
       this.tenantManager.getRepository(Order, target),

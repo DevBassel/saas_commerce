@@ -9,7 +9,7 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Tenant } from './entities/tenant.entity';
 import { CreateTenantDto } from './dto/create-tenant.dto';
-import { buildSchemaName } from './tenant.utils';
+import { buildSchemaName } from './utils/tenant.utils';
 import { TenantManagerService } from './services/tenant-manager.service';
 import { User } from '../users/entities/user.entity';
 import { TenantStatus } from './enums/tenantStatus.enum';

@@ -6,7 +6,7 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { SLUG_MESSAGE, SLUG_REGEX } from '../../tenants/tenant.utils';
+import { SLUG_MESSAGE, SLUG_REGEX } from '../../tenants/utils/tenant.utils';
 
 export class CreateCategoryDto {
   @IsString()

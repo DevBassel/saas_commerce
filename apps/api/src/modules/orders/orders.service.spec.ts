@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { OrderStatus } from './constants/order-status.enum';
 import { PaymentStatus } from '../payments/constants/payment-status.enum';
+import { DiscountType } from '../coupons/constants/discount-type.enum';
 import {
   NOW,
   TENANT,
@@ -317,6 +318,123 @@ describe('OrdersService', () => {
       expect(productRepo.update).not.toHaveBeenCalled();
       expect(cartItemRepo.delete).not.toHaveBeenCalled();
     });
+
+    it('applies a coupon, persists snapshots and records the redemption', async () => {
+      const {
+        service,
+        cartRepo,
+        productQb,
+        orderRepo,
+        addressRepo,
+        entityManager,
+        couponsMocks,
+      } = buildMocks();
+      cartRepo.findOne.mockResolvedValue(
+        customerCart([{ id: 1, cartId: 1, productId: 5, quantity: 1 }]),
+      );
+      productQb.getMany.mockResolvedValue([product({ price: 10, stock: 3 })]);
+      addressRepo.findOne.mockResolvedValue(defaultAddress());
+      couponsMocks.validateAndConsume.mockResolvedValue({
+        couponId: 1,
+        discountAmount: 2.5,
+        snapshot: {
+          couponId: 1,
+          couponCode: 'SAVE25',
+          couponDiscountType: DiscountType.FIXED_AMOUNT,
+          couponDiscountValue: 2.5,
+        },
+      });
+
+      const result = await service.checkout(
+        7,
+        { couponCode: 'save25' },
+        TENANT,
+      );
+
+      expect(couponsMocks.validateAndConsume).toHaveBeenCalledWith(
+        entityManager,
+        { code: 'save25', userId: 7, subtotal: 10 },
+      );
+      expect(orderRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subtotal: 10,
+          discountAmount: 2.5,
+          total: 7.5,
+          couponId: 1,
+          couponCode: 'SAVE25',
+          couponDiscountType: DiscountType.FIXED_AMOUNT,
+          couponDiscountValue: 2.5,
+        }),
+      );
+      expect(couponsMocks.consume).toHaveBeenCalledWith(entityManager, {
+        couponId: 1,
+        orderId: 10,
+        userId: 7,
+        discountAmount: 2.5,
+      });
+      expect(result).toMatchObject({
+        subtotal: 10,
+        discountAmount: 2.5,
+        total: 7.5,
+        coupon: {
+          id: 1,
+          code: 'SAVE25',
+          type: DiscountType.FIXED_AMOUNT,
+          value: 2.5,
+        },
+      });
+    });
+
+    it('rolls back an invalid coupon checkout without writing', async () => {
+      const {
+        service,
+        cartRepo,
+        productQb,
+        productUpdateQb,
+        orderRepo,
+        cartItemRepo,
+        addressRepo,
+        couponsMocks,
+      } = buildMocks();
+      cartRepo.findOne.mockResolvedValue(
+        customerCart([{ id: 1, cartId: 1, productId: 5, quantity: 1 }]),
+      );
+      productQb.getMany.mockResolvedValue([product()]);
+      addressRepo.findOne.mockResolvedValue(defaultAddress());
+      couponsMocks.validateAndConsume.mockRejectedValue(
+        new BadRequestException('Coupon not found'),
+      );
+
+      await expect(
+        service.checkout(7, { couponCode: 'NOPE' }, TENANT),
+      ).rejects.toThrow('Coupon not found');
+
+      expect(orderRepo.save).not.toHaveBeenCalled();
+      expect(productUpdateQb.execute).not.toHaveBeenCalled();
+      expect(cartItemRepo.delete).not.toHaveBeenCalled();
+      expect(couponsMocks.consume).not.toHaveBeenCalled();
+    });
+
+    it('does not touch coupons when no couponCode is sent', async () => {
+      const { service, cartRepo, productQb, addressRepo, couponsMocks } =
+        buildMocks();
+      cartRepo.findOne.mockResolvedValue(
+        customerCart([{ id: 1, cartId: 1, productId: 5, quantity: 1 }]),
+      );
+      productQb.getMany.mockResolvedValue([product()]);
+      addressRepo.findOne.mockResolvedValue(defaultAddress());
+
+      const result = await service.checkout(7, {}, TENANT);
+
+      expect(couponsMocks.validateAndConsume).not.toHaveBeenCalled();
+      expect(couponsMocks.consume).not.toHaveBeenCalled();
+      expect(result).toMatchObject({
+        subtotal: 19.99,
+        total: 19.99,
+        discountAmount: 0,
+        coupon: null,
+      });
+    });
   });
 
   describe('findAll', () => {
@@ -361,6 +479,58 @@ describe('OrdersService', () => {
         order: { createdAt: 'DESC' },
       });
       expect(result).toHaveLength(1);
+    });
+
+    it('returns a paginated envelope when page/limit are sent', async () => {
+      const { service, orderRepo } = buildMocks();
+      orderRepo.findAndCount.mockResolvedValue([[orderEntity()], 1]);
+
+      const result = await service.findAll(
+        manager(),
+        { page: 2, limit: 10 },
+        TENANT,
+      );
+
+      expect(orderRepo.findAndCount).toHaveBeenCalledWith({
+        where: {},
+        relations: { items: true, user: true },
+        order: { createdAt: 'DESC' },
+        skip: 10,
+        take: 10,
+        relationLoadStrategy: 'query',
+      });
+      expect(result).toMatchObject({ total: 1, page: 2, limit: 10 });
+      expect((result as { data: unknown[] }).data).toHaveLength(1);
+    });
+
+    it('keeps the customer scoping while paginating', async () => {
+      const { service, orderRepo } = buildMocks();
+      orderRepo.findAndCount.mockResolvedValue([[], 0]);
+
+      await service.findAll(requester(), { page: 1, limit: 10 }, TENANT);
+
+      expect(orderRepo.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { userId: 7 } }),
+      );
+    });
+
+    it('clamps the limit and falls back for an unknown sort field', async () => {
+      const { service, orderRepo } = buildMocks();
+      orderRepo.findAndCount.mockResolvedValue([[], 0]);
+
+      await service.findAll(
+        manager(),
+        { page: 1, limit: 500, sortBy: 'password', sortOrder: 'asc' },
+        TENANT,
+      );
+
+      expect(orderRepo.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skip: 0,
+          take: 50,
+          order: { createdAt: 'ASC' },
+        }),
+      );
     });
   });
 
@@ -567,6 +737,22 @@ describe('OrdersService', () => {
       expect(orderRepo.update).toHaveBeenCalledWith(
         { id: 1 },
         { status: OrderStatus.CANCELLED },
+      );
+    });
+
+    it('restores coupon usage when cancelling a coupon order', async () => {
+      const { service, orderRepo, entityManager, couponsMocks } = buildMocks();
+      orderRepo.findOne
+        .mockResolvedValueOnce(
+          orderEntity({ status: OrderStatus.PENDING, couponId: 5, items: [] }),
+        )
+        .mockResolvedValueOnce(orderEntity({ status: OrderStatus.CANCELLED }));
+
+      await service.cancel(1, requester(), TENANT);
+
+      expect(couponsMocks.restoreUsage).toHaveBeenCalledWith(
+        entityManager,
+        expect.objectContaining({ couponId: 5 }),
       );
     });
   });

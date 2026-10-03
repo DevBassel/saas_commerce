@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { TenantService } from '../tenant.service';
 import { TenantManagerService } from './tenant-manager.service';
-import { TENANT_ROLE_KEYS, seedRbac } from '../../rbac/rbac.seed';
+import { TENANT_ROLE_KEYS, seedRbac } from '../../rbac/utils/rbac.seed';
 import { TenantStatus } from '../enums/tenantStatus.enum';
 
 @Injectable()

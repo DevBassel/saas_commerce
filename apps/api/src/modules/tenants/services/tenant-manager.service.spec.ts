@@ -2,7 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { buildDataSourceOptions } from 'src/common/config/data-source.factory';
 import { IENV } from 'src/common/config/env.interface';
-import { TENANT_ENTITIES } from '../tenant-entities';
+import { TENANT_ENTITIES } from '../utils/tenant-entities';
 import { TenantManagerService } from './tenant-manager.service';
 
 jest.mock('src/common/config/data-source.factory', () => ({

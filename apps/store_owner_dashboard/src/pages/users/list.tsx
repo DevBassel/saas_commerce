@@ -23,13 +23,10 @@ export const UsersList = ({ roleKey, title }: UsersListProps = {}) => {
       sorters: {
         initial: [{ field: "createdAt", order: "desc" }],
       },
-      filters: roleKey
-        ? {
-            permanent: [
-              { field: "role.key", operator: "in", value: [roleKey] },
-            ],
-          }
-        : undefined,
+      // The API paginates users server-side, so the role scoping for the
+      // Admins/Customers tabs travels as a query param rather than a
+      // client-side filter.
+      meta: roleKey ? { query: { role: roleKey } } : undefined,
     },
   });
 

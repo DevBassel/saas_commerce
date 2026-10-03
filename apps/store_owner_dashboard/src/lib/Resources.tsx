@@ -10,6 +10,7 @@ import {
   SettingsIcon,
   CreditCardIcon,
   StoreIcon,
+  BadgePercentIcon,
 } from "lucide-react";
 
 export const Resources: ResourceProps[] = [
@@ -98,6 +99,25 @@ export const Resources: ResourceProps[] = [
       label: "Orders",
       icon: <ClipboardListIcon />,
       parent: "Products",
+    },
+  },
+  {
+    name: "marketing",
+    meta: {
+      label: "Marketing",
+      icon: <BadgePercentIcon />,
+    },
+  },
+  {
+    name: "coupons",
+    list: "/coupons",
+    create: "/coupons/create",
+    edit: "/coupons/edit/:id",
+    show: "/coupons/show/:id",
+    meta: {
+      label: "Coupons",
+      icon: <BadgePercentIcon />,
+      parent: "marketing",
     },
   },
   {

@@ -55,6 +55,29 @@ describe('ManageOrderService', () => {
       expect(result.status).toBe(OrderStatus.CANCELLED);
     });
 
+    it('restores coupon usage when a manager cancels a coupon order', async () => {
+      const { manageService, orderRepo, entityManager, couponsMocks } =
+        buildMocks();
+      orderRepo.findOne.mockResolvedValue(
+        orderEntity({
+          status: OrderStatus.CONFIRMED,
+          couponId: 5,
+          items: [{ id: 1, productId: 5, quantity: 2 }],
+        }),
+      );
+
+      await manageService.updateStatus(
+        1,
+        { status: OrderStatus.CANCELLED },
+        TENANT,
+      );
+
+      expect(couponsMocks.restoreUsage).toHaveBeenCalledWith(
+        entityManager,
+        expect.objectContaining({ couponId: 5 }),
+      );
+    });
+
     it('refunds a paid order when a manager cancels it', async () => {
       const { manageService, orderRepo, productRepo, paymentsMocks } =
         buildMocks();

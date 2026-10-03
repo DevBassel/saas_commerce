@@ -25,6 +25,12 @@ import {
   CategoriesEdit,
   CategoriesShow,
 } from "./pages/categories";
+import {
+  CouponsList,
+  CouponsCreate,
+  CouponsEdit,
+  CouponsShow,
+} from "./pages/coupons";
 import { OrdersList, OrdersShow } from "./pages/orders";
 import { StripePayments } from "./pages/settings/payments";
 import { StoreSettings } from "./pages/settings/store";
@@ -94,6 +100,13 @@ function App() {
                       <Route path="create" element={<CategoriesCreate />} />
                       <Route path="edit/:id" element={<CategoriesEdit />} />
                       <Route path="show/:id" element={<CategoriesShow />} />
+                    </Route>
+
+                    <Route path="coupons">
+                      <Route index element={<CouponsList />} />
+                      <Route path="create" element={<CouponsCreate />} />
+                      <Route path="edit/:id" element={<CouponsEdit />} />
+                      <Route path="show/:id" element={<CouponsShow />} />
                     </Route>
 
                     <Route path="orders">

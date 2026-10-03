@@ -6,7 +6,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { CreateUserDto } from '../../users/dto/create-user.dto';
-import { SLUG_MESSAGE, SLUG_REGEX } from '../../tenants/tenant.utils';
+import { SLUG_MESSAGE, SLUG_REGEX } from '../../tenants/utils/tenant.utils';
 
 export class RegisterStoreDto extends CreateUserDto {
   @IsString()

@@ -8,7 +8,7 @@ import { Permission } from './entities/permission.entity';
 import { Role } from './entities/role.entity';
 import { User } from '../users/entities/user.entity';
 import { RbacSeedService } from './rbac.seed.service';
-import { seedRbac } from './rbac.seed';
+import { seedRbac } from './utils/rbac.seed';
 
 jest.mock('bcrypt', () => ({
   __esModule: true,
@@ -17,7 +17,7 @@ jest.mock('bcrypt', () => ({
   },
 }));
 
-jest.mock('./rbac.seed', () => ({
+jest.mock('./utils/rbac.seed', () => ({
   seedRbac: jest.fn().mockResolvedValue(undefined),
 }));
 

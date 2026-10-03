@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'async_hooks';
 import { Tenant } from '../tenants/entities/tenant.entity';
-import { TenantRef } from '../tenants/tenant.utils';
+import { TenantRef } from '../tenants/utils/tenant.utils';
 
 export interface TenantContext {
   tenant: Tenant;

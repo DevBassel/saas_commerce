@@ -28,6 +28,7 @@ export const dataProvider: DataProvider = {
         params: buildListParams({
           pagination,
           sorters,
+          query: meta?.query as Record<string, unknown> | undefined,
           omit: meta?.omitListParams === true,
         }),
       });

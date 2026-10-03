@@ -1,0 +1,6 @@
+# Live credentials and generated datasets — never commit.
+.env
+data/*.json
+data/*.json.tmp
+!data/.gitkeep
+results/

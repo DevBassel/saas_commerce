@@ -8,9 +8,9 @@ import { Category } from './entities/category.entity';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
-import { TenantRef } from '../tenants/tenant.utils';
-import { resolveTenantScope } from '../tenants/tenant-scope';
-import { slugify } from '../../common/slug';
+import { TenantRef } from '../tenants/utils/tenant.utils';
+import { resolveTenantScope } from '../tenants/utils/tenant-scope';
+import { slugify } from '../../common/utils/slug';
 import { SerializedCategory } from './constants/categories.interface';
 
 export const serializeCategory = (category: Category): SerializedCategory => ({
@@ -27,14 +27,10 @@ export const serializeCategory = (category: Category): SerializedCategory => ({
 export class CategoriesService {
   constructor(private readonly tenantManager: TenantManagerService) {}
 
-  private resolveTenant(tenant?: TenantRef): TenantRef {
-    return resolveTenantScope(tenant);
-  }
-
   private repo(tenant?: TenantRef): Promise<Repository<Category>> {
     return this.tenantManager.getRepository(
       Category,
-      this.resolveTenant(tenant),
+      resolveTenantScope(tenant),
     );
   }
 

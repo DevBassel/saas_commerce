@@ -1,12 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { TenantRef } from '../tenants/tenant.utils';
-import { resolveTenantScope } from '../tenants/tenant-scope';
+import { TenantRef } from '../tenants/utils/tenant.utils';
+import { resolveTenantScope } from '../tenants/utils/tenant-scope';
 import { Payment } from './entities/payment.entity';
 import { Order } from '../orders/entities/order.entity';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
 import { PaymentStatus } from './constants/payment-status.enum';
 import { paymentMetaData } from './constants/payment-metadata';
-import { toMajorUnit } from '../../common/money';
+import { toMajorUnit } from '../../common/utils/money';
 
 @Injectable()
 export default class PaymentService {

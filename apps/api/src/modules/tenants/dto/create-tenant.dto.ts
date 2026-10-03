@@ -5,7 +5,7 @@ import {
   Matches,
   MinLength,
 } from 'class-validator';
-import { SLUG_MESSAGE, SLUG_REGEX } from '../tenant.utils';
+import { SLUG_MESSAGE, SLUG_REGEX } from '../utils/tenant.utils';
 
 export class CreateTenantDto {
   @IsString()

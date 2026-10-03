@@ -8,10 +8,12 @@ import {
   Param,
   Delete,
   ParseIntPipe,
+  Query,
   Req,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { ListUsersQueryDto } from './dto/list-users.query.dto';
 import { AssignRoleDto } from './dto/assign-role.dto';
 import { AssignPermissionsDto } from './dto/assign-permissions.dto';
 import { RevokePermissionsDto } from './dto/revoke-permissions.dto';
@@ -47,9 +49,10 @@ export class UsersController {
 
   @Get()
   @Permissions([UserPermissionKey.READ])
-  async findAll() {
-    const users = await this.usersService.findAll();
-    return users.map(presentUser);
+  async findAll(@Query() query: ListUsersQueryDto) {
+    const result = await this.usersService.findAll(query);
+    if (Array.isArray(result)) return result.map(presentUser);
+    return { ...result, data: result.data.map(presentUser) };
   }
 
   @Patch(':id')

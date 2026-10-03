@@ -5,10 +5,10 @@ import { ConfigService } from '@nestjs/config';
 import { Role } from './entities/role.entity';
 import { Permission } from './entities/permission.entity';
 import { User } from '../users/entities/user.entity';
-import { seedRbac } from './rbac.seed';
+import { seedRbac } from './utils/rbac.seed';
 import { RoleKey } from 'src/common/constants/RoleKey.enum';
 import { IAPP, IENV } from 'src/common/config/env.interface';
-import { mergePermissions } from './permission.utils';
+import { mergePermissions } from './utils/permission.utils';
 import bcrypt from 'bcrypt';
 
 @Injectable()

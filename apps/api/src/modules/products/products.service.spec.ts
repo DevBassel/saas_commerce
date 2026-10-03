@@ -39,6 +39,7 @@ const buildMocks = () => {
     findOneBy: jest.fn(),
     findOne: jest.fn(),
     find: jest.fn(),
+    findAndCount: jest.fn(),
     save: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
@@ -113,6 +114,23 @@ const file = (overrides: Partial<Express.Multer.File> = {}) =>
     ...overrides,
   }) as Express.Multer.File;
 
+const product = (overrides: Record<string, unknown> = {}) => ({
+  id: 1,
+  name: 'Shirt',
+  sku: 'SKU-1',
+  slug: 'shirt',
+  description: null,
+  price: 10,
+  stock: 5,
+  isActive: true,
+  categoryId: null,
+  category: null,
+  images: [],
+  createdAt: new Date('2026-01-01T00:00:00.000Z'),
+  updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+  ...overrides,
+});
+
 describe('ProductsService', () => {
   it('requires a tenant context', async () => {
     const { service } = buildMocks();
@@ -181,6 +199,73 @@ describe('ProductsService', () => {
     await expect(service.update(1, { sku: 'TAKEN' }, TENANT)).rejects.toThrow(
       BadRequestException,
     );
+  });
+
+  describe('findAll', () => {
+    it('returns a legacy array when no pagination is requested', async () => {
+      const { service, productRepo } = buildMocks();
+      productRepo.find.mockResolvedValue([product()]);
+
+      const result = await service.findAll({}, TENANT);
+
+      expect(Array.isArray(result)).toBe(true);
+      expect(productRepo.find).toHaveBeenCalledWith({
+        relations: { images: true, category: true },
+        order: { createdAt: 'DESC' },
+      });
+      expect(productRepo.findAndCount).not.toHaveBeenCalled();
+    });
+
+    it('returns a paginated envelope when page/limit are sent', async () => {
+      const { service, productRepo } = buildMocks();
+      productRepo.findAndCount.mockResolvedValue([[product()], 1]);
+
+      const result = await service.findAll({ page: 1, limit: 10 }, TENANT);
+
+      expect(productRepo.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          order: { createdAt: 'DESC' },
+          skip: 0,
+          take: 10,
+          relationLoadStrategy: 'query',
+        }),
+      );
+      expect(result).toMatchObject({ total: 1, page: 1, limit: 10 });
+      expect((result as { data: unknown[] }).data).toHaveLength(1);
+    });
+
+    it('clamps the limit to 50 and computes skip from the page', async () => {
+      const { service, productRepo } = buildMocks();
+      productRepo.findAndCount.mockResolvedValue([[], 120]);
+
+      const result = await service.findAll({ page: 3, limit: 100 }, TENANT);
+
+      expect(productRepo.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({ skip: 100, take: 50 }),
+      );
+      expect(result).toMatchObject({ page: 3, limit: 50, total: 120 });
+    });
+
+    it('honors a whitelisted sort and ignores unknown fields', async () => {
+      const { service, productRepo } = buildMocks();
+      productRepo.findAndCount.mockResolvedValue([[], 0]);
+
+      await service.findAll(
+        { page: 1, limit: 10, sortBy: 'price', sortOrder: 'asc' },
+        TENANT,
+      );
+      expect(productRepo.findAndCount).toHaveBeenLastCalledWith(
+        expect.objectContaining({ order: { price: 'ASC' } }),
+      );
+
+      await service.findAll(
+        { page: 1, limit: 10, sortBy: 'drop table', sortOrder: 'desc' },
+        TENANT,
+      );
+      expect(productRepo.findAndCount).toHaveBeenLastCalledWith(
+        expect.objectContaining({ order: { createdAt: 'DESC' } }),
+      );
+    });
   });
 
   describe('uploadImages', () => {

@@ -4,6 +4,7 @@ import { ProductPermissionKey } from 'src/modules/products/constants/product-per
 import { CategoryPermissionKey } from 'src/modules/categories/constants/category-permissions.enum';
 import { CartPermissionKey } from 'src/modules/cart/constants/cart-permissions.enum';
 import { OrderPermissionKey } from 'src/modules/orders/constants/order-permissions.enum';
+import { CouponPermissionKey } from 'src/modules/coupons/constants/coupon-permissions.enum';
 import { PaymentPermissionKey } from 'src/modules/payments/constants/payments-permissions.enum';
 import { AddressPermissionKey } from 'src/modules/addresses/constants/address-permissions.enum';
 
@@ -14,5 +15,6 @@ export type PermissionKey =
   | CategoryPermissionKey
   | CartPermissionKey
   | OrderPermissionKey
+  | CouponPermissionKey
   | PaymentPermissionKey
   | AddressPermissionKey;

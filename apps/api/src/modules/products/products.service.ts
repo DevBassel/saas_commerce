@@ -12,17 +12,38 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
 import { TenantService } from '../tenants/tenant.service';
-import { TenantRef } from '../tenants/tenant.utils';
-import { resolveTenantScope } from '../tenants/tenant-scope';
+import { TenantRef } from '../tenants/utils/tenant.utils';
+import { resolveTenantScope } from '../tenants/utils/tenant-scope';
 import { R2Service } from '../../common/storage/r2.service';
 import { IENV, IFiles } from '../../common/config/env.interface';
 import { SerializedProduct } from './constants/products.interface';
-import { ensureUniqueProductSlug, slugifyProductName } from './products.slug';
-import { serializeProduct } from './products.serializer';
+import {
+  ensureUniqueProductSlug,
+  slugifyProductName,
+} from './utils/products.slug';
+import { serializeProduct } from './utils/products.serializer';
 import { ALLOWED_MIME_TYPES } from './constants/allowed-imgs-type';
 import { MAX_FILES_PER_REQUEST } from './constants/upload.constants';
 import { R2Upload } from '../../common/storage/interfaces/r2.interface';
 import { CategoriesService } from '../categories/categories.service';
+import {
+  isPaginatedQuery,
+  resolvePagination,
+  resolveSort,
+} from '../../common/pagination/pagination';
+import { ListProductsQueryDto } from './dto/list-products.query.dto';
+
+const PRODUCT_SORTABLE_FIELDS: readonly (keyof Product)[] = [
+  'name',
+  'sku',
+  'slug',
+  'price',
+  'stock',
+  'isActive',
+  'categoryId',
+  'createdAt',
+  'updatedAt',
+];
 
 @Injectable()
 export class ProductsService {
@@ -34,15 +55,11 @@ export class ProductsService {
     private readonly config: ConfigService<IENV>,
   ) {}
 
-  private resolveTenant(tenant?: TenantRef): TenantRef {
-    return resolveTenantScope(tenant);
-  }
-
   private async repos(tenant?: TenantRef): Promise<{
     productRepo: Repository<Product>;
     imageRepo: Repository<ProductImage>;
   }> {
-    const target = this.resolveTenant(tenant);
+    const target = resolveTenantScope(tenant);
     const [productRepo, imageRepo] = await Promise.all([
       this.tenantManager.getRepository(Product, target),
       this.tenantManager.getRepository(ProductImage, target),
@@ -70,7 +87,7 @@ export class ProductsService {
 
   async create(dto: CreateProductDto, tenant?: TenantRef) {
     const { productRepo } = await this.repos(tenant);
-    const target = this.resolveTenant(tenant);
+    const target = resolveTenantScope(tenant);
 
     const existing = await productRepo.findOneBy({ sku: dto.sku });
     if (existing) throw new BadRequestException('sku already exists');
@@ -96,13 +113,39 @@ export class ProductsService {
     return this.serialize(product);
   }
 
-  async findAll(tenant?: TenantRef) {
+  async findAll(query: ListProductsQueryDto = {}, tenant?: TenantRef) {
     const { productRepo } = await this.repos(tenant);
-    const products = await productRepo.find({
-      relations: { images: true, category: true },
-      order: { createdAt: 'DESC' },
+    const relations = { images: true, category: true };
+
+    if (!isPaginatedQuery(query)) {
+      const products = await productRepo.find({
+        relations,
+        order: { createdAt: 'DESC' },
+      });
+      return products.map((product) => this.serialize(product));
+    }
+
+    const { page, limit, skip, take } = resolvePagination(query);
+    const order = resolveSort<Product>(
+      query.sortBy,
+      query.sortOrder,
+      PRODUCT_SORTABLE_FIELDS,
+      { field: 'createdAt', order: 'desc' },
+    );
+
+    const [products, total] = await productRepo.findAndCount({
+      relations,
+      order,
+      skip,
+      take,
+      relationLoadStrategy: 'query',
     });
-    return products.map((product) => this.serialize(product));
+    return {
+      data: products.map((product) => this.serialize(product)),
+      total,
+      page,
+      limit,
+    };
   }
 
   async findOne(id: number, tenant?: TenantRef) {
@@ -117,7 +160,7 @@ export class ProductsService {
 
   async update(id: number, dto: UpdateProductDto, tenant?: TenantRef) {
     const { productRepo } = await this.repos(tenant);
-    const target = this.resolveTenant(tenant);
+    const target = resolveTenantScope(tenant);
     const product = await productRepo.findOneBy({ id });
     if (!product) throw new NotFoundException('Product not found');
 
@@ -163,7 +206,7 @@ export class ProductsService {
     if (keys.length > 0) {
       await imageRepo.delete({ productId: id });
       await this.r2.deleteMany(keys.map((key) => key.key));
-      const getTenant = this.resolveTenant(tenant);
+      const getTenant = resolveTenantScope(tenant);
       // update capacity
       await this.tenantService.adjustStorageUsedBytes(
         getTenant.schemaName,
@@ -179,7 +222,7 @@ export class ProductsService {
     files: Express.Multer.File[],
     tenant?: TenantRef,
   ) {
-    const target = this.resolveTenant(tenant);
+    const target = resolveTenantScope(tenant);
     const { productRepo, imageRepo } = await this.repos(target);
 
     const product = await productRepo.findOneBy({ id: productId });
@@ -285,7 +328,7 @@ export class ProductsService {
   }
 
   async deleteImage(productId: number, imageId: number, tenant?: TenantRef) {
-    const target = this.resolveTenant(tenant);
+    const target = resolveTenantScope(tenant);
     const { imageRepo } = await this.repos(target);
     const image = await imageRepo.findOneBy({ id: imageId, productId });
     if (!image) throw new NotFoundException('Image not found');

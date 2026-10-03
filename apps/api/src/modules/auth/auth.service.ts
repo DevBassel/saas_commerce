@@ -17,8 +17,8 @@ import { randomUUID } from 'crypto';
 import { compare } from 'bcrypt';
 import { TenantService } from '../tenants/tenant.service';
 import { TenantProvisionerService } from '../tenants/services/tenant-provisioner.service';
-import { assertTenantActive } from '../tenants/tenant-policy';
-import { requireTenantContext } from '../tenants/tenant-scope';
+import { assertTenantActive } from '../tenants/utils/tenant-policy';
+import { requireTenantContext } from '../tenants/utils/tenant-scope';
 import { TenantIdentity, tenantRefFromPayload } from './tenant-ref.util';
 
 @Injectable()

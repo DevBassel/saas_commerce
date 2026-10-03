@@ -4,7 +4,7 @@ import { RoleKey } from 'src/common/constants/RoleKey.enum';
 import { Permission } from './entities/permission.entity';
 import { Role } from './entities/role.entity';
 import { SEED_PERMISSIONS, SEED_ROLE_PERMISSIONS } from './constants/seed-data';
-import { seedRbac } from './rbac.seed';
+import { seedRbac } from './utils/rbac.seed';
 
 const permissionEntities = SEED_PERMISSIONS.map((p, index) => ({
   id: index + 1,

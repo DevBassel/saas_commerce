@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { LoaderCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
   createAddress,
@@ -27,8 +28,14 @@ import {
   type ICreateAddress,
 } from "@/api/addressesApi";
 import { PlaceOrderReq, type IOrder } from "@/api/orderApi";
+import {
+  ValidateCoupon,
+  type ICouponValidation,
+} from "@/api/couponsApi";
 import { handelError } from "@/api/handelError";
 import StripePaymentStep from "@/components/payments/StripePaymentStep";
+import { useCurrency } from "@/components/currency/currency-provider";
+import { formatMoney } from "@/lib/money";
 
 const optionalField = (formData: FormData, name: string) => {
   const value = String(formData.get(name) ?? "").trim();
@@ -37,6 +44,7 @@ const optionalField = (formData: FormData, name: string) => {
 
 export default function PlaceOrder() {
   const router = useRouter();
+  const currency = useCurrency();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"address" | "payment">("address");
   const [order, setOrder] = useState<IOrder | null>(null);
@@ -45,6 +53,9 @@ export default function PlaceOrder() {
   const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [couponInput, setCouponInput] = useState("");
+  const [coupon, setCoupon] = useState<ICouponValidation | null>(null);
+  const [validatingCoupon, setValidatingCoupon] = useState(false);
 
   const loadAddresses = async (preferId?: number) => {
     setLoading(true);
@@ -68,6 +79,8 @@ export default function PlaceOrder() {
     setOpen(next);
     setStep("address");
     setOrder(null);
+    setCoupon(null);
+    setCouponInput("");
     if (next) void loadAddresses();
   };
 
@@ -102,6 +115,29 @@ export default function PlaceOrder() {
     }
   };
 
+  const handleApplyCoupon = async () => {
+    const code = couponInput.trim().toUpperCase();
+    if (!code) return;
+
+    setValidatingCoupon(true);
+    try {
+      const validation = await ValidateCoupon(code);
+      setCoupon(validation);
+      setCouponInput(validation.code);
+      toast.success(`Coupon ${validation.code} applied`);
+    } catch (error) {
+      setCoupon(null);
+      handelError(error);
+    } finally {
+      setValidatingCoupon(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setCoupon(null);
+    setCouponInput("");
+  };
+
   const handlePlaceOrder = async (e: SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (selectedId == null) {
@@ -109,9 +145,32 @@ export default function PlaceOrder() {
       return;
     }
 
+    // Re-validate the coupon immediately before creating the order so a code
+    // that expired or no longer qualifies never reaches checkout. An invalid
+    // coupon aborts the order instead of creating one with a stale discount.
+    const code = couponInput.trim().toUpperCase();
+    let appliedCoupon = coupon;
+    if (code) {
+      setValidatingCoupon(true);
+      try {
+        appliedCoupon = await ValidateCoupon(code);
+        setCoupon(appliedCoupon);
+        setCouponInput(appliedCoupon.code);
+      } catch (error) {
+        setCoupon(null);
+        handelError(error);
+        return;
+      } finally {
+        setValidatingCoupon(false);
+      }
+    }
+
     setSubmitting(true);
     try {
-      const placed = await PlaceOrderReq({ addressId: selectedId });
+      const placed = await PlaceOrderReq({
+        addressId: selectedId,
+        couponCode: appliedCoupon?.code,
+      });
       setOrder(placed);
       setStep("payment");
     } catch (error) {
@@ -192,6 +251,62 @@ export default function PlaceOrder() {
                 </p>
               )}
 
+              <div className="space-y-2">
+                <Label htmlFor="couponCode">Coupon code</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="couponCode"
+                    value={couponInput}
+                    onChange={(e) =>
+                      setCouponInput(e.target.value.toUpperCase())
+                    }
+                    placeholder="SAVE10"
+                    autoComplete="off"
+                    disabled={coupon != null}
+                  />
+                  {coupon ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={handleRemoveCoupon}
+                    >
+                      Remove
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleApplyCoupon}
+                      disabled={
+                        validatingCoupon || couponInput.trim().length === 0
+                      }
+                    >
+                      {validatingCoupon ? (
+                        <LoaderCircle className="animate-spin" />
+                      ) : (
+                        "Apply"
+                      )}
+                    </Button>
+                  )}
+                </div>
+                {coupon && (
+                  <div className="flex flex-col gap-2 rounded-xl bg-muted/40 p-3 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Subtotal</span>
+                      <span>{formatMoney(coupon.subtotal, currency)}</span>
+                    </div>
+                    <div className="flex justify-between text-primary">
+                      <span>Discount ({coupon.code})</span>
+                      <span>-{formatMoney(coupon.discountAmount, currency)}</span>
+                    </div>
+                    <div className="flex justify-between border-t border-border pt-2 font-medium">
+                      <span>Total</span>
+                      <span>{formatMoney(coupon.total, currency)}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <DialogFooter className="sm:justify-between">
                 <Button
                   type="button"
@@ -203,9 +318,18 @@ export default function PlaceOrder() {
                 <Button
                   className="w-full sm:w-auto"
                   type="submit"
-                  disabled={submitting || selectedId == null}
+                  disabled={
+                    submitting || validatingCoupon || selectedId == null
+                  }
                 >
-                  Place Order
+                  {submitting ? (
+                    <>
+                      <LoaderCircle className="animate-spin" />
+                      Placing…
+                    </>
+                  ) : (
+                    "Place Order"
+                  )}
                 </Button>
               </DialogFooter>
             </form>

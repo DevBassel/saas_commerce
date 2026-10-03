@@ -74,6 +74,16 @@
       "key": "address_id",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "coupon_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "currency_request_id",
+      "value": "",
+      "type": "string"
     }
   ],
   "auth": {
@@ -114,8 +124,13 @@
             },
             "url": {
               "raw": "{{base_url}}/auth/register",
-              "host": ["{{base_url}}"],
-              "path": ["auth", "register"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
             }
           },
           "event": [
@@ -149,8 +164,14 @@
             },
             "url": {
               "raw": "{{base_url}}/auth/login/platform",
-              "host": ["{{base_url}}"],
-              "path": ["auth", "login", "platform"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login",
+                "platform"
+              ]
             }
           },
           "event": [
@@ -188,8 +209,13 @@
             },
             "url": {
               "raw": "{{base_url}}/auth/register-store",
-              "host": ["{{base_url}}"],
-              "path": ["auth", "register-store"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "register-store"
+              ]
             }
           },
           "event": [
@@ -233,8 +259,13 @@
             },
             "url": {
               "raw": "{{base_url}}/auth/login",
-              "host": ["{{base_url}}"],
-              "path": ["auth", "login"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
             }
           },
           "event": [
@@ -275,8 +306,13 @@
             },
             "url": {
               "raw": "{{base_url}}/auth/refresh",
-              "host": ["{{base_url}}"],
-              "path": ["auth", "refresh"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ]
             }
           },
           "event": [
@@ -319,8 +355,13 @@
             ],
             "url": {
               "raw": "{{base_url}}/auth/logout",
-              "host": ["{{base_url}}"],
-              "path": ["auth", "logout"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
             },
             "description": "Clears the caller's stored jti, so the refresh token is revoked. Send the tenant access token plus x-tenant-slug."
           },
@@ -353,8 +394,14 @@
             ],
             "url": {
               "raw": "{{base_url}}/auth/logout/platform",
-              "host": ["{{base_url}}"],
-              "path": ["auth", "logout", "platform"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "logout",
+                "platform"
+              ]
             },
             "description": "Platform variant: clears the platform user's stored jti. Requires the platform access token (tenant tokens are rejected on platform routes with 403)."
           },
@@ -387,8 +434,13 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/users/profile",
-              "host": ["{{base_url}}"],
-              "path": ["users", "profile"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "users",
+                "profile"
+              ]
             }
           },
           "response": []
@@ -400,8 +452,14 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/users/profile/{{user_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["users", "profile", "{{user_id}}"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "users",
+                "profile",
+                "{{user_id}}"
+              ]
             }
           },
           "response": []
@@ -413,8 +471,12 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/users",
-              "host": ["{{base_url}}"],
-              "path": ["users"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "users"
+              ]
             }
           },
           "event": [
@@ -452,8 +514,13 @@
             },
             "url": {
               "raw": "{{base_url}}/users/{{user_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["users", "{{user_id}}"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "users",
+                "{{user_id}}"
+              ]
             }
           },
           "response": []
@@ -474,8 +541,14 @@
             },
             "url": {
               "raw": "{{base_url}}/users/{{user_id}}/role",
-              "host": ["{{base_url}}"],
-              "path": ["users", "{{user_id}}", "role"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "users",
+                "{{user_id}}",
+                "role"
+              ]
             }
           },
           "response": []
@@ -487,8 +560,14 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/users/{{user_id}}/role",
-              "host": ["{{base_url}}"],
-              "path": ["users", "{{user_id}}", "role"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "users",
+                "{{user_id}}",
+                "role"
+              ]
             }
           },
           "response": []
@@ -509,8 +588,14 @@
             },
             "url": {
               "raw": "{{base_url}}/users/{{user_id}}/permissions",
-              "host": ["{{base_url}}"],
-              "path": ["users", "{{user_id}}", "permissions"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "users",
+                "{{user_id}}",
+                "permissions"
+              ]
             }
           },
           "response": []
@@ -531,8 +616,14 @@
             },
             "url": {
               "raw": "{{base_url}}/users/{{user_id}}/permissions",
-              "host": ["{{base_url}}"],
-              "path": ["users", "{{user_id}}", "permissions"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "users",
+                "{{user_id}}",
+                "permissions"
+              ]
             }
           },
           "response": []
@@ -544,8 +635,13 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/users/{{user_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["users", "{{user_id}}"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "users",
+                "{{user_id}}"
+              ]
             }
           },
           "response": []
@@ -573,8 +669,12 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/roles",
-              "host": ["{{base_url}}"],
-              "path": ["roles"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "roles"
+              ]
             }
           },
           "event": [
@@ -603,8 +703,13 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/roles/{{role_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["roles", "{{role_id}}"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "roles",
+                "{{role_id}}"
+              ]
             }
           },
           "response": []
@@ -625,8 +730,12 @@
             },
             "url": {
               "raw": "{{base_url}}/roles",
-              "host": ["{{base_url}}"],
-              "path": ["roles"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "roles"
+              ]
             }
           },
           "event": [
@@ -664,8 +773,13 @@
             },
             "url": {
               "raw": "{{base_url}}/roles/{{role_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["roles", "{{role_id}}"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "roles",
+                "{{role_id}}"
+              ]
             }
           },
           "response": []
@@ -677,8 +791,13 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/roles/{{role_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["roles", "{{role_id}}"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "roles",
+                "{{role_id}}"
+              ]
             }
           },
           "response": []
@@ -706,8 +825,12 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/permissions",
-              "host": ["{{base_url}}"],
-              "path": ["permissions"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "permissions"
+              ]
             }
           },
           "event": [
@@ -745,8 +868,12 @@
             },
             "url": {
               "raw": "{{base_url}}/permissions",
-              "host": ["{{base_url}}"],
-              "path": ["permissions"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "permissions"
+              ]
             }
           },
           "event": [
@@ -784,8 +911,13 @@
             },
             "url": {
               "raw": "{{base_url}}/permissions/{{permission_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["permissions", "{{permission_id}}"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "permissions",
+                "{{permission_id}}"
+              ]
             }
           },
           "response": []
@@ -797,8 +929,13 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/permissions/{{permission_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["permissions", "{{permission_id}}"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "permissions",
+                "{{permission_id}}"
+              ]
             }
           },
           "response": []
@@ -826,8 +963,12 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/products",
-              "host": ["{{base_url}}"],
-              "path": ["products"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products"
+              ]
             }
           },
           "event": [
@@ -859,8 +1000,13 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/products/{{product_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["products", "{{product_id}}"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products",
+                "{{product_id}}"
+              ]
             }
           },
           "response": []
@@ -881,8 +1027,12 @@
             },
             "url": {
               "raw": "{{base_url}}/products",
-              "host": ["{{base_url}}"],
-              "path": ["products"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products"
+              ]
             }
           },
           "event": [
@@ -920,8 +1070,13 @@
             },
             "url": {
               "raw": "{{base_url}}/products/{{product_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["products", "{{product_id}}"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products",
+                "{{product_id}}"
+              ]
             }
           },
           "response": []
@@ -943,8 +1098,14 @@
             },
             "url": {
               "raw": "{{base_url}}/products/{{product_id}}/images",
-              "host": ["{{base_url}}"],
-              "path": ["products", "{{product_id}}", "images"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products",
+                "{{product_id}}",
+                "images"
+              ]
             }
           },
           "event": [
@@ -982,8 +1143,15 @@
             },
             "url": {
               "raw": "{{base_url}}/products/{{product_id}}/images/order",
-              "host": ["{{base_url}}"],
-              "path": ["products", "{{product_id}}", "images", "order"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products",
+                "{{product_id}}",
+                "images",
+                "order"
+              ]
             }
           },
           "response": []
@@ -995,8 +1163,15 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/products/{{product_id}}/images/{{image_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["products", "{{product_id}}", "images", "{{image_id}}"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products",
+                "{{product_id}}",
+                "images",
+                "{{image_id}}"
+              ]
             }
           },
           "response": []
@@ -1008,8 +1183,13 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/products/{{product_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["products", "{{product_id}}"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "products",
+                "{{product_id}}"
+              ]
             }
           },
           "response": []
@@ -1037,8 +1217,12 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/categories",
-              "host": ["{{base_url}}"],
-              "path": ["categories"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "categories"
+              ]
             }
           },
           "event": [
@@ -1067,8 +1251,13 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/categories/{{category_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["categories", "{{category_id}}"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "categories",
+                "{{category_id}}"
+              ]
             }
           },
           "response": []
@@ -1089,8 +1278,12 @@
             },
             "url": {
               "raw": "{{base_url}}/categories",
-              "host": ["{{base_url}}"],
-              "path": ["categories"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "categories"
+              ]
             }
           },
           "event": [
@@ -1128,8 +1321,13 @@
             },
             "url": {
               "raw": "{{base_url}}/categories/{{category_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["categories", "{{category_id}}"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "categories",
+                "{{category_id}}"
+              ]
             }
           },
           "response": []
@@ -1141,8 +1339,13 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/categories/{{category_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["categories", "{{category_id}}"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "categories",
+                "{{category_id}}"
+              ]
             }
           },
           "response": []
@@ -1170,8 +1373,12 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/cart",
-              "host": ["{{base_url}}"],
-              "path": ["cart"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "cart"
+              ]
             }
           },
           "event": [
@@ -1209,8 +1416,13 @@
             },
             "url": {
               "raw": "{{base_url}}/cart/items",
-              "host": ["{{base_url}}"],
-              "path": ["cart", "items"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "cart",
+                "items"
+              ]
             }
           },
           "event": [
@@ -1248,8 +1460,14 @@
             },
             "url": {
               "raw": "{{base_url}}/cart/items/{{product_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["cart", "items", "{{product_id}}"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "cart",
+                "items",
+                "{{product_id}}"
+              ]
             }
           },
           "event": [
@@ -1274,8 +1492,14 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/cart/items/{{product_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["cart", "items", "{{product_id}}"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "cart",
+                "items",
+                "{{product_id}}"
+              ]
             }
           },
           "event": [
@@ -1300,8 +1524,12 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/cart",
-              "host": ["{{base_url}}"],
-              "path": ["cart"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "cart"
+              ]
             }
           },
           "event": [
@@ -1343,8 +1571,12 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/addresses",
-              "host": ["{{base_url}}"],
-              "path": ["addresses"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "addresses"
+              ]
             },
             "description": "Own addresses only, default first then oldest. Requires addresses:read."
           },
@@ -1374,8 +1606,13 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/addresses/{{address_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["addresses", "{{address_id}}"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "addresses",
+                "{{address_id}}"
+              ]
             },
             "description": "Own addresses only; a foreign or unknown id returns 404. Requires addresses:read."
           },
@@ -1397,8 +1634,12 @@
             },
             "url": {
               "raw": "{{base_url}}/addresses",
-              "host": ["{{base_url}}"],
-              "path": ["addresses"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "addresses"
+              ]
             },
             "description": "Your first address becomes the default automatically; isDefault:true clears the previous default. Country is stored uppercase. At most 20 addresses (400 when exceeded). Requires addresses:create."
           },
@@ -1437,8 +1678,13 @@
             },
             "url": {
               "raw": "{{base_url}}/addresses/{{address_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["addresses", "{{address_id}}"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "addresses",
+                "{{address_id}}"
+              ]
             },
             "description": "Edits your own address. isDefault is not accepted here (it is rejected as an unknown field); use Set Default Address. Requires addresses:update."
           },
@@ -1451,8 +1697,14 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/addresses/{{address_id}}/default",
-              "host": ["{{base_url}}"],
-              "path": ["addresses", "{{address_id}}", "default"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "addresses",
+                "{{address_id}}",
+                "default"
+              ]
             },
             "description": "Promotes your own address to the single default, clearing the previous one. Requires addresses:update."
           },
@@ -1479,8 +1731,13 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/addresses/{{address_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["addresses", "{{address_id}}"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "addresses",
+                "{{address_id}}"
+              ]
             },
             "description": "Deletes your own address; when it was the default the oldest remaining address is promoted. Requires addresses:delete."
           },
@@ -1518,8 +1775,12 @@
             },
             "url": {
               "raw": "{{base_url}}/orders",
-              "host": ["{{base_url}}"],
-              "path": ["orders"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders"
+              ]
             },
             "description": "Optional body { addressId }: uses the given address (must belong to the caller) or, when omitted, the caller's default address. With no usable delivery address the request fails with 400 and nothing is written. Builds the order from the caller's cart in one atomic transaction; empty cart / missing or inactive product / insufficient stock -> 400. Requires orders:create."
           },
@@ -1549,8 +1810,12 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/orders",
-              "host": ["{{base_url}}"],
-              "path": ["orders"],
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders"
+              ],
               "query": [
                 {
                   "key": "status",
@@ -1594,8 +1859,13 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/orders/{{order_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["orders", "{{order_id}}"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                "{{order_id}}"
+              ]
             },
             "description": "Non-owners without orders:manage get 404 (order ids are not enumerable). Requires orders:read."
           },
@@ -1608,8 +1878,14 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/orders/{{order_id}}/cancel",
-              "host": ["{{base_url}}"],
-              "path": ["orders", "{{order_id}}", "cancel"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                "{{order_id}}",
+                "cancel"
+              ]
             },
             "description": "Restocks every line. Owners may cancel PENDING/CONFIRMED; orders:manage may cancel any non-terminal state. Terminal states return 400. Requires orders:cancel."
           },
@@ -1645,8 +1921,14 @@
             },
             "url": {
               "raw": "{{base_url}}/orders/{{order_id}}/status",
-              "host": ["{{base_url}}"],
-              "path": ["orders", "{{order_id}}", "status"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                "{{order_id}}",
+                "status"
+              ]
             },
             "description": "Manager-only. Allowed transitions: PENDING→CONFIRMED, CONFIRMED→PROCESSING, PROCESSING→SHIPPED, SHIPPED→DELIVERED, and any non-terminal→CANCELLED (which restocks). Requires orders:manage."
           },
@@ -1672,8 +1954,14 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/orders/{{order_id}}/return",
-              "host": ["{{base_url}}"],
-              "path": ["orders", "{{order_id}}", "return"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "orders",
+                "{{order_id}}",
+                "return"
+              ]
             },
             "description": "Moves a DELIVERED order you own (or, with orders:manage, any order) to RETURN_REQUESTED. Any other status -> 400. Requires orders:return; a non-owner without orders:manage gets 404."
           },
@@ -1716,8 +2004,13 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/dashboard/stats",
-              "host": ["{{base_url}}"],
-              "path": ["dashboard", "stats"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "dashboard",
+                "stats"
+              ]
             },
             "description": "Store-owner cards in one tenant-scoped payload: totalOrders, fulfilledOrders (DELIVERED), pendingOrders (PENDING), totalPaid, waitingAmount, customers, storageUsedBytes, storageCapacityBytes. Requires orders:manage."
           },
@@ -1735,6 +2028,520 @@
               }
             }
           ],
+          "response": []
+        }
+      ],
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.request.headers.upsert({ key: \"x-tenant-slug\", value: pm.collectionVariables.get(\"tenant_slug\") });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Coupons",
+      "item": [
+        {
+          "name": "Validate Coupon",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"SAVE10\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/coupons/validate",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "coupons",
+                "validate"
+              ]
+            },
+            "description": "Preview only: computes the discount for the code against your current cart subtotal without consuming usage. Returns code, discountType, discountValue, subtotal, discountAmount, total. Requires coupons:validate."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"validate coupon ok\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Create Coupon",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"SAVE10\",\n  \"description\": \"10% off orders over 50\",\n  \"discountType\": \"PERCENTAGE\",\n  \"discountValue\": 10,\n  \"minOrderAmount\": 50,\n  \"maxDiscountAmount\": 25,\n  \"usageLimit\": 100,\n  \"perUserLimit\": 1,\n  \"isActive\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/coupons",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "coupons"
+              ]
+            },
+            "description": "Codes are trimmed, uppercased, matched against ^[A-Z0-9][A-Z0-9_-]*$ and unique per tenant. discountType is PERCENTAGE or FIXED_AMOUNT; maxDiscountAmount is percentage-only. Requires coupons:create."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"create coupon ok\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "const coupon = pm.response.json();",
+                  "if (coupon && coupon.id) {",
+                  "    pm.collectionVariables.set(\"coupon_id\", coupon.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "List Coupons",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/coupons",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "coupons"
+              ],
+              "query": [
+                {
+                  "key": "isActive",
+                  "value": "true",
+                  "description": "Filter by active flag",
+                  "disabled": true
+                },
+                {
+                  "key": "code",
+                  "value": "SAVE10",
+                  "description": "Filter by exact (normalized) code",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Paginated: { data, total, page, limit }. Optional isActive and code filters. Requires coupons:read."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"list coupons ok\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const coupons = pm.response.json();",
+                  "if (coupons && Array.isArray(coupons.data) && coupons.data.length) {",
+                  "    pm.collectionVariables.set(\"coupon_id\", coupons.data[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get Coupon By Id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/coupons/{{coupon_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "coupons",
+                "{{coupon_id}}"
+              ]
+            },
+            "description": "Requires coupons:read."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Coupon",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"10% off orders over 50 (updated)\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/coupons/{{coupon_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "coupons",
+                "{{coupon_id}}"
+              ]
+            },
+            "description": "Partial update. Changing the code of a redeemed coupon is rejected (400). Requires coupons:update."
+          },
+          "response": []
+        },
+        {
+          "name": "Set Coupon Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isActive\": false\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/coupons/{{coupon_id}}/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "coupons",
+                "{{coupon_id}}",
+                "status"
+              ]
+            },
+            "description": "Activates or deactivates a coupon. Requires coupons:update."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Coupon",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/coupons/{{coupon_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "coupons",
+                "{{coupon_id}}"
+              ]
+            },
+            "description": "Returns 409 when the coupon has redemptions (usageCount > 0); deactivate it instead. Requires coupons:delete."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"delete coupon ok\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ],
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.request.headers.upsert({ key: \"x-tenant-slug\", value: pm.collectionVariables.get(\"tenant_slug\") });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "Create Stripe Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{order_id}}\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/payments/stripe",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payments",
+                "stripe"
+              ]
+            },
+            "description": "Creates a Stripe PaymentIntent for one of your orders (destination charge). Returns the client secret. Any authenticated tenant user may call it."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"create payment ok\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Stripe Webhook",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/payments/stripe/webhook",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payments",
+                "stripe",
+                "webhook"
+              ]
+            },
+            "description": "Platform-only Stripe webhook. Verifies the stripe-signature header against the raw request body; do not send a JSON body from here. Handles payment_intent.*, charge.refunded and refund.* events."
+          },
+          "auth": {
+            "type": "noauth"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Stripe Account Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/payments/stripe/account",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payments",
+                "stripe",
+                "account"
+              ]
+            },
+            "description": "Returns the connected account status for the resolved tenant. Requires payments:manage."
+          },
+          "response": []
+        },
+        {
+          "name": "Connect Stripe Account",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/payments/stripe/connect",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payments",
+                "stripe",
+                "connect"
+              ]
+            },
+            "description": "Starts/populates Stripe Connect onboarding and returns the onboarding link. Requires payments:manage."
+          },
+          "response": []
+        }
+      ],
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.request.headers.upsert({ key: \"x-tenant-slug\", value: pm.collectionVariables.get(\"tenant_slug\") });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Store",
+      "item": [
+        {
+          "name": "Get Store Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/store/info",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "store",
+                "info"
+              ]
+            },
+            "description": "Public storefront metadata for the resolved tenant: { name, slug, currency }. Needs a tenant identifier (x-tenant-slug / x-tenant-id / subdomain)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"get store info ok\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json()).to.have.property(\"currency\");",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get Store Currency",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/store/currency",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "store",
+                "currency"
+              ]
+            },
+            "description": "Store owner view: { currency, pendingRequest, history } (last 10 requests). Requires the STORE_OWNER role."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Currency Change Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requestedCurrency\": \"eur\",\n  \"reason\": \"Expanding to the EU\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/store/currency/requests",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "store",
+                "currency",
+                "requests"
+              ]
+            },
+            "description": "Requests a store currency change. 400 when it matches the current currency; 409 when a pending request already exists. Requires the STORE_OWNER role."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"create currency request ok\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "const request = pm.response.json();",
+                  "if (request && request.id) {",
+                  "    pm.collectionVariables.set(\"currency_request_id\", request.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Cancel Currency Change Request",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/store/currency/requests/{{currency_request_id}}/cancel",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "store",
+                "currency",
+                "requests",
+                "{{currency_request_id}}",
+                "cancel"
+              ]
+            },
+            "description": "Cancels one of the tenant pending requests (409 when it is not pending, 404 for a foreign id). Requires the STORE_OWNER role."
+          },
           "response": []
         }
       ],
@@ -1770,8 +2577,13 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/platform/tenants",
-              "host": ["{{base_url}}"],
-              "path": ["platform", "tenants"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "platform",
+                "tenants"
+              ]
             }
           },
           "event": [
@@ -1800,8 +2612,14 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/platform/tenants/{{tenant_id}}",
-              "host": ["{{base_url}}"],
-              "path": ["platform", "tenants", "{{tenant_id}}"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "platform",
+                "tenants",
+                "{{tenant_id}}"
+              ]
             }
           },
           "response": []
@@ -1813,11 +2631,309 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/platform/tenants/{{tenant_id}}/toggle-active",
-              "host": ["{{base_url}}"],
-              "path": ["platform", "tenants", "{{tenant_id}}", "toggle-active"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "platform",
+                "tenants",
+                "{{tenant_id}}",
+                "toggle-active"
+              ]
             }
           },
           "response": []
+        },
+        {
+          "name": "Currency Requests",
+          "item": [
+            {
+              "name": "List Currency Requests",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/platform/currency-requests",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "platform",
+                    "currency-requests"
+                  ],
+                  "query": [
+                    {
+                      "key": "status",
+                      "value": "PENDING",
+                      "description": "Filter by status: PENDING | APPROVED | REJECTED | CANCELLED",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Lists currency change requests across tenants, newest first, each with a tenant summary. SUPER_ADMIN only."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"list currency requests ok\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "const requests = pm.response.json();",
+                      "if (Array.isArray(requests) && requests.length) {",
+                      "    const pending = requests.find(r => r.status === \"PENDING\") || requests[0];",
+                      "    pm.collectionVariables.set(\"currency_request_id\", pending.id);",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Approve Currency Request",
+              "request": {
+                "method": "PATCH",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/platform/currency-requests/{{currency_request_id}}/approve",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "platform",
+                    "currency-requests",
+                    "{{currency_request_id}}",
+                    "approve"
+                  ]
+                },
+                "description": "Applies the requested currency to the tenant and marks the request APPROVED. 409 when already reviewed. SUPER_ADMIN only."
+              },
+              "response": []
+            },
+            {
+              "name": "Reject Currency Request",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reviewNote\": \"Not supported for this store\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/platform/currency-requests/{{currency_request_id}}/reject",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "platform",
+                    "currency-requests",
+                    "{{currency_request_id}}",
+                    "reject"
+                  ]
+                },
+                "description": "Marks the request REJECTED; reviewNote is required (400 when blank). 409 when already reviewed. SUPER_ADMIN only."
+              },
+              "response": []
+            }
+          ],
+          "event": []
+        },
+        {
+          "name": "Payments",
+          "item": [
+            {
+              "name": "List Tenant Payment Overviews",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/platform/payments",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "platform",
+                    "payments"
+                  ]
+                },
+                "description": "Every tenant with Stripe/pause flags: { id, name, slug, subdomain, status, stripeAccountId, paymentsPaused, payoutsPaused }. SUPER_ADMIN only."
+              },
+              "response": []
+            },
+            {
+              "name": "Payment Summary",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/platform/payments/summary",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "platform",
+                    "payments",
+                    "summary"
+                  ]
+                },
+                "description": "Platform Stripe account + balance for the admin overview, or { account: null, balance: null, error }. SUPER_ADMIN only."
+              },
+              "response": []
+            },
+            {
+              "name": "Get Tenant Payment Overview",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/platform/payments/{{tenant_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "platform",
+                    "payments",
+                    "{{tenant_id}}"
+                  ]
+                },
+                "description": "Tenant + connected account status, balance (when connected) and payout schedule. SUPER_ADMIN only."
+              },
+              "response": []
+            },
+            {
+              "name": "List Tenant Charges",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/platform/payments/{{tenant_id}}/charges",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "platform",
+                    "payments",
+                    "{{tenant_id}}",
+                    "charges"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "25"
+                    }
+                  ]
+                },
+                "description": "Paginated tenant payment rows ({ data, total, page, limit }); limit clamps to 1..100. SUPER_ADMIN only."
+              },
+              "response": []
+            },
+            {
+              "name": "List Tenant Payouts",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/platform/payments/{{tenant_id}}/payouts",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "platform",
+                    "payments",
+                    "{{tenant_id}}",
+                    "payouts"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "25"
+                    },
+                    {
+                      "key": "startingAfter",
+                      "value": "",
+                      "description": "Stripe cursor from nextCursor",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Stripe payouts for the tenant connected account ({ data, hasMore, nextCursor }). 409 when the store is not connected. SUPER_ADMIN only."
+              },
+              "response": []
+            },
+            {
+              "name": "Set Tenant Payments Paused",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"paused\": true\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/platform/payments/{{tenant_id}}/payments-paused",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "platform",
+                    "payments",
+                    "{{tenant_id}}",
+                    "payments-paused"
+                  ]
+                },
+                "description": "Pauses or resumes payments for the tenant; returns { paymentsPaused, payoutsPaused }. SUPER_ADMIN only."
+              },
+              "response": []
+            },
+            {
+              "name": "Set Tenant Payouts Paused",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"paused\": true\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/platform/payments/{{tenant_id}}/payouts-paused",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "platform",
+                    "payments",
+                    "{{tenant_id}}",
+                    "payouts-paused"
+                  ]
+                },
+                "description": "Pauses or resumes payouts (Switch Stripe schedule to/from manual). 409 when the store is not connected. SUPER_ADMIN only."
+              },
+              "response": []
+            }
+          ],
+          "event": []
         },
         {
           "name": "Storage Health",
@@ -1826,8 +2942,13 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/health/storage",
-              "host": ["{{base_url}}"],
-              "path": ["health", "storage"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health",
+                "storage"
+              ]
             }
           },
           "event": [
@@ -1853,8 +2974,12 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/health",
-              "host": ["{{base_url}}"],
-              "path": ["health"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health"
+              ]
             },
             "description": "Public platform probe: reports db + r2 and an ok/degraded status. No auth or tenant header required."
           },

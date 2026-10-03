@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { IAPP, IENV } from 'src/common/config/env.interface';
 import { Tenant } from '../entities/tenant.entity';
 import { TenantService } from '../tenant.service';
-import { resolveSubdomain } from '../tenant.utils';
+import { resolveSubdomain } from '../utils/tenant.utils';
 
 interface RequestLike {
   headers: Record<string, unknown>;

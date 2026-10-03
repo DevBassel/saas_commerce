@@ -12,15 +12,32 @@ export const resolveDetailPath = (
 export const buildListParams = ({
   pagination,
   sorters,
+  query,
   omit,
 }: {
   pagination?: Pagination;
   sorters?: CrudSort[];
+  query?: Record<string, unknown>;
   omit?: boolean;
-}): Record<string, string | number> => {
+}): Record<string, string | number | boolean> => {
   if (omit) return {};
 
-  const params: Record<string, string | number> = {};
+  const params: Record<string, string | number | boolean> = {};
+
+  // Extra server params supplied via `meta.query` (e.g. a role filter). Nullish
+  // values are dropped so an unset meta key never becomes a stray query param.
+  if (query) {
+    for (const [key, value] of Object.entries(query)) {
+      if (value == null) continue;
+      if (
+        typeof value === "string" ||
+        typeof value === "number" ||
+        typeof value === "boolean"
+      ) {
+        params[key] = value;
+      }
+    }
+  }
 
   if (pagination && pagination.mode !== "off") {
     const { currentPage = 1, pageSize = 10 } = pagination;

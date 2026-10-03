@@ -12,6 +12,7 @@ import { OrderStatus } from './constants/order-status.enum';
 import { OrderPermissionKey } from './constants/order-permissions.enum';
 import { PaymentStatus } from '../payments/constants/payment-status.enum';
 import StripePaymentService from '../payments/stripe.payment.service';
+import { CouponsService } from '../coupons/coupons.service';
 import { RequestWithUser } from '../auth/interfaces/RequestWithUser.interface';
 
 export const TENANT = { schemaName: 'tenant_test' };
@@ -61,6 +62,11 @@ export const orderEntity = (
   paymentStatus: PaymentStatus.UNPAID,
   subtotal: 10,
   total: 10,
+  discountAmount: 0,
+  couponId: null,
+  couponCode: null,
+  couponDiscountType: null,
+  couponDiscountValue: null,
   paidAt: null,
   refundedAt: null,
   items: [] as unknown[],
@@ -73,6 +79,7 @@ export const buildMocks = () => {
   const orderRepo = {
     findOne: jest.fn(),
     find: jest.fn(),
+    findAndCount: jest.fn(),
     create: jest.fn((data: unknown) => data),
     save: jest.fn((data: Record<string, unknown>) => ({
       id: 10,
@@ -151,15 +158,23 @@ export const buildMocks = () => {
     refundOrder: jest.fn(),
   };
 
+  const couponsMocks = {
+    validateAndConsume: jest.fn(),
+    consume: jest.fn(),
+    restoreUsage: jest.fn(),
+  };
+
   const service = new OrdersService(
     tenantManager,
     r2,
     paymentsMocks as unknown as StripePaymentService,
+    couponsMocks as unknown as CouponsService,
   );
   const manageService = new ManageOrderService(
     tenantManager,
     r2,
     paymentsMocks as unknown as StripePaymentService,
+    couponsMocks as unknown as CouponsService,
   );
 
   return {
@@ -176,6 +191,7 @@ export const buildMocks = () => {
     entityManager,
     r2Mocks,
     paymentsMocks,
+    couponsMocks,
   };
 };
 

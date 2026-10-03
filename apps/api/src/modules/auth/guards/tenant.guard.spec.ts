@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { TenantResolutionService } from 'src/modules/tenants/services/tenant-resolution.service';
-import { TENANT_INACTIVE_MESSAGE } from 'src/modules/tenants/tenant-policy';
+import { TENANT_INACTIVE_MESSAGE } from 'src/modules/tenants/utils/tenant-policy';
 import { TenantStatus } from 'src/modules/tenants/enums/tenantStatus.enum';
 import { Tenant } from 'src/modules/tenants/entities/tenant.entity';
 import { IS_PLATFORM } from '../decorators/isPlatform.decorator';

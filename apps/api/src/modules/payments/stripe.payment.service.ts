@@ -15,10 +15,10 @@ import {
   hostnameFromOrigin,
   isRootDomainOrigin,
 } from 'src/common/config/cors.util';
-import { TenantRef } from '../tenants/tenant.utils';
+import { TenantRef } from '../tenants/utils/tenant.utils';
 import { getTenantContext, tenantRefFromContext } from '../auth/tenant-context';
-import { resolveTenantScope } from '../tenants/tenant-scope';
-import { toMinorUnit } from '../../common/money';
+import { resolveTenantScope } from '../tenants/utils/tenant-scope';
+import { toMinorUnit } from '../../common/utils/money';
 import { RequestWithUser } from '../auth/interfaces/RequestWithUser.interface';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
 import { Tenant } from '../tenants/entities/tenant.entity';

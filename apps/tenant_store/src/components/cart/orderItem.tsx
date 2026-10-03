@@ -244,6 +244,26 @@ export default function OrderItem({ order }: { order: IOrder }) {
         ))}
       </div>
 
+      <div className="flex flex-col gap-1 border-t border-border pt-3 text-sm">
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Subtotal</span>
+          <span>{formatMoney(order.subtotal, currency)}</span>
+        </div>
+        {order.discountAmount > 0 && (
+          <div className="flex justify-between text-primary">
+            <span>
+              Discount
+              {order.coupon?.code ? ` (${order.coupon.code})` : ""}
+            </span>
+            <span>-{formatMoney(order.discountAmount, currency)}</span>
+          </div>
+        )}
+        <div className="flex justify-between font-medium">
+          <span>Total</span>
+          <span>{formatMoney(order.total, currency)}</span>
+        </div>
+      </div>
+
       {address && (
         <div className="rounded-xl bg-muted/40 p-3 text-sm">
           <p className="font-medium">Delivery address</p>

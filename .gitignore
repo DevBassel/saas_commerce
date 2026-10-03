@@ -20,8 +20,14 @@ yarn-error.log*
 .env.*
 !.env.example
 
-# Agent tooling state
-.kilo/
+# Agent tooling state (keep local state out, share commands/agents/skills)
+.kilo/*
+!.kilo/command/
+!.kilo/command/**
+!.kilo/agent/
+!.kilo/agent/**
+!.kilo/skills/
+!.kilo/skills/**
 .agents/
 skills-lock.json
 

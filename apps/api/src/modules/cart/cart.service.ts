@@ -5,15 +5,15 @@ import {
 } from '@nestjs/common';
 import { In, Repository } from 'typeorm';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
-import { TenantRef } from '../tenants/tenant.utils';
-import { resolveTenantScope } from '../tenants/tenant-scope';
+import { TenantRef } from '../tenants/utils/tenant.utils';
+import { resolveTenantScope } from '../tenants/utils/tenant-scope';
 import { withUniqueRetry } from '../../common/db/unique-retry';
-import { round2 } from '../../common/money';
+import { round2 } from '../../common/utils/money';
 import { R2Service } from '../../common/storage/r2.service';
 import { Cart } from './entities/cart.entity';
 import { CartItem } from './entities/cart-item.entity';
 import { Product } from '../products/entities/product.entity';
-import { primaryImage } from '../products/product-image.util';
+import { primaryImage } from '../products/utils/product-image.util';
 import { AddCartItemDto } from './dto/add-cart-item.dto';
 import { UpdateCartItemDto } from './dto/update-cart-item.dto';
 import {
@@ -29,16 +29,12 @@ export class CartService {
     private readonly r2: R2Service,
   ) {}
 
-  private resolveTenant(tenant?: TenantRef): TenantRef {
-    return resolveTenantScope(tenant);
-  }
-
   private async repos(tenant?: TenantRef): Promise<{
     cartRepo: Repository<Cart>;
     itemRepo: Repository<CartItem>;
     productRepo: Repository<Product>;
   }> {
-    const target = this.resolveTenant(tenant);
+    const target = resolveTenantScope(tenant);
     const [cartRepo, itemRepo, productRepo] = await Promise.all([
       this.tenantManager.getRepository(Cart, target),
       this.tenantManager.getRepository(CartItem, target),
@@ -110,7 +106,7 @@ export class CartService {
     dto: AddCartItemDto,
     tenant?: TenantRef,
   ): Promise<SerializedCart> {
-    const target = this.resolveTenant(tenant);
+    const target = resolveTenantScope(tenant);
     const { cartRepo, productRepo } = await this.repos(target);
 
     const product = await productRepo.findOneBy({ id: dto.productId });
@@ -167,7 +163,7 @@ export class CartService {
     dto: UpdateCartItemDto,
     tenant?: TenantRef,
   ): Promise<SerializedCart> {
-    const target = this.resolveTenant(tenant);
+    const target = resolveTenantScope(tenant);
     const { cartRepo, itemRepo, productRepo } = await this.repos(target);
 
     const cart = await cartRepo.findOne({ where: { userId } });
@@ -196,7 +192,7 @@ export class CartService {
     productId: number,
     tenant?: TenantRef,
   ): Promise<SerializedCart> {
-    const target = this.resolveTenant(tenant);
+    const target = resolveTenantScope(tenant);
     const { cartRepo, itemRepo } = await this.repos(target);
 
     const cart = await cartRepo.findOne({ where: { userId } });
@@ -211,7 +207,7 @@ export class CartService {
   }
 
   async clearCart(userId: number, tenant?: TenantRef): Promise<SerializedCart> {
-    const target = this.resolveTenant(tenant);
+    const target = resolveTenantScope(tenant);
     const { cartRepo, itemRepo } = await this.repos(target);
 
     const cart = await cartRepo.findOne({ where: { userId } });

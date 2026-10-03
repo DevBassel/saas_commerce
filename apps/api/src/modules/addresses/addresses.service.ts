@@ -5,8 +5,8 @@ import {
 } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
-import { TenantRef } from '../tenants/tenant.utils';
-import { resolveTenantScope } from '../tenants/tenant-scope';
+import { TenantRef } from '../tenants/utils/tenant.utils';
+import { resolveTenantScope } from '../tenants/utils/tenant-scope';
 import { withUniqueRetry } from '../../common/db/unique-retry';
 import { Address } from './entities/address.entity';
 import { CreateAddressDto } from './dto/create-address.dto';

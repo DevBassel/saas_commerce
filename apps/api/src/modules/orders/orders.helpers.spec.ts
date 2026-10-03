@@ -6,6 +6,7 @@ import { Product } from '../products/entities/product.entity';
 import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { OrderStatus } from './constants/order-status.enum';
+import { DiscountType } from '../coupons/constants/discount-type.enum';
 import {
   refundOrderIfPaid,
   restockOrderItems,
@@ -65,6 +66,8 @@ describe('serializeOrder', () => {
       status: OrderStatus.PENDING,
       paymentStatus: PaymentStatus.UNPAID,
       subtotal: 20,
+      discountAmount: 0,
+      coupon: null,
       total: 20,
       items: [],
       deliveryAddress: null,
@@ -72,6 +75,31 @@ describe('serializeOrder', () => {
       refundedAt: null,
       createdAt: NOW,
       updatedAt: NOW,
+    });
+  });
+
+  it('serializes the coupon snapshot and discount', () => {
+    const result = serializeOrder(
+      order({
+        couponId: 9,
+        couponCode: 'SAVE10',
+        couponDiscountType: DiscountType.PERCENTAGE,
+        couponDiscountValue: 10,
+        discountAmount: 2,
+        total: 18,
+      }),
+      r2,
+    );
+
+    expect(result).toMatchObject({
+      discountAmount: 2,
+      total: 18,
+      coupon: {
+        id: 9,
+        code: 'SAVE10',
+        type: DiscountType.PERCENTAGE,
+        value: 10,
+      },
     });
   });
 

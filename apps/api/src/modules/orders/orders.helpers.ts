@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
-import { TenantRef } from '../tenants/tenant.utils';
+import { TenantRef } from '../tenants/utils/tenant.utils';
 import { R2Service } from '../../common/storage/r2.service';
 import StripePaymentService from '../payments/stripe.payment.service';
 import { PaymentStatus } from '../payments/constants/payment-status.enum';
@@ -27,6 +27,16 @@ export function serializeOrder(order: Order, r2: R2Service): SerializedOrder {
     status: order.status,
     paymentStatus: order.paymentStatus,
     subtotal: order.subtotal,
+    discountAmount: order.discountAmount ?? 0,
+    coupon:
+      order.couponId != null
+        ? {
+            id: order.couponId,
+            code: order.couponCode ?? null,
+            type: order.couponDiscountType ?? null,
+            value: order.couponDiscountValue ?? null,
+          }
+        : null,
     total: order.total,
     items: (order.items ?? [])
       .slice()

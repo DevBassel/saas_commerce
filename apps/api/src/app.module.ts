@@ -9,6 +9,7 @@ import { ProductsModule } from './modules/products/products.module';
 import { CategoriesModule } from './modules/categories/categories.module';
 import { CartModule } from './modules/cart/cart.module';
 import { OrdersModule } from './modules/orders/orders.module';
+import { CouponsModule } from './modules/coupons/coupons.module';
 import { AddressesModule } from './modules/addresses/addresses.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { CurrencyRequestsModule } from './modules/currency-requests/currency-requests.module';
@@ -33,6 +34,7 @@ import { ThrottlerGuard } from '@nestjs/throttler';
     CategoriesModule,
     CartModule,
     OrdersModule,
+    CouponsModule,
     AddressesModule,
     DashboardModule,
     PaymentsModule,

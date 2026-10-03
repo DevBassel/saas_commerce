@@ -35,11 +35,30 @@ export interface IProduct {
   images: IProductImage[];
 }
 
+export interface IProductPage {
+  data: IProduct[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export async function getProducts(
   config?: AxiosRequestConfig,
   client: AxiosInstance = apiClient,
 ): Promise<IProduct[]> {
   const res = await client.get<IProduct[]>("/products", config);
+  return res.data;
+}
+
+export async function getProductPage(
+  params: { page: number; limit: number },
+  config?: AxiosRequestConfig,
+  client: AxiosInstance = apiClient,
+): Promise<IProductPage> {
+  const res = await client.get<IProductPage>("/products", {
+    ...config,
+    params: { ...config?.params, page: params.page, limit: params.limit },
+  });
   return res.data;
 }
 

@@ -1,5 +1,6 @@
 import { apiClient } from "./apiClient";
 import type { AxiosInstance, AxiosRequestConfig } from "axios";
+import type { CouponDiscountType } from "./couponsApi";
 
 export type OrderStatus =
   | "PENDING"
@@ -43,6 +44,14 @@ export interface IDeliveryAddress {
   country: string;
 }
 
+/** Frozen coupon snapshot attached to an order when a coupon was redeemed. */
+export interface IOrderCoupon {
+  id: number;
+  code: string | null;
+  type: CouponDiscountType | null;
+  value: number | null;
+}
+
 export interface IOrder {
   id: number;
   orderNumber: string;
@@ -51,6 +60,8 @@ export interface IOrder {
   status: OrderStatus;
   paymentStatus: PaymentStatus;
   subtotal: number;
+  discountAmount: number;
+  coupon: IOrderCoupon | null;
   total: number;
   items: IOrderItem[];
   deliveryAddress: IDeliveryAddress | null;
@@ -61,14 +72,21 @@ export interface IOrder {
 }
 
 export async function PlaceOrderReq(
-  { addressId }: { addressId?: number } = {},
+  { addressId, couponCode }: { addressId?: number; couponCode?: string } = {},
   client: AxiosInstance = apiClient,
 ): Promise<IOrder> {
-  const res = await client.post<IOrder>(
-    "/orders",
-    addressId != null ? { addressId } : {},
-  );
+  const body: { addressId?: number; couponCode?: string } = {};
+  if (addressId != null) body.addressId = addressId;
+  if (couponCode) body.couponCode = couponCode;
+  const res = await client.post<IOrder>("/orders", body);
   return res.data;
+}
+
+export interface IOrderPage {
+  data: IOrder[];
+  total: number;
+  page: number;
+  limit: number;
 }
 
 export async function GetUserOrders(
@@ -76,6 +94,18 @@ export async function GetUserOrders(
   client: AxiosInstance = apiClient,
 ): Promise<IOrder[]> {
   const res = await client.get<IOrder[]>("/orders", config);
+  return res.data;
+}
+
+export async function GetUserOrdersPage(
+  params: { page: number; limit: number },
+  config?: AxiosRequestConfig,
+  client: AxiosInstance = apiClient,
+): Promise<IOrderPage> {
+  const res = await client.get<IOrderPage>("/orders", {
+    ...config,
+    params: { ...config?.params, page: params.page, limit: params.limit },
+  });
   return res.data;
 }
 

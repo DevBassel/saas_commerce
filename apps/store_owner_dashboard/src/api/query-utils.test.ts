@@ -156,4 +156,20 @@ describe("buildListParams", () => {
       }),
     ).toEqual({});
   });
+
+  it("merges extra meta query params and drops nullish/structured values", () => {
+    expect(
+      buildListParams({
+        pagination: { mode: "server", currentPage: 1, pageSize: 10 },
+        sorters: [{ field: "createdAt", order: "desc" }],
+        query: { role: "ADMIN", missing: undefined, nested: { a: 1 } },
+      }),
+    ).toEqual({
+      role: "ADMIN",
+      page: 1,
+      limit: 10,
+      sortBy: "createdAt",
+      sortOrder: "desc",
+    });
+  });
 });

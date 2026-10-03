@@ -12,14 +12,20 @@ import { User } from './entities/user.entity';
 import { Repository, In, FindOptionsWhere } from 'typeorm';
 import { Role } from '../rbac/entities/role.entity';
 import { Permission } from '../rbac/entities/permission.entity';
-import { mergePermissions } from '../rbac/permission.utils';
+import { mergePermissions } from '../rbac/utils/permission.utils';
 import { SEED_ROLE_PERMISSIONS } from '../rbac/constants/seed-data';
 import { RoleKey, ROLE_RANK } from '../../common/constants/RoleKey.enum';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
-import { TenantRef } from '../tenants/tenant.utils';
-import { resolveTenantScope } from '../tenants/tenant-scope';
+import { TenantRef } from '../tenants/utils/tenant.utils';
+import { resolveTenantScope } from '../tenants/utils/tenant-scope';
 import { IENV } from '../../common/config/env.interface';
 import bcrypt from 'bcrypt';
+import {
+  isPaginatedQuery,
+  resolvePagination,
+  resolveSort,
+} from '../../common/pagination/pagination';
+import { ListUsersQueryDto } from './dto/list-users.query.dto';
 
 type FindOneOptions = { withRole?: boolean; withPermissions?: boolean };
 
@@ -27,6 +33,15 @@ const ASSIGNABLE_ROLE_KEYS: RoleKey[] = [
   RoleKey.CUSTOMER,
   RoleKey.STORE_OWNER,
   RoleKey.ADMIN,
+];
+
+const USER_SORTABLE_FIELDS: readonly (keyof User)[] = [
+  'name',
+  'email',
+  'emailVerified',
+  'roleId',
+  'createdAt',
+  'updatedAt',
 ];
 
 @Injectable()
@@ -108,9 +123,34 @@ export class UsersService {
     );
   }
 
-  async findAll(tenant?: TenantRef) {
+  async findAll(query: ListUsersQueryDto = {}, tenant?: TenantRef) {
     const { userRepo } = await this.repos(tenant);
-    return userRepo.find({ relations: { role: true, permissions: true } });
+    const relations = { role: true, permissions: true };
+
+    const where: FindOptionsWhere<User> = {};
+    if (query.role) where.role = { key: query.role };
+
+    if (!isPaginatedQuery(query)) {
+      return userRepo.find({ where, relations });
+    }
+
+    const { page, limit, skip, take } = resolvePagination(query);
+    const order = resolveSort<User>(
+      query.sortBy,
+      query.sortOrder,
+      USER_SORTABLE_FIELDS,
+      { field: 'createdAt', order: 'desc' },
+    );
+
+    const [users, total] = await userRepo.findAndCount({
+      where,
+      relations,
+      order,
+      skip,
+      take,
+      relationLoadStrategy: 'query',
+    });
+    return { data: users, total, page, limit };
   }
 
   async findOne(

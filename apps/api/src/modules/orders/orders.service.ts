@@ -10,14 +10,14 @@ import {
   Repository,
 } from 'typeorm';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
-import { TenantRef } from '../tenants/tenant.utils';
-import { resolveTenantScope } from '../tenants/tenant-scope';
+import { TenantRef } from '../tenants/utils/tenant.utils';
+import { resolveTenantScope } from '../tenants/utils/tenant-scope';
 import { withUniqueRetry } from '../../common/db/unique-retry';
-import { round2 } from '../../common/money';
+import { round2 } from '../../common/utils/money';
 import { R2Service } from '../../common/storage/r2.service';
 import { RequestWithUser } from '../auth/interfaces/RequestWithUser.interface';
 import { Product } from '../products/entities/product.entity';
-import { primaryImage } from '../products/product-image.util';
+import { primaryImage } from '../products/utils/product-image.util';
 import { Cart } from '../cart/entities/cart.entity';
 import { CartItem } from '../cart/entities/cart-item.entity';
 import { Address } from '../addresses/entities/address.entity';
@@ -27,6 +27,8 @@ import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { OrderStatus } from './constants/order-status.enum';
 import { OrderPermissionKey } from './constants/order-permissions.enum';
+import { CouponsService } from '../coupons/coupons.service';
+import { CouponApplication } from '../coupons/constants/coupons.interface';
 import {
   ORDER_NUMBER_ALPHABET,
   ORDER_NUMBER_PREFIX,
@@ -35,6 +37,12 @@ import {
 import { SerializedOrder } from './constants/orders.interface';
 import { CheckoutDto } from './dto/checkout.dto';
 import { ListOrdersQueryDto } from './dto/list-orders.query.dto';
+import {
+  PaginatedResult,
+  isPaginatedQuery,
+  resolvePagination,
+  resolveSort,
+} from '../../common/pagination/pagination';
 import {
   refundOrderIfPaid,
   restockOrderItems,
@@ -55,23 +63,34 @@ const MANAGER_CANCELLABLE_STATUSES = new Set<OrderStatus>([
   OrderStatus.SHIPPED,
 ]);
 
+const ORDER_SORTABLE_FIELDS: readonly (keyof Order)[] = [
+  'orderNumber',
+  'status',
+  'paymentStatus',
+  'subtotal',
+  'total',
+  'discountAmount',
+  'userId',
+  'paidAt',
+  'refundedAt',
+  'createdAt',
+  'updatedAt',
+];
+
 @Injectable()
 export class OrdersService {
   constructor(
     private readonly tenantManager: TenantManagerService,
     private readonly r2: R2Service,
     private readonly payments: StripePaymentService,
+    private readonly coupons: CouponsService,
   ) {}
-
-  private resolveTenant(tenant?: TenantRef): TenantRef {
-    return resolveTenantScope(tenant);
-  }
 
   private async repos(tenant?: TenantRef): Promise<{
     target: TenantRef;
     orderRepo: Repository<Order>;
   }> {
-    const target = this.resolveTenant(tenant);
+    const target = resolveTenantScope(tenant);
     const orderRepo = await this.tenantManager.getRepository(Order, target);
     return { target, orderRepo };
   }
@@ -157,6 +176,17 @@ export class OrdersService {
             dto.addressId,
           );
 
+          let couponApplication: CouponApplication | null = null;
+          if (dto.couponCode != null) {
+            couponApplication = await this.coupons.validateAndConsume(manager, {
+              code: dto.couponCode,
+              userId,
+              subtotal,
+            });
+          }
+          const discountAmount = couponApplication?.discountAmount ?? 0;
+          const total = round2(subtotal - discountAmount);
+
           const savedOrder = await orders.save(
             orders.create({
               orderNumber: this.generateOrderNumber(),
@@ -164,7 +194,14 @@ export class OrdersService {
               status: OrderStatus.PENDING,
               paymentStatus: PaymentStatus.UNPAID,
               subtotal,
-              total: subtotal,
+              total,
+              discountAmount,
+              couponId: couponApplication?.couponId ?? null,
+              couponCode: couponApplication?.snapshot.couponCode ?? null,
+              couponDiscountType:
+                couponApplication?.snapshot.couponDiscountType ?? null,
+              couponDiscountValue:
+                couponApplication?.snapshot.couponDiscountValue ?? null,
               addressId: deliveryAddress.id,
               recipientName: deliveryAddress.recipientName,
               phone: deliveryAddress.phone,
@@ -176,6 +213,15 @@ export class OrdersService {
               country: deliveryAddress.country,
             }),
           );
+
+          if (couponApplication) {
+            await this.coupons.consume(manager, {
+              couponId: couponApplication.couponId,
+              orderId: savedOrder.id,
+              userId,
+              discountAmount: couponApplication.discountAmount,
+            });
+          }
 
           const lineRows = snapshots.map((snapshot) =>
             orderLines.create({ ...snapshot, orderId: savedOrder.id }),
@@ -221,7 +267,7 @@ export class OrdersService {
     requester: Requester,
     query: ListOrdersQueryDto = {},
     tenant?: TenantRef,
-  ): Promise<SerializedOrder[]> {
+  ): Promise<SerializedOrder[] | PaginatedResult<SerializedOrder>> {
     const { orderRepo } = await this.repos(tenant);
 
     const where: FindOptionsWhere<Order> = {};
@@ -232,12 +278,37 @@ export class OrdersService {
       where.userId = requester.id;
     }
 
-    const orders = await orderRepo.find({
+    if (!isPaginatedQuery(query)) {
+      const orders = await orderRepo.find({
+        where,
+        relations: { items: true, user: true },
+        order: { createdAt: 'DESC' },
+      });
+      return orders.map((order) => serializeOrder(order, this.r2));
+    }
+
+    const { page, limit, skip, take } = resolvePagination(query);
+    const order = resolveSort<Order>(
+      query.sortBy,
+      query.sortOrder,
+      ORDER_SORTABLE_FIELDS,
+      { field: 'createdAt', order: 'desc' },
+    );
+
+    const [orders, total] = await orderRepo.findAndCount({
       where,
       relations: { items: true, user: true },
-      order: { createdAt: 'DESC' },
+      order,
+      skip,
+      take,
+      relationLoadStrategy: 'query',
     });
-    return orders.map((order) => serializeOrder(order, this.r2));
+    return {
+      data: orders.map((row) => serializeOrder(row, this.r2)),
+      total,
+      page,
+      limit,
+    };
   }
 
   async findOne(
@@ -301,6 +372,7 @@ export class OrdersService {
         },
       );
       await restockOrderItems(manager, order.items ?? []);
+      await this.coupons.restoreUsage(manager, order);
     });
 
     return this.findOne(id, requester, target);

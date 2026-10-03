@@ -6,6 +6,7 @@ import { ProductPermissionKey } from 'src/modules/products/constants/product-per
 import { CategoryPermissionKey } from 'src/modules/categories/constants/category-permissions.enum';
 import { CartPermissionKey } from 'src/modules/cart/constants/cart-permissions.enum';
 import { OrderPermissionKey } from 'src/modules/orders/constants/order-permissions.enum';
+import { CouponPermissionKey } from 'src/modules/coupons/constants/coupon-permissions.enum';
 import { PaymentPermissionKey } from 'src/modules/payments/constants/payments-permissions.enum';
 import { AddressPermissionKey } from 'src/modules/addresses/constants/address-permissions.enum';
 
@@ -170,6 +171,31 @@ export const SEED_PERMISSIONS: {
     description: 'List, view and progress any store order',
   },
   {
+    key: CouponPermissionKey.CREATE,
+    name: 'Create coupons',
+    description: 'Add new discount coupons',
+  },
+  {
+    key: CouponPermissionKey.READ,
+    name: 'Read coupons',
+    description: 'List and view discount coupons',
+  },
+  {
+    key: CouponPermissionKey.UPDATE,
+    name: 'Update coupons',
+    description: 'Edit discount coupons and toggle them on or off',
+  },
+  {
+    key: CouponPermissionKey.DELETE,
+    name: 'Delete coupons',
+    description: 'Remove discount coupons that were never redeemed',
+  },
+  {
+    key: CouponPermissionKey.VALIDATE,
+    name: 'Validate coupons',
+    description: 'Preview a coupon discount against your own cart',
+  },
+  {
     key: PaymentPermissionKey.CREATE,
     name: 'Pay own orders',
     description: 'Start a payment for your own order',
@@ -265,6 +291,10 @@ export const SEED_ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     OrderPermissionKey.CANCEL,
     OrderPermissionKey.RETURN,
     OrderPermissionKey.MANAGE,
+    CouponPermissionKey.CREATE,
+    CouponPermissionKey.READ,
+    CouponPermissionKey.UPDATE,
+    CouponPermissionKey.DELETE,
     PaymentPermissionKey.CREATE,
     PaymentPermissionKey.READ,
     PaymentPermissionKey.MANAGE,
@@ -284,6 +314,7 @@ export const SEED_ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     OrderPermissionKey.READ,
     OrderPermissionKey.CANCEL,
     OrderPermissionKey.RETURN,
+    CouponPermissionKey.VALIDATE,
     PaymentPermissionKey.CREATE,
     PaymentPermissionKey.READ,
     AddressPermissionKey.CREATE,

@@ -13,7 +13,12 @@ import {
 import { User } from 'src/modules/users/entities/user.entity';
 import { PaymentStatus } from 'src/modules/payments/constants/payment-status.enum';
 import { Address } from 'src/modules/addresses/entities/address.entity';
-import { moneyColumn } from 'src/common/db/money-column';
+import { Coupon } from 'src/modules/coupons/entities/coupon.entity';
+import { DiscountType } from 'src/modules/coupons/constants/discount-type.enum';
+import {
+  moneyColumn,
+  moneyColumnWithDefault,
+} from 'src/common/db/money-column';
 import { OrderStatus } from '../constants/order-status.enum';
 import { OrderItem } from './order-item.entity';
 
@@ -45,6 +50,26 @@ export class Order extends BaseEntity {
 
   @Column(moneyColumn)
   total: number;
+
+  @Column({ type: 'int', nullable: true })
+  @Index()
+  couponId?: number | null;
+
+  @ManyToOne(() => Coupon, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'couponId' })
+  coupon?: Coupon | null;
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  couponCode?: string | null;
+
+  @Column({ type: 'enum', enum: DiscountType, nullable: true })
+  couponDiscountType?: DiscountType | null;
+
+  @Column({ ...moneyColumn, nullable: true })
+  couponDiscountValue?: number | null;
+
+  @Column(moneyColumnWithDefault(0))
+  discountAmount: number;
 
   @Column({ type: 'timestamp', nullable: true })
   paidAt?: Date | null;

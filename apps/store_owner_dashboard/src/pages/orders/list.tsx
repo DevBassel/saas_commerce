@@ -13,7 +13,6 @@ export const OrdersList = () => {
     refineCoreProps: {
       resource: "orders",
       syncWithLocation: true,
-      meta: { omitListParams: true },
       sorters: {
         initial: [{ field: "createdAt", order: "desc" }],
       },
