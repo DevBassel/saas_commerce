@@ -21,16 +21,18 @@ flowchart TD
 
     subgraph DATA["Data"]
         TM --> TDB[("PostgreSQL tenant schema<br/>categories (products.categoryId FK SET NULL)")]
-        SEEDCAT["categories.seed.ts<br/>seedCategories on provision / re-seed"] --> TDB
     end
 ```
+
+Base categories are available only through the opt-in tenant seeder `categories`
+(`seed --tenants --name categories`). They are **not** created by tenant provisioning or boot.
 
 ---
 
 ```mermaid
 flowchart TD
-    SEED["seedCategories (tenant DataSource)"] --> SC1{"category with slug exists?"}
-    SC1 -->|"yes"| SC2["update name (keep custom edits/flags)"]
+    BASE["tenant seeder 'categories' (opt-in)<br/>upsert BASE_CATEGORIES by slug"] --> SC1{"category with slug exists?"}
+    SC1 -->|"yes"| SC2["update name (keep isActive / custom edits)"]
     SC1 -->|"no"| SC3["insert base category"]
     SC2 --> SCD["8 base categories: Electronics, Clothing,<br/>Home & Kitchen, Beauty & Personal Care,<br/>Sports & Outdoors, Toys & Games, Books, Groceries"]
     SC3 --> SCD

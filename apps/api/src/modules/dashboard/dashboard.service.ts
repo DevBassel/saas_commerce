@@ -56,6 +56,20 @@ export class DashboardService {
     }
   }
 
+  private async getSchemaSizeSafe(schemaName: string): Promise<number> {
+    try {
+      const sizes = await this.tenantService.getSchemaSizes([schemaName]);
+      return sizes.get(schemaName) ?? 0;
+    } catch (error) {
+      this.logger.warn(
+        `Schema size unavailable for ${schemaName}: ${
+          error instanceof Error ? error.message : 'unknown error'
+        }`,
+      );
+      return 0;
+    }
+  }
+
   async getStats(tenant?: TenantRef): Promise<DashboardStats> {
     const target = resolveTenantScope(tenant);
 
@@ -65,18 +79,25 @@ export class DashboardService {
       this.tenantService.findBySchemaName(target.schemaName),
     ]);
 
-    const [totalOrders, fulfilledOrders, pendingOrders, customers, balance] =
-      await Promise.all([
-        orderRepo.count(),
-        orderRepo.count({ where: { status: OrderStatus.DELIVERED } }),
-        orderRepo.count({ where: { status: OrderStatus.PENDING } }),
-        userRepo
-          .createQueryBuilder('u')
-          .innerJoin('u.role', 'role')
-          .where('role.key = :key', { key: RoleKey.CUSTOMER })
-          .getCount(),
-        this.getStripeBalance(tenantRow?.stripeAccountId),
-      ]);
+    const [
+      totalOrders,
+      fulfilledOrders,
+      pendingOrders,
+      customers,
+      balance,
+      schemaSize,
+    ] = await Promise.all([
+      orderRepo.count(),
+      orderRepo.count({ where: { status: OrderStatus.DELIVERED } }),
+      orderRepo.count({ where: { status: OrderStatus.PENDING } }),
+      userRepo
+        .createQueryBuilder('u')
+        .innerJoin('u.role', 'role')
+        .where('role.key = :key', { key: RoleKey.CUSTOMER })
+        .getCount(),
+      this.getStripeBalance(tenantRow?.stripeAccountId),
+      this.getSchemaSizeSafe(target.schemaName),
+    ]);
 
     return {
       totalOrders,
@@ -87,6 +108,8 @@ export class DashboardService {
       customers,
       storageUsedBytes: Number(tenantRow?.storageUsedBytes ?? 0),
       storageCapacityBytes: Number(tenantRow?.storageCapacityBytes ?? 0),
+      schemaSizeBytes: schemaSize,
+      schemaCapacityBytes: this.tenantService.getSchemaCapacityBytes(),
     };
   }
 }

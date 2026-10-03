@@ -60,28 +60,33 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    BOOT["Application bootstrap<br/>RbacSeedService.onApplicationBootstrap"] --> SEED["seedRbac on public DataSource<br/>roles = [SUPER_ADMIN]"]
-    SEED --> S1["upsert all SEED_PERMISSIONS (38):<br/>users (6), roles/permissions (8), products (4),<br/>categories (4), cart (4), orders (5),<br/>payments (3), addresses (4)"]
-    S1 --> S2["upsert SUPER_ADMIN role<br/>isSystem = true, linked to ALL 38 permissions"]
-    S2 --> E0{"ensureSuperAdmin"}
+    BOOT["Application bootstrap<br/>SeedingBootstrapService"] --> SEED["platform seeder 'permissions'<br/>upsertPermissions on public DataSource"]
+    SEED --> S1["upsert all SEED_PERMISSIONS (45) by key:<br/>users (6), roles/permissions (8), products (4),<br/>categories (4), cart (4), orders (5), coupons (5),<br/>payments (3), addresses (4), subscriptions (2)"]
+    S1 --> S2["platform seeder 'roles'<br/>upsert SUPER_ADMIN role isSystem = true<br/>linked to ALL 45 permissions"]
+    S2 --> E0["platform seeder 'super-admin'<br/>ensureBootstrapSuperAdmin"]
     E0 --> E1{"SUPER_ADMIN role found?"} -->|"no"| SKIP["return (nothing to do)"]
     E1 -->|"yes"| E2{"count of SUPER_ADMIN users?"}
     E2 -->|"more than 0"| SKIP2["skip bootstrap"]
     E2 -->|"0"| E3{"BOOTSTRAP_SUPER_ADMIN_EMAIL<br/>and PASSWORD configured?"}
     E3 -->|"no"| FAIL["throw Error — app refuses to boot<br/>without a platform super admin"]
     E3 -->|"yes"| E4{"user with bootstrap email<br/>already exists?"}
-    E4 -->|"yes"| E5["grant SUPER_ADMIN role<br/>+ merge ALL permissions"]
+    E4 -->|"yes"| E5["grant SUPER_ADMIN role<br/>+ merge ALL permissions (password kept)"]
     E4 -->|"no"| E6["create SUPER_ADMIN user<br/>bcrypt hash (BCRYPT_ROUNDS or 12)<br/>emailVerified = true, all permissions"]
 ```
+
+Boot seeding is owned by `SeedingBootstrapService` (`src/modules/seeding/`), which runs the
+platform seeder registry then the tenant seeder registry for every ACTIVE tenant. It is skipped when
+`SEED_CLI=true` so the CLI (`test/seed.ts`) can drive `SeedingService` directly. All RBAC seed logic
+lives in `src/modules/seeding/helpers/rbac.seed.ts`.
 
 ---
 
 ```mermaid
 flowchart TD
-    PROV["TenantProvisionerService.provision<br/>or TenantReseedService re-seed"] --> TSEED["seedRbac on the tenant DataSource<br/>roles = STORE_OWNER, ADMIN, CUSTOMER"]
-    TSEED --> P["insert any missing SEED_PERMISSIONS"]
-    P --> R["upsert each tenant role (isSystem = true)<br/>with SEED_ROLE_PERMISSIONS[key]"]
-    R --> MATRIX["STORE_OWNER → all 38 permissions<br/>ADMIN → 31 (users except delete, roles/permissions read,<br/>products / categories / cart / orders / payments / addresses)<br/>CUSTOMER → 16 (catalog read, own cart,<br/>own orders + cancel/return, own payments, own addresses)"]
+    PROV["TenantProvisionerService.provision<br/>or tenant seeder 'roles'"] --> TSEED["seedRbac / upsertRoles on the tenant DataSource<br/>roles = STORE_OWNER, ADMIN, CUSTOMER"]
+    TSEED --> P["upsert every SEED_PERMISSIONS by key"]
+    P --> R["upsert each tenant role (isSystem = true)<br/>and replace its permission set with SEED_ROLE_PERMISSIONS[key]"]
+    R --> MATRIX["STORE_OWNER → all 45 permissions<br/>ADMIN → operational subset<br/>CUSTOMER → catalog read, own cart,<br/>own orders + cancel/return, own payments, own addresses"]
 ```
 
-`UsersService.create` and `assignRole` re-attach `SEED_ROLE_PERMISSIONS[roleKey]` as **direct** `user_permissions`; custom roles map to `[]`. Seeding is idempotent and only inserts missing permission keys, so it never deletes tenant-created permissions.
+`UsersService.create` and `assignRole` re-attach `SEED_ROLE_PERMISSIONS[roleKey]` as **direct** `user_permissions`; custom roles map to `[]`. Seeding is idempotent and conflict-safe (upsert by unique `key`), so it never deletes tenant-created permissions.

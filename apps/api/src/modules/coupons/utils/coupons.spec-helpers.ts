@@ -91,9 +91,29 @@ export const buildCouponMocks = () => {
     ),
   } as unknown as TenantManagerService;
 
+  const subscriptionsMocks = {
+    withTenantLockByRef: jest.fn(
+      (_ref: unknown, fn: (...args: unknown[]) => unknown) =>
+        fn(entityManager as unknown as EntityManager, {
+          id: 7,
+          schemaName: 'tenant_test',
+        }),
+    ),
+  };
+  const entitlementsMocks = {
+    assertCanCreateCoupon: jest.fn().mockResolvedValue(undefined),
+  };
+  const usageMocks = {
+    consumeCouponQuota: jest.fn().mockResolvedValue(1),
+    releaseCouponQuota: jest.fn().mockResolvedValue(undefined),
+  };
+
   const service = new CouponsService(
     tenantManager,
     cartMocks as unknown as CartService,
+    subscriptionsMocks as never,
+    entitlementsMocks as never,
+    usageMocks as never,
   );
 
   return {
@@ -103,6 +123,9 @@ export const buildCouponMocks = () => {
     couponRepo,
     redemptionRepo,
     couponQb,
+    subscriptionsMocks,
+    entitlementsMocks,
+    usageMocks,
     entityManager: entityManager as unknown as EntityManager,
   };
 };

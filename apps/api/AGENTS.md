@@ -44,19 +44,21 @@ npx ts-node -r tsconfig-paths/register test/seed-load-test.ts  # seeds >=10 tena
   `ValidationPipe({ whitelist, forbidNonWhitelisted, transform })`; global
   `ClassSerializerInterceptor` (strips `@Exclude`); `listen(APP_PORT)`. There is no global exception
   filter.
-- `src/app.module.ts` — imports all feature modules and registers four global guards in this exact
-  order: **TenantGuard → JwtGuard → PermissionGuard → ThrottlerGuard**. `TenantMiddleware` is applied
-  to `*`.
+- `src/app.module.ts` — imports all feature modules and registers five global guards in this exact
+  order: **TenantGuard → JwtGuard → PermissionGuard → SubscriptionGuard → ThrottlerGuard**.
+  `TenantMiddleware` is applied to `*`.
 - `src/core.module.ts` — global `ConfigModule` (Joi `EnvSchema`, typed env load), global
   `JwtModule` (access secret/expiry), `ThrottlerModule`, pino logger, R2 module, and the
   public-schema TypeORM DataSource. `PUBLIC_ENTITIES = [Tenant, User, Role, Permission,
-  CurrencyChangeRequest]`.
+  CurrencyChangeRequest, SubscriptionPlan, SubscriptionPlanLimit, SubscriptionPlanFeature,
+  Subscription, TenantUsageCounter]`.
 - `src/common/` — `config/` (env schema, typed groups, `cors.util.ts`, `data-source.factory.ts`),
   `logger/` (pino to rotating file, TypeORM daily logger), `storage/` (`R2Service` on
   `@aws-sdk/client-s3`), `health/` (`GET health`), `db/` (`money-column`, `unique-retry`),
   `constants/` (`RoleKey` + `ROLE_RANK`, `PermissionKey` union, `currency.enum`).
 - `src/modules/` — `auth`, `users`, `rbac`, `tenants`, `platform`, `products`, `categories`, `cart`,
-  `orders`, `coupons`, `payments`, `addresses`, `dashboard`, `currency-requests`, `storefront`.
+  `orders`, `coupons`, `payments`, `addresses`, `dashboard`, `currency-requests`, `storefront`,
+  `subscriptions`.
 
 Most modules contain a `workflow.md` mermaid diagram; treat those as the authoritative flow docs for
 that module. The root `workflow.md` documents the full request pipeline.
@@ -119,6 +121,11 @@ Public schema:
   `stripePayoutsEnabled` / `stripeDetailsSubmitted` columns.
 - `CurrencyChangeRequest` (`currency_change_requests`): public entity with a partial unique index
   preventing more than one pending request per tenant.
+- Subscription entities (all **public**, see `## Subscriptions`): `SubscriptionPlan`
+  (`subscription_plans`, unique `slug`), `SubscriptionPlanLimit` / `SubscriptionPlanFeature`
+  (`subscription_plan_limits` / `subscription_plan_features`, unique `(planId, key)`, FK cascade),
+  `Subscription` (`subscriptions`, numeric `tenantId` unique, `planId` FK `ON DELETE RESTRICT`), and
+  `TenantUsageCounter` (`tenant_usage_counters`, unique `(tenantId, metric, periodStart)`).
 
 Tenant schema (`TENANT_ENTITIES`):
 
@@ -155,15 +162,38 @@ Tenant schema (`TENANT_ENTITIES`):
 
 ## Seeding and bootstrap
 
-- `RbacSeedService.onApplicationBootstrap` seeds the **public** schema: the `SUPER_ADMIN` role and
-  all 43 `SEED_PERMISSIONS` (users 6, roles/permissions 8, products 4, categories 4, cart 4,
-  orders 5, coupons 5, payments 3, addresses 4), then ensures a bootstrap super admin from
-  `BOOTSTRAP_SUPER_ADMIN_*`. It throws at boot when no super admin exists and the env is missing.
+All seeding is centralized in `src/modules/seeding/`, a registry-driven module. Every seeder is
+idempotent and conflict-safe (unique-key upserts plus `withUniqueRetry`), so reruns never duplicate
+rows. There is no `seeder_runs` tracking table and no migration: seeders are safe to re-run.
+
+- **Registry.** `SeederRegistry` is fed `PLATFORM_SEEDERS` and `TENANT_SEEDERS` (factory tokens;
+  Nest has no native multi-providers). Each seeder declares `name`, `order`, optional `environments`
+  and optional `optIn`. Registry validates unique names and sorts by `order` then `name`.
+- **Boot.** `SeedingBootstrapService` (`OnApplicationBootstrap`) is the single boot owner. It runs
+  the default platform seeders, then the default tenant seeders for every ACTIVE tenant. A platform
+  failure (notably a missing bootstrap super admin) throws and the API refuses to boot; per-tenant
+  failures are logged and do not fail boot. It returns immediately when `SEED_CLI === 'true'`.
+- **Platform seeders** (public schema): `permissions` (upsert all 45 `SEED_PERMISSIONS`), `roles`
+  (`SUPER_ADMIN`), `super-admin` (bootstrap user from `BOOTSTRAP_SUPER_ADMIN_*`), `subscription-plans`
+  (`free`, `starter`, `growth`, `pro`, `enterprise` from
+  `subscriptions/constants/subscription-plan-seeds.ts`), `subscription-backfill` (assign `free` to
+  tenants without a subscription and re-sync each tenant's `storageCapacityBytes`).
+- **Tenant seeders**: `permissions`, `roles` (`STORE_OWNER`, `ADMIN`, `CUSTOMER`), and the **opt-in**
+  `categories` (`BASE_CATEGORIES`, skipped by "run all"). Tenant seeders receive the DataSource
+  returned by `TenantManagerService` for the resolved tenant — never the public DataSource.
 - `TenantProvisionerService.provision(tenant)`: `CREATE SCHEMA IF NOT EXISTS` → tenant DataSource →
-  `seedRbac` for the tenant roles (`STORE_OWNER`, `ADMIN`, `CUSTOMER`).
-- `TenantReseedService.onApplicationBootstrap` re-runs `seedRbac` for every ACTIVE tenant on boot.
-- `categories.seed.ts` (`BASE_CATEGORIES`, `seedCategories`) is **dead code**: nothing imports or
-  calls it, so provision and reseed do **not** create base categories. Do not rely on it.
+  `seedRbac` for the tenant roles. Provision and boot do **not** create base categories; run
+  `seed --tenants --name categories` to opt in. All seeding logic lives under
+  `src/modules/seeding/` (`helpers/` for shared upsert helpers, `seeders/` for registered seeders);
+  there are no seed services in the feature modules.
+- **CLI** (`test/seed.ts`, scripts `seed`, `seed:platform`, `seed:tenants`, `seed:all`): sets
+  `SEED_CLI=true` before booting the app context, then drives `SeedingService`. Flags: `--platform`,
+  `--tenants`, `--all` (default), `--name <n>` (repeatable/comma), `--tenant <id|slug>`, `--force`.
+  A raw schema name is never accepted; tenants resolve only via `TenantService` by id or slug. The
+  process exits non-zero on any failure.
+- **Production safety.** In `NODE_ENV=production` the CLI refuses to seed unless
+  `SEED_ALLOW_PRODUCTION=true` **and** `--force`; `--force` alone never bypasses the env flag.
+  Development/test need no `--force`. Boot seeding bypasses this guard (it must always run).
 
 ## Storage
 
@@ -172,10 +202,16 @@ Tenant schema (`TENANT_ENTITIES`):
 - Product uploads: max 5 files per request, MIME `image/jpeg`, `image/png`, `image/webp` (no GIF),
   `MAX_FILE_SIZE`, and `MAX_PRODUCT_IMAGES` per product. Per-tenant quota is enforced against
   `Tenant.storageCapacityBytes` via `TenantService.adjustStorageUsedBytes` (pessimistic lock, clamps
-  at 0, 400 over capacity). A partial failure deletes the uploaded R2 objects and image rows.
+  at 0, 400 over capacity). `storageCapacityBytes` is plan-driven: it is mirrored from the assigned
+  plan's `STORAGE_BYTES` limit on subscription assignment (see `## Subscriptions`). A partial failure
+  deletes the uploaded R2 objects and image rows.
 - `storageUsedBytes` is maintained incrementally. `TenantService.getSchemaSizes`
-  (`pg_total_relation_size`) exists but is **not wired to any endpoint**; platform tenant listing
-  returns raw tenant rows.
+  (`pg_total_relation_size`) is surfaced as `schemaSizeBytes` (a plain number) on
+  `GET /platform/tenants`, `GET /platform/tenants/:id`, and `GET /dashboard/stats`, alongside a
+  display-only `schemaCapacityBytes` from `TENANT_DB_CAPACITY_BYTES` (`TenantService` exposes it via
+  `getSchemaCapacityBytes`). A size query failure logs a warning and reports `0`, so the endpoints
+  keep rendering. It is display-only: quota enforcement still uses `storageUsedBytes` (R2
+  product-image bytes), and the two values measure different things.
 
 ## Payments
 
@@ -215,6 +251,75 @@ Payments are **implemented** in `src/modules/payments/` (controller, service,
   `tenantManager.getRepository`, or the lock and writes leave the transaction.
 - Full cancel/return calls `restoreUsage` (guarded decrement + redemption delete); partial refunds
   do not. One coupon per order (`CheckoutDto.couponCode`).
+- `CouponsService.create` reserves the plan's monthly coupon quota first
+  (`COUPON_MONTHLY_LIMIT_REACHED`) and releases it if the insert fails; coupon delete does **not**
+  refund quota.
+
+## Subscriptions
+
+SaaS subscription plans are **platform-level** (public schema). Super Admin manages plans and
+assigns them; tenants only read their own subscription. Stripe SaaS billing is **deferred**: the
+`stripe*` columns exist but are unused, and `src/modules/payments/**` (customer Stripe Connect) is
+untouched.
+
+- Entities: `SubscriptionPlan`, `SubscriptionPlanLimit`, `SubscriptionPlanFeature`, `Subscription`
+  (one per tenant via unique `tenantId`), `TenantUsageCounter`. All public — never add them to
+  `TENANT_ENTITIES`.
+- Plan limits: `STORAGE_BYTES`, `DATABASE_BYTES`, `STORE_ADMINS`, `COUPONS_PER_MONTH`, `PRODUCTS`;
+  features:
+  `STRIPE_PAYMENTS`, `STORE_CUSTOMIZATION`, `COUPONS`, `STAFF_MANAGEMENT`,
+  `PRODUCT_IMPORT_EXPORT`, `CUSTOM_DOMAIN`, `ADVANCED_ANALYTICS`, `ADVANCED_REPORTS`, `SEO_TOOLS`,
+  `AUDIT_LOGS`, `PRIORITY_SUPPORT`. Unlimited = no limit row or `value IS NULL` (`getLimit` →
+  `null`).
+- Seeded plans: `free` (500 MB storage / 50 MB DB / 1 admin / 5 coupons / 10 products), `starter`
+  (10 GB / 500 MB / 2 admins / 25 coupons / 100 products), `growth` (50 GB / 2 GB / 5 admins /
+  100 coupons / 1000 products), `pro` (200 GB / 10 GB / 15 admins / 500 coupons / 5000 products),
+  and `enterprise` (no limit rows = unlimited, all features).
+- States: active = `ACTIVE`; usable = `TRIALING | ACTIVE | PAST_DUE`, plus `CANCELED` until
+  `currentPeriodEnd`. Not usable → `SUBSCRIPTION_INACTIVE`.
+- Routes (Super Admin, `@Platform @Roles([SUPER_ADMIN])`): `GET|POST /platform/subscription-plans`,
+  `GET|PATCH|DELETE /platform/subscription-plans/:id`,
+  `GET /platform/tenants/:id/subscription` (current plan + subscription; falls back to `free`),
+  `GET /platform/tenants/:id/subscription/usage` (`{ used, limit, remaining }` per limit key),
+  `PUT /platform/tenants/:id/subscription`, `PATCH /platform/tenants/:id/subscription/status`.
+  `DELETE` deactivates a plan still referenced by a subscription, otherwise hard-deletes it
+  (limits/features cascade).
+- Tenant routes (not `@Platform`, gated by `subscriptions:read`): `GET /subscription`,
+  `GET /subscription/plans` (active + public), `GET /subscription/usage`. Tenant identity always
+  comes from `requireTenantContext()` / `resolveTenantScope()`; a body `tenantId` is rejected by the
+  global pipe.
+- Enforcement (`SubscriptionEntitlementsService`, the only reader other modules use):
+  - **Storage** stays enforced by `TenantService.adjustStorageUsedBytes`; plan assignment mirrors
+    `STORAGE_BYTES` into `Tenant.storageCapacityBytes` (unlimited → `Number.MAX_SAFE_INTEGER`).
+    Downgrades re-sync the column without throwing; usage is preserved and the new limit applies.
+  - **Store admins**: `UsersService.create` wraps `ADMIN`/`STORE_OWNER` creation in
+    `SubscriptionService.withTenantLock` and asserts `STORE_ADMINS`. The owner counts; customers and
+    platform `SUPER_ADMIN` never do.
+  - **Coupons**: `CouponsService.create` asserts the `COUPONS` feature and consumes
+    `COUPONS_PER_MONTH` through the atomic `INSERT ... ON CONFLICT ... WHERE used < limit RETURNING`
+    counter (calendar month, UTC; delete does not refund).
+  - **Database**: `assertCanUseDatabase` runs at order checkout, using
+    `pg_total_relation_size` on the resolved tenant schema only (never `public`).
+  - **Products**: `ProductsService.create` asserts `PRODUCTS`, the live count of products in the
+    tenant schema. `POST /products` carries the HTTP-layer `PRODUCTS` gate; `DATABASE_BYTES` is no
+    longer checked at product create (it remains at checkout).
+  - **HTTP-layer parity gate**: `SubscriptionGuard` (`subscriptions/guards/`) is a global guard
+    registered after `PermissionGuard` so `request.tenant` is populated. It is opt-in via
+    `@RequireActiveSubscription()`, `@RequireSubscriptionFeature(...)` and
+    `@RequireSubscriptionLimit(...)` (`subscriptions/decorators/`); it skips `@Public`/`@Platform`
+    and routes without metadata. It calls `assertUsable`/`assertHasFeature`/`assertLimit`, coexisting
+    with the service-level checks (which stay authoritative). `assertLimit` delegates to the existing
+    `assertCanUse*`/`assertCanCreate*` methods so error codes are unchanged.
+- Domain errors are Nest `HttpException` subclasses with `{ code, message }` bodies (e.g.
+  `PLAN_LIMIT_REACHED`, `COUPON_MONTHLY_LIMIT_REACHED`, `STORE_ADMIN_LIMIT_REACHED`,
+  `DATABASE_LIMIT_REACHED`, `PRODUCT_LIMIT_REACHED`, `SUBSCRIPTION_INACTIVE`). No global exception
+  filter is added.
+- Permissions: `subscriptions:read` (STORE_OWNER + ADMIN) and `subscriptions:manage`
+  (STORE_OWNER; enforced by the platform `SUPER_ADMIN` role on platform routes). Registered in
+  `PermissionKey`, `SEED_PERMISSIONS`, and `SEED_ROLE_PERMISSIONS`.
+- The DB gate runs only at checkout; product create is gated by the `PRODUCTS` count limit, and
+  other writes are not gated (known limitation). Public-schema subscription tables are created by
+  `synchronize`, not migrations.
 
 ## Storefront and catalog endpoints
 
@@ -234,12 +339,13 @@ Stripe values fails to boot.
 
 Groups in `IENV` (`env.interface.ts`): `app` (`APP_*`, `BOOTSTRAP_SUPER_ADMIN_*`,
 `APP_ROOT_DOMAIN`), `db` (`DB_*`, `DB_SYNCHRONIZE_TENANTS`, `TENANT_POOL_SIZE`,
-`TENANT_STORAGE_CAPACITY_BYTES`), `jwt`, `bcrypt`, `log`, `throttling` (`THROTTLE_TTL`,
+`TENANT_STORAGE_CAPACITY_BYTES`, `TENANT_DB_CAPACITY_BYTES`), `jwt`, `bcrypt`, `log`,
+`throttling` (`THROTTLE_TTL`,
 `THROTTLE_LIMIT`), `cors`, `r2`, `files` (`MAX_FILE_SIZE`, `MAX_PRODUCT_IMAGES`), `stripe`
 (`STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`,
 `STRIPE_APPLICATION_FEE_BPS`, optional `STRIPE_ONBOARDING_RETURN_URL`,
-`STRIPE_ONBOARDING_REFRESH_URL`). There is **no** `payments` group, `PAYMENT_PROVIDER`,
-`STRIPE_CURRENCY`, or `STRIPE_CONNECT_COUNTRY`.
+`STRIPE_ONBOARDING_REFRESH_URL`), `seeding` (`SEED_ALLOW_PRODUCTION`). There is **no** `payments`
+group, `PAYMENT_PROVIDER`, `STRIPE_CURRENCY`, or `STRIPE_CONNECT_COUNTRY`.
 
 Access config through `ConfigService<IENV>` typed groups and `getOrThrow<IX>('group')`.
 

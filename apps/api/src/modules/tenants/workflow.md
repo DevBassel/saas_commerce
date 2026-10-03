@@ -32,7 +32,7 @@ flowchart TD
     PROV --> SAN["sanitizeSchemaName<br/>lowercase, a-z 0-9 underscore, max 63 chars"]
     SAN --> DDL["CREATE SCHEMA IF NOT EXISTS<br/>via public DataSource"]
     DDL --> GDS["TenantManagerService.getDataSource"]
-    GDS --> SEED["seedRbac then seedCategories on tenant DataSource<br/>TENANT_ROLE_KEYS: STORE_OWNER, ADMIN, CUSTOMER + permissions,<br/>8 base product categories"]
+    GDS --> SEED["seedRbac on tenant DataSource<br/>TENANT_ROLE_KEYS: STORE_OWNER, ADMIN, CUSTOMER + permissions<br/>(no base categories; the 'categories' seeder is opt-in)"]
     SEED --> DONE["log: Provisioned tenant slug (schema)"]
 
     subgraph MGR["TenantManagerService — per-schema DataSource cache (cap 100, LRU)"]
@@ -61,6 +61,7 @@ flowchart TD
         GETOWN["findByIdWithOwner — tenant + owner<br/>(owner role + permissions, selected fields)"]
         LOOKUP["findBySlug / findBySchemaName / findBySubdomain /<br/>findByStripeAccountId"]
         SIZES["getSchemaSizes(schemas)<br/>SUM(pg_total_relation_size) per pg_namespace"]
+        DBCAP["getSchemaCapacityBytes()<br/>TENANT_DB_CAPACITY_BYTES (display-only schema cap)"]
     end
 
     subgraph WRITES["TenantService writes"]

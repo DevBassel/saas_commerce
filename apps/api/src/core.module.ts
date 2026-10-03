@@ -14,11 +14,27 @@ import { User } from './modules/users/entities/user.entity';
 import { Role } from './modules/rbac/entities/role.entity';
 import { Permission } from './modules/rbac/entities/permission.entity';
 import { CurrencyChangeRequest } from './modules/currency-requests/entities/currency-change-request.entity';
+import { SubscriptionPlan } from './modules/subscriptions/entities/subscription-plan.entity';
+import { SubscriptionPlanLimit } from './modules/subscriptions/entities/subscription-plan-limit.entity';
+import { SubscriptionPlanFeature } from './modules/subscriptions/entities/subscription-plan-feature.entity';
+import { Subscription } from './modules/subscriptions/entities/subscription.entity';
+import { TenantUsageCounter } from './modules/subscriptions/entities/tenant-usage-counter.entity';
 import { seconds, ThrottlerModule } from '@nestjs/throttler';
 
 // Public schema entities only. Tenant-scoped entities live in
 // tenant-entities.ts and must never be registered here.
-const PUBLIC_ENTITIES = [Tenant, User, Role, Permission, CurrencyChangeRequest];
+const PUBLIC_ENTITIES = [
+  Tenant,
+  User,
+  Role,
+  Permission,
+  CurrencyChangeRequest,
+  SubscriptionPlan,
+  SubscriptionPlanLimit,
+  SubscriptionPlanFeature,
+  Subscription,
+  TenantUsageCounter,
+];
 
 @Module({
   imports: [

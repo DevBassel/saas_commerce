@@ -32,6 +32,7 @@ const dbConfig: IDB = {
   logging: false,
   ssl: false,
   tenantStorageCapacityBytes: 1000,
+  tenantDbCapacityBytes: 1000,
 };
 
 const buildMocks = () => {
@@ -92,6 +93,9 @@ const buildMocks = () => {
     categoriesService,
     r2,
     config,
+    {
+      assertCanCreateProduct: jest.fn().mockResolvedValue(undefined),
+    } as never,
   );
 
   return {

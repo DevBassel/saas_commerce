@@ -16,6 +16,11 @@ import { OrderPermissionKey } from './constants/order-permissions.enum';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { ListOrdersQueryDto } from './dto/list-orders.query.dto';
 import { CheckoutDto } from './dto/checkout.dto';
+import {
+  RequireActiveSubscription,
+  RequireSubscriptionLimit,
+} from '../subscriptions/decorators/subscription.decorators';
+import { SubscriptionLimitKey } from '../subscriptions/constants/subscription-limit-key.enum';
 import type { RequestWithUser } from '../auth/interfaces/RequestWithUser.interface';
 
 @Controller('orders')
@@ -27,6 +32,8 @@ export class OrdersController {
 
   @Post()
   @Permissions([OrderPermissionKey.CREATE])
+  @RequireActiveSubscription()
+  @RequireSubscriptionLimit([SubscriptionLimitKey.DATABASE_BYTES])
   checkout(@Req() request: RequestWithUser, @Body() dto: CheckoutDto = {}) {
     return this.ordersService.checkout(request.user.id, dto);
   }

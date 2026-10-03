@@ -49,7 +49,9 @@ const buildMocks = () => {
 
   const configMocks = {
     getOrThrow: jest.fn((key: string) =>
-      key === 'db' ? { tenantStorageCapacityBytes: 1000 } : undefined,
+      key === 'db'
+        ? { tenantStorageCapacityBytes: 1000, tenantDbCapacityBytes: 2000 }
+        : undefined,
     ),
   };
   const config = configMocks as unknown as ConfigService<IENV>;
@@ -303,6 +305,7 @@ describe('TenantService.create', () => {
     const { service, tenantRepoMocks, configMocks } = buildMocks();
     configMocks.getOrThrow.mockReturnValue({
       tenantStorageCapacityBytes: 2048,
+      tenantDbCapacityBytes: 2000,
     });
 
     await service.create({ name: 'My Store', slug: 'my-shop' });
@@ -435,6 +438,14 @@ describe('TenantService.getSchemaSizes', () => {
     expect(dataSourceMocks.query).toHaveBeenCalledWith(expect.any(String), [
       ['tenant_a', 'tenant_b'],
     ]);
+  });
+});
+
+describe('TenantService.getSchemaCapacityBytes', () => {
+  it('reads the configured DB capacity from env', () => {
+    const { service } = buildMocks();
+
+    expect(service.getSchemaCapacityBytes()).toBe(2000);
   });
 });
 

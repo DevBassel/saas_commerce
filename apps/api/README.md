@@ -20,8 +20,9 @@ Postgres runs from `compose.yaml`. On boot the platform schema is seeded and a b
 ## Architecture & multi-tenancy
 
 - **Public schema (`public`)** — platform layer: the `tenants` registry plus platform RBAC
-  (`users`, `roles`, `permissions`, `role_permissions`) with `SUPER_ADMIN`. Platform auth is
-  independent of tenant data.
+  (`users`, `roles`, `permissions`, `role_permissions`) with `SUPER_ADMIN`, and the SaaS
+  subscription tables (`subscription_plans` + limits/features, `subscriptions`,
+  `tenant_usage_counters`). Platform auth is independent of tenant data.
 - **Tenant schema (`tenant_<slug>`)** — isolated per store: `users`, `roles`, `permissions`,
   `role_permissions`, `user_permissions`, `products`, `product_images`, `categories`,
   `carts`, `cart_items`. The same email is allowed across tenants.
@@ -50,10 +51,11 @@ permissions attached to the user's role.
 
 - **Roles**: `SUPER_ADMIN` (platform), `STORE_OWNER`, `ADMIN`, `CUSTOMER`.
   `ROLE_RANK`: SUPER_ADMIN `5`, STORE_OWNER `4`, ADMIN `3`, CUSTOMER `0`.
-- **26 seeded permissions**, grouped as: users `6`, roles + permissions `8`, products `4`,
-  categories `4`, cart `4`.
+- **45 seeded permissions**, grouped as: users `6`, roles + permissions `8`, products `4`,
+  categories `4`, cart `4`, orders `5`, coupons `5`, payments `3`, addresses `4`,
+  subscriptions `2`.
 - **`SEED_ROLE_PERMISSIONS`**:
-  - `SUPER_ADMIN` / `STORE_OWNER` — all 26.
+  - `SUPER_ADMIN` / `STORE_OWNER` — all 45.
   - `ADMIN` — user create/read/update/assign-role/assign-permissions (no user delete),
     roles/permissions read, full catalog (products + categories) and full cart.
   - `CUSTOMER` — products/categories read and full cart.
@@ -91,27 +93,80 @@ permissions attached to the user's role.
 - **`cart`** — one cart per user: `GET /cart`, add/update/remove items, clear; max **100**
   items per cart, max quantity **99** per line, with active/stock checks.
   See [`src/modules/cart/cart.service.ts`](src/modules/cart/cart.service.ts).
+- **`subscriptions`** — platform-level SaaS plans with limits/features; Super Admin manages plans
+  and assigns one plan per tenant, tenants read their own subscription/usage. Enforced limits:
+  storage, database size, store admins, monthly coupons.
+  Flow: [`src/modules/subscriptions/workflow.md`](src/modules/subscriptions/workflow.md).
+
+## Subscriptions
+
+Public-schema plans are created/edited by Super Admin; each tenant has exactly one subscription.
+
+- **Super Admin routes** (`@Platform @Roles([SUPER_ADMIN])`):
+  `GET|POST /platform/subscription-plans`, `GET|PATCH|DELETE /platform/subscription-plans/:id`,
+  `GET /platform/tenants/:id/subscription` (current plan + subscription; falls back to `free`),
+  `GET /platform/tenants/:id/subscription/usage` (per-key `{ used, limit, remaining }`),
+  `PUT /platform/tenants/:id/subscription`, `PATCH /platform/tenants/:id/subscription/status`.
+- **Tenant routes** (`subscriptions:read`): `GET /subscription` (own subscription only),
+  `GET /subscription/plans` (active + public), `GET /subscription/usage`.
+- **Limits**: `STORAGE_BYTES`, `DATABASE_BYTES`, `STORE_ADMINS`, `COUPONS_PER_MONTH`, `PRODUCTS`;
+  unlimited = no row or `value IS NULL`. **Features** are cumulative booleans (Stripe payments,
+  customization, coupons, staff management, import/export, custom domain, analytics, reports, SEO,
+  audit logs, priority support).
+- **Enforcement**: storage via the plan-synced `Tenant.storageCapacityBytes`; store admins counted
+  (owner included) under a public subscription row lock; coupons via an atomic monthly counter
+  (deleting a coupon does not refund quota); products capped by a live count of the tenant schema at
+  product create; database size (`pg_total_relation_size`, tenant schema only) at checkout.
+- Stripe SaaS billing is deferred; the `stripe*` columns are unused and customer Stripe Connect is
+  untouched. No migrations: all subscription tables are created by `synchronize`.
 
 ## Seeding / bootstrap
 
-- **`RbacSeedService`** (`onApplicationBootstrap`) — seeds the **public** schema with all 26
-  permissions and the `SUPER_ADMIN` role, then ensures a bootstrap super admin from
-  `BOOTSTRAP_SUPER_ADMIN_*` (throws at boot if none exists and env is missing).
-- **`TenantProvisionerService.provision(tenant)`** — `CREATE SCHEMA IF NOT EXISTS` → tenant
-  DataSource → `seedRbac(TENANT_ROLE_KEYS)` where `TENANT_ROLE_KEYS` = `STORE_OWNER`, `ADMIN`,
-  `CUSTOMER` → `seedCategories` (8 base categories).
-- **`TenantReseedService`** (`onApplicationBootstrap`) — re-seeds every ACTIVE tenant on boot
-  (synchronize + RBAC/category backfill).
+All seeding lives in `src/modules/seeding/` behind a registry-driven module. Seeders are idempotent
+and conflict-safe, so reruns are safe.
+
+- **Boot** (`SeedingBootstrapService`) runs the platform seeders then the tenant seeders for every
+  ACTIVE tenant. It throws (fails boot) when a platform seeder fails — e.g. no super admin exists and
+  `BOOTSTRAP_SUPER_ADMIN_*` is unset — and only logs per-tenant failures.
+- **Platform** (public schema): `permissions` (45), `roles` (`SUPER_ADMIN`), `super-admin`
+  (bootstrap user), `subscription-plans` (`free`, `starter`, `growth`, `pro`, `enterprise`),
+  `subscription-backfill` (assign `free` + re-sync storage capacity).
+- **Tenant**: `permissions`, `roles` (`STORE_OWNER`, `ADMIN`, `CUSTOMER`), plus the **opt-in**
+  `categories` (`BASE_CATEGORIES`), which is not run by provision/reseed or boot.
+- `TenantProvisionerService.provision(tenant)` — `CREATE SCHEMA IF NOT EXISTS` → tenant DataSource →
+  `seedRbac(TENANT_ROLE_KEYS)`. All seeding logic lives under `src/modules/seeding/`.
+
+### CLI
+
+`test/seed.ts`, booting the app context with `SEED_CLI=true`. Default (no mode flag) runs platform
+then ACTIVE tenants.
+
+```bash
+pnpm --filter saas_store_api seed                                   # platform + all ACTIVE tenants
+pnpm --filter saas_store_api seed:platform                          # platform only
+pnpm --filter saas_store_api seed:tenants                           # all ACTIVE tenants
+pnpm --filter saas_store_api seed -- --name permissions             # one seeder (both scopes)
+pnpm --filter saas_store_api seed -- --tenants --name roles         # tenant roles only
+pnpm --filter saas_store_api seed -- --tenants --name categories    # opt-in base categories
+pnpm --filter saas_store_api seed -- --tenant demo                  # single tenant (id or slug)
+```
+
+Flags: `--platform`, `--tenants`, `--all` (default), `--name <n>` (repeatable/comma-separated),
+`--tenant <id|slug>`, `--force`. In production both `SEED_ALLOW_PRODUCTION=true` and `--force` are
+required; `--force` alone never bypasses the environment guard. The CLI exits non-zero on failure.
 
 ## Storage
 
 - `R2Service` (Cloudflare R2); object keys are `tenants/{schema}/products/{uuid}.{ext}`.
 - Uploads: max **5** files/request, allowed types `jpeg`, `png`, `webp`, `MAX_FILE_SIZE`
   (default `5242880`, i.e. 5 MB fallback), `MAX_PRODUCT_IMAGES` (default `5`), and a per-tenant
-  quota from `TENANT_STORAGE_CAPACITY_BYTES` (default `524288000`, i.e. 512 MB).
+  quota mirrored from the assigned plan's `STORAGE_BYTES` limit (`Tenant.storageCapacityBytes`;
+  `TENANT_STORAGE_CAPACITY_BYTES` is only the default before a plan is assigned).
 - A partial upload failure rolls back already-uploaded objects; deleting a product or image
   deletes the corresponding R2 objects.
-- Platform `GET /platform/tenants` reports per-schema storage via `pg_total_relation_size`.
+- Platform `GET /platform/tenants` and `GET /platform/tenants/:id`, plus `GET /dashboard/stats`,
+  report the per-schema Postgres size as `schemaSizeBytes` via `pg_total_relation_size`, with a
+  display-only `schemaCapacityBytes` from `TENANT_DB_CAPACITY_BYTES` (a failed query reports `0`).
 
 ## Commands
 

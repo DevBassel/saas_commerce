@@ -5,7 +5,8 @@ two Refine/Vite admin consoles, and one Next.js customer storefront.
 
 Per-app instructions live next to each app and are authoritative for that app:
 
-- `apps/api/AGENTS.md` — architecture, multi-tenancy, guards, entities, seeding, payments, coupons.
+- `apps/api/AGENTS.md` — architecture, multi-tenancy, guards, entities, seeding, payments, coupons,
+  subscriptions.
 - `apps/store_owner_dashboard/AGENTS.md` — tenant admin console.
 - `apps/super_admin_dashboard/AGENTS.md` — platform console.
 - `apps/tenant_store/AGENTS.md` — public storefront.

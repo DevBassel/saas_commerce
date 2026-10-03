@@ -7,6 +7,7 @@ import { OrderPermissionKey } from 'src/modules/orders/constants/order-permissio
 import { CouponPermissionKey } from 'src/modules/coupons/constants/coupon-permissions.enum';
 import { PaymentPermissionKey } from 'src/modules/payments/constants/payments-permissions.enum';
 import { AddressPermissionKey } from 'src/modules/addresses/constants/address-permissions.enum';
+import { SubscriptionPermissionKey } from 'src/modules/subscriptions/constants/subscription-permissions.enum';
 
 export type PermissionKey =
   | UserPermissionKey
@@ -17,4 +18,5 @@ export type PermissionKey =
   | OrderPermissionKey
   | CouponPermissionKey
   | PaymentPermissionKey
-  | AddressPermissionKey;
+  | AddressPermissionKey
+  | SubscriptionPermissionKey;

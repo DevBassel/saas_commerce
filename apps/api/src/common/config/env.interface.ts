@@ -11,6 +11,11 @@ export interface IENV {
   r2: IR2;
   files: IFiles;
   stripe: IStripe;
+  seeding: ISeeding;
+}
+
+export interface ISeeding {
+  allowProduction: boolean;
 }
 
 export interface IAPP {
@@ -37,6 +42,7 @@ export interface IDB {
   ssl: boolean;
   tenantPoolSize?: number;
   tenantStorageCapacityBytes: number;
+  tenantDbCapacityBytes: number;
 }
 
 export interface IJWT {

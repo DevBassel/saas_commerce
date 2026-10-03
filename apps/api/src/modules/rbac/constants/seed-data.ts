@@ -9,6 +9,7 @@ import { OrderPermissionKey } from 'src/modules/orders/constants/order-permissio
 import { CouponPermissionKey } from 'src/modules/coupons/constants/coupon-permissions.enum';
 import { PaymentPermissionKey } from 'src/modules/payments/constants/payments-permissions.enum';
 import { AddressPermissionKey } from 'src/modules/addresses/constants/address-permissions.enum';
+import { SubscriptionPermissionKey } from 'src/modules/subscriptions/constants/subscription-permissions.enum';
 
 export const SEED_PERMISSIONS: {
   key: PermissionKey;
@@ -230,6 +231,16 @@ export const SEED_PERMISSIONS: {
     name: 'Delete delivery addresses',
     description: 'Remove delivery addresses from your own address book',
   },
+  {
+    key: SubscriptionPermissionKey.READ,
+    name: 'Read subscription',
+    description: 'View the store subscription, plans and usage',
+  },
+  {
+    key: SubscriptionPermissionKey.MANAGE,
+    name: 'Manage subscription',
+    description: 'Change the store subscription plan and billing interval',
+  },
 ];
 
 export const SEED_ROLES: {
@@ -302,6 +313,7 @@ export const SEED_ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     AddressPermissionKey.READ,
     AddressPermissionKey.UPDATE,
     AddressPermissionKey.DELETE,
+    SubscriptionPermissionKey.READ,
   ],
   [RoleKey.CUSTOMER]: [
     ProductPermissionKey.READ,

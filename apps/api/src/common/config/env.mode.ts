@@ -33,6 +33,7 @@ export const buildEnv = (): IENV => ({
     tenantStorageCapacityBytes: Number(
       process.env.TENANT_STORAGE_CAPACITY_BYTES,
     ),
+    tenantDbCapacityBytes: Number(process.env.TENANT_DB_CAPACITY_BYTES),
   },
   jwt: {
     accessSecret: process.env.JWT_ACCESS_SECRET!,
@@ -77,5 +78,9 @@ export const buildEnv = (): IENV => ({
     onboardingReturnUrl: process.env.STRIPE_ONBOARDING_RETURN_URL || undefined,
     onboardingRefreshUrl:
       process.env.STRIPE_ONBOARDING_REFRESH_URL || undefined,
+  },
+  seeding: {
+    allowProduction:
+      String(process.env.SEED_ALLOW_PRODUCTION).toLocaleLowerCase() === 'true',
   },
 });

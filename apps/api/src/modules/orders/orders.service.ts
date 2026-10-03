@@ -48,6 +48,7 @@ import {
   restockOrderItems,
   serializeOrder,
 } from './orders.helpers';
+import { SubscriptionEntitlementsService } from '../subscriptions/services/subscription-entitlements.service';
 
 type Requester = RequestWithUser['user'];
 
@@ -84,6 +85,7 @@ export class OrdersService {
     private readonly r2: R2Service,
     private readonly payments: StripePaymentService,
     private readonly coupons: CouponsService,
+    private readonly entitlements: SubscriptionEntitlementsService,
   ) {}
 
   private async repos(tenant?: TenantRef): Promise<{
@@ -100,7 +102,9 @@ export class OrdersService {
     dto: CheckoutDto = {},
     tenant?: TenantRef,
   ): Promise<SerializedOrder> {
-    const { orderRepo } = await this.repos(tenant);
+    const { target, orderRepo } = await this.repos(tenant);
+
+    await this.entitlements.assertCanUseDatabase(target);
 
     const order = await withUniqueRetry(() =>
       orderRepo.manager.transaction(

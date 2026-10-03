@@ -19,6 +19,7 @@ const baseEnv = (): Record<string, unknown> => ({
   DB_SSL: false,
   TENANT_POOL_SIZE: 10,
   TENANT_STORAGE_CAPACITY_BYTES: 1_000_000,
+  TENANT_DB_CAPACITY_BYTES: 2_000_000,
   R2_ACCOUNT_ID: 'account',
   R2_ACCESS_KEY_ID: 'key',
   R2_SECRET_ACCESS_KEY: SECRET,

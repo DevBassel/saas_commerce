@@ -5,9 +5,10 @@ import { OrdersController } from './orders.controller';
 import { TenantModule } from '../tenants/tenant.module';
 import PaymentsModule from '../payments/payments.module';
 import { CouponsModule } from '../coupons/coupons.module';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
-  imports: [TenantModule, PaymentsModule, CouponsModule],
+  imports: [TenantModule, PaymentsModule, CouponsModule, SubscriptionsModule],
   controllers: [OrdersController],
   providers: [OrdersService, ManageOrderService],
   exports: [OrdersService, ManageOrderService],

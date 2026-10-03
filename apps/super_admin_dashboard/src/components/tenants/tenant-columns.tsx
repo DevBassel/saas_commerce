@@ -74,6 +74,17 @@ export const tenantColumns: ColumnDef<Tenant>[] = [
             )}
             %
           </span>
+          <span className="text-xs">
+            Schema {formatBytes(tenant.schemaSizeBytes)} /{" "}
+            {formatBytes(tenant.schemaCapacityBytes)} (
+            {Math.round(
+              storagePercent(
+                tenant.schemaSizeBytes,
+                tenant.schemaCapacityBytes,
+              ),
+            )}
+            %)
+          </span>
         </div>
       );
     },

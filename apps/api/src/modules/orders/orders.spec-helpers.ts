@@ -169,6 +169,9 @@ export const buildMocks = () => {
     r2,
     paymentsMocks as unknown as StripePaymentService,
     couponsMocks as unknown as CouponsService,
+    {
+      assertCanUseDatabase: jest.fn().mockResolvedValue(undefined),
+    } as never,
   );
   const manageService = new ManageOrderService(
     tenantManager,

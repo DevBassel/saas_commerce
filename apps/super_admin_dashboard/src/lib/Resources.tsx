@@ -3,6 +3,7 @@ import {
   BuildingIcon,
   CoinsIcon,
   CreditCardIcon,
+  LayersIcon,
   LayoutDashboardIcon,
 } from "lucide-react";
 
@@ -40,6 +41,16 @@ export const Resources: ResourceProps[] = [
     meta: {
       label: "Currency Requests",
       icon: <CoinsIcon />,
+    },
+  },
+  {
+    name: "platform/subscription-plans",
+    list: "/subscription-plans",
+    create: "/subscription-plans/create",
+    edit: "/subscription-plans/edit/:id",
+    meta: {
+      label: "Subscription Plans",
+      icon: <LayersIcon />,
     },
   },
 ];

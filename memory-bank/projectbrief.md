@@ -27,6 +27,10 @@ subdomain.
 - Product catalog, categories, cart, orders, addresses, and coupons.
 - Stripe payments with destination charges and Connect onboarding.
 - Cloudflare R2 storage with per-tenant quotas.
+- Platform-level subscription plans (Free/Starter/Growth/Pro/Enterprise) with limits/features,
+  Super-Admin assignment, tenant read-only usage, and server-side enforcement. The platform console
+  provides plan CRUD and a per-tenant subscription panel (change plan/interval, cancel/reactivate,
+  live usage).
 - Super-admin tenant provisioning, lifecycle, payments oversight, and currency requests.
 
 ## Scope boundaries

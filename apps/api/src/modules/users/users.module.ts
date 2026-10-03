@@ -7,12 +7,14 @@ import { Role } from '../rbac/entities/role.entity';
 import { Permission } from '../rbac/entities/permission.entity';
 import { TenantModule } from '../tenants/tenant.module';
 import { RbacModule } from '../rbac/rbac.module';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, Role, Permission]),
     TenantModule,
     RbacModule,
+    SubscriptionsModule,
   ],
   controllers: [UsersController],
   providers: [UsersService],

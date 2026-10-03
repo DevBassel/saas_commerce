@@ -6,7 +6,7 @@ flowchart TD
         GUARDS --> RO{"route"}
         RO -->|"GET /products — @Public<br/>(storefront + dashboard)"| FA["findAll — images + category,<br/>newest first"]
         RO -->|"GET /products/:id — @Public"| FO["findOne — 404 if missing"]
-        RO -->|"POST /products<br/>needs products:create"| CR["create — sku dup 400,<br/>categoryId must exist 400, unique slug"]
+        RO -->|"POST /products<br/>needs products:create"| CR["create — assertCanCreateProduct<br/>(PRODUCTS limit), sku dup 400,<br/>categoryId must exist 400, unique slug"]
         RO -->|"PATCH /products/:id<br/>needs products:update"| UP["update — sku re-check, category check,<br/>slug refresh when name changes"]
         RO -->|"DELETE /products/:id<br/>needs products:delete"| RM["remove — deletes rows + R2 objects,<br/>releases storage"]
         RO -->|"POST /products/:id/images (multipart, files[])<br/>needs products:update"| UI["uploadImages — up to 5 files/request"]

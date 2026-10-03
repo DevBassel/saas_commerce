@@ -19,6 +19,7 @@ import { TenantService } from '../tenants/tenant.service';
 import { TenantProvisionerService } from '../tenants/services/tenant-provisioner.service';
 import { assertTenantActive } from '../tenants/utils/tenant-policy';
 import { requireTenantContext } from '../tenants/utils/tenant-scope';
+import { SubscriptionService } from '../subscriptions/services/subscription.service';
 import { TenantIdentity, tenantRefFromPayload } from './tenant-ref.util';
 
 @Injectable()
@@ -29,6 +30,7 @@ export class AuthService {
     private readonly config: ConfigService<IENV>,
     private readonly tenantService: TenantService,
     private readonly provisioner: TenantProvisionerService,
+    private readonly subscriptions: SubscriptionService,
   ) {}
 
   async register(userData: CreateUserDto) {
@@ -45,6 +47,10 @@ export class AuthService {
     });
 
     await this.provisioner.provision(tenant);
+
+    // Assign the free plan before creating the owner so the owner counts
+    // against the plan's STORE_ADMINS limit and storage is plan-driven.
+    await this.subscriptions.ensureFreeSubscription(tenant);
 
     const owner = await this.userService.create(
       {

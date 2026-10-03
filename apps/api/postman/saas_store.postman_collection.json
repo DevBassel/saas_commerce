@@ -2012,7 +2012,7 @@
                 "stats"
               ]
             },
-            "description": "Store-owner cards in one tenant-scoped payload: totalOrders, fulfilledOrders (DELIVERED), pendingOrders (PENDING), totalPaid, waitingAmount, customers, storageUsedBytes, storageCapacityBytes. Requires orders:manage."
+            "description": "Store-owner cards in one tenant-scoped payload: totalOrders, fulfilledOrders (DELIVERED), pendingOrders (PENDING), totalPaid, waitingAmount, customers, storageUsedBytes, storageCapacityBytes, schemaSizeBytes (Postgres pg_total_relation_size; display-only, 0 on failure), schemaCapacityBytes (TENANT_DB_CAPACITY_BYTES; display-only). Requires orders:manage."
           },
           "event": [
             {

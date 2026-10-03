@@ -36,6 +36,9 @@ import {
   resolvePagination,
   resolveSort,
 } from '../../common/pagination/pagination';
+import { SubscriptionEntitlementsService } from '../subscriptions/services/subscription-entitlements.service';
+import { SubscriptionService } from '../subscriptions/services/subscription.service';
+import { SubscriptionUsageService } from '../subscriptions/services/subscription-usage.service';
 
 interface CouponRulesInput {
   discountType: DiscountType;
@@ -65,6 +68,9 @@ export class CouponsService {
   constructor(
     private readonly tenantManager: TenantManagerService,
     private readonly cartService: CartService,
+    private readonly subscriptions: SubscriptionService,
+    private readonly entitlements: SubscriptionEntitlementsService,
+    private readonly usage: SubscriptionUsageService,
   ) {}
 
   private async repos(tenant?: TenantRef): Promise<{
@@ -84,7 +90,7 @@ export class CouponsService {
     dto: CreateCouponDto,
     tenant?: TenantRef,
   ): Promise<SerializedCoupon> {
-    const { couponRepo } = await this.repos(tenant);
+    const { target, couponRepo } = await this.repos(tenant);
 
     const code = normalizeCouponCode(dto.code);
     this.assertCodeValid(code);
@@ -94,31 +100,42 @@ export class CouponsService {
     const existing = await couponRepo.findOneBy({ code });
     if (existing) throw new BadRequestException('Coupon code already exists');
 
-    let saved: Coupon;
-    try {
-      saved = await couponRepo.save(
-        couponRepo.create({
-          code,
-          description: dto.description ?? null,
-          discountType: dto.discountType,
-          discountValue: dto.discountValue,
-          minOrderAmount: dto.minOrderAmount ?? 0,
-          maxDiscountAmount: dto.maxDiscountAmount ?? null,
-          usageLimit: dto.usageLimit ?? null,
-          perUserLimit: dto.perUserLimit ?? null,
-          startsAt: this.toDate(dto.startsAt),
-          expiresAt: this.toDate(dto.expiresAt),
-          isActive: dto.isActive ?? true,
-        }),
-      );
-    } catch (error) {
-      if (isUniqueViolation(error)) {
-        throw new BadRequestException('Coupon code already exists');
-      }
-      throw error;
-    }
+    return this.subscriptions.withTenantLockByRef(
+      target,
+      async (manager, tenantEntity) => {
+        await this.entitlements.assertCanCreateCoupon(target);
 
-    return serializeCoupon(saved);
+        const tenantId = tenantEntity?.id ?? null;
+        if (tenantId != null)
+          await this.usage.consumeCouponQuota(tenantId, manager);
+
+        try {
+          const saved = await couponRepo.save(
+            couponRepo.create({
+              code,
+              description: dto.description ?? null,
+              discountType: dto.discountType,
+              discountValue: dto.discountValue,
+              minOrderAmount: dto.minOrderAmount ?? 0,
+              maxDiscountAmount: dto.maxDiscountAmount ?? null,
+              usageLimit: dto.usageLimit ?? null,
+              perUserLimit: dto.perUserLimit ?? null,
+              startsAt: this.toDate(dto.startsAt),
+              expiresAt: this.toDate(dto.expiresAt),
+              isActive: dto.isActive ?? true,
+            }),
+          );
+          return serializeCoupon(saved);
+        } catch (error) {
+          if (tenantId != null)
+            await this.usage.releaseCouponQuota(tenantId, manager);
+          if (isUniqueViolation(error)) {
+            throw new BadRequestException('Coupon code already exists');
+          }
+          throw error;
+        }
+      },
+    );
   }
 
   async findAll(

@@ -32,9 +32,11 @@ The tenant-scoped console is `apps/store_owner_dashboard`.
 - Routing is React Router v7 `<Routes>`. Auth-gated routes render inside `Layout`; `/login` is
   wrapped by an `Authenticated` group that redirects signed-in users to `platform/tenants`.
 - Routes: `/` dashboard; `/tenants`, `/tenants/create`, `/tenants/show/:id`; `/payments`,
-  `/payments/show/:id`; `/currency-requests`; `/login`; `*` → `ErrorComponent`.
+  `/payments/show/:id`; `/currency-requests`; `/subscription-plans`,
+  `/subscription-plans/create`, `/subscription-plans/edit/:id`; `/login`; `*` → `ErrorComponent`.
 - Refine resources in `src/lib/Resources.tsx`: `dashboard`, `platform/tenants`,
-  `platform/payments`, `platform/currency-requests`. The sidebar is generated from `useMenu()`.
+  `platform/payments`, `platform/currency-requests`, `platform/subscription-plans`. The sidebar is
+  generated from `useMenu()`.
 - `syncWithLocation: true` is set globally and on the list views, so list state lives in the URL.
 - Devtools (`@refinedev/devtools`) are imported unconditionally and ship in the production bundle.
   They bind port 5001 by default; set `REFINE_DEVTOOLS_PORT` when running both dashboards.
@@ -73,6 +75,10 @@ The tenant-scoped console is `apps/store_owner_dashboard`.
   `PATCH platform/payments/:id/payments-paused`, `PATCH platform/payments/:id/payouts-paused`.
 - `GET platform/currency-requests`, `PATCH platform/currency-requests/:id/approve`,
   `PATCH platform/currency-requests/:id/reject`.
+- `GET|POST platform/subscription-plans`, `GET|PATCH|DELETE platform/subscription-plans/:id`
+  (plan CRUD lives here), `GET platform/tenants/:id/subscription`,
+  `GET platform/tenants/:id/subscription/usage`, `PUT platform/tenants/:id/subscription` (assign),
+  `PATCH platform/tenants/:id/subscription/status`.
 
 ## Data provider
 

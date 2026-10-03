@@ -54,6 +54,7 @@ export const EnvSchema = joi.object({
   DB_SSL: joi.boolean().required(),
   TENANT_POOL_SIZE: joi.number().required(),
   TENANT_STORAGE_CAPACITY_BYTES: joi.number().integer().min(0).required(),
+  TENANT_DB_CAPACITY_BYTES: joi.number().integer().min(0).required(),
   // R2 Object Storage
   R2_ACCOUNT_ID: joi.string().required(),
   R2_ACCESS_KEY_ID: joi.string().required(),
@@ -116,4 +117,6 @@ export const EnvSchema = joi.object({
     .default(0),
   STRIPE_ONBOARDING_RETURN_URL: joi.string().uri().optional().allow(''),
   STRIPE_ONBOARDING_REFRESH_URL: joi.string().uri().optional().allow(''),
+  // Seeding safety: production seeding additionally requires --force on the CLI.
+  SEED_ALLOW_PRODUCTION: joi.boolean().default(false),
 });

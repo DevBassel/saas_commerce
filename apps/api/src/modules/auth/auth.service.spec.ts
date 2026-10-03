@@ -58,7 +58,10 @@ const buildMocks = () => {
     setOwnerUserId: jest.fn().mockResolvedValue(undefined),
   };
   const provisioner = { provision: jest.fn().mockResolvedValue(undefined) };
-  return { userService, tenantService, provisioner };
+  const subscriptions = {
+    ensureFreeSubscription: jest.fn().mockResolvedValue(undefined),
+  };
+  return { userService, tenantService, provisioner, subscriptions };
 };
 
 const buildService = (mocks: ReturnType<typeof buildMocks>) =>
@@ -68,6 +71,7 @@ const buildService = (mocks: ReturnType<typeof buildMocks>) =>
     config as never,
     mocks.tenantService as never,
     mocks.provisioner as never,
+    mocks.subscriptions as never,
   );
 
 const signRefresh = (payload: Record<string, unknown>) =>

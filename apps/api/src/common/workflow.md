@@ -2,7 +2,7 @@
 flowchart TD
     START["main.ts bootstrap<br/>NestFactory.create(AppModule, { rawBody: true })"] --> APP["AppModule"]
     APP --> CORE["CoreModule"]
-    APP --> GUARDSWIRING["AppModule providers:<br/>APP_GUARD TenantGuard, JwtGuard, PermissionGuard, ThrottlerGuard<br/>TenantMiddleware applied to all routes"]
+    APP --> GUARDSWIRING["AppModule providers:<br/>APP_GUARD TenantGuard, JwtGuard, PermissionGuard, SubscriptionGuard, ThrottlerGuard<br/>TenantMiddleware applied to all routes"]
     APP --> MODS["Feature modules:<br/>Auth, Users, Rbac, Tenants, Platform,<br/>Products, Categories, Cart, Orders, Addresses,<br/>Dashboard, Payments, CurrencyRequests, Storefront"]
     CORE --> CFGMOD["ConfigModule.forRoot (global)<br/>Joi EnvSchema + ConfigEnv factory"]
 

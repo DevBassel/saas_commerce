@@ -20,7 +20,11 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "seed:load": "ts-node -r tsconfig-paths/register test/seed-load-test.ts"
+    "seed:load": "ts-node -r tsconfig-paths/register test/seed-load-test.ts",
+    "seed": "ts-node -r tsconfig-paths/register test/seed.ts",
+    "seed:platform": "ts-node -r tsconfig-paths/register test/seed.ts --platform",
+    "seed:tenants": "ts-node -r tsconfig-paths/register test/seed.ts --tenants",
+    "seed:all": "ts-node -r tsconfig-paths/register test/seed.ts --all"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1131.0",

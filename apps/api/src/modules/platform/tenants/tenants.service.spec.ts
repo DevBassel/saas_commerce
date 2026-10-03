@@ -9,7 +9,8 @@ const buildMocks = () => {
     findAll: jest.fn(),
     findByIdWithOwner: jest.fn(),
     toggleActiveTenant: jest.fn(),
-    getSchemaSizes: jest.fn(),
+    getSchemaSizes: jest.fn().mockResolvedValue(new Map()),
+    getSchemaCapacityBytes: jest.fn().mockReturnValue(5000),
   };
   const configMocks = {
     getOrThrow: jest.fn(),
@@ -27,16 +28,77 @@ describe('PlatformTenantsService.listTenants', () => {
     jest.clearAllMocks();
   });
 
-  it('returns the raw tenants from TenantService.findAll', async () => {
+  it('returns tenants with their schema sizes', async () => {
     const { service, tenantService } = buildMocks();
     const rows = [
-      { id: 1, name: 'A' },
-      { id: 2, name: 'B' },
+      { id: 1, name: 'A', schemaName: 'tenant_a' },
+      { id: 2, name: 'B', schemaName: 'tenant_b' },
     ];
     tenantService.findAll.mockResolvedValue(rows);
+    tenantService.getSchemaSizes.mockResolvedValue(
+      new Map([
+        ['tenant_a', 1024],
+        ['tenant_b', 2048],
+      ]),
+    );
 
-    await expect(service.listTenants()).resolves.toBe(rows);
+    await expect(service.listTenants()).resolves.toEqual([
+      {
+        id: 1,
+        name: 'A',
+        schemaName: 'tenant_a',
+        schemaSizeBytes: 1024,
+        schemaCapacityBytes: 5000,
+      },
+      {
+        id: 2,
+        name: 'B',
+        schemaName: 'tenant_b',
+        schemaSizeBytes: 2048,
+        schemaCapacityBytes: 5000,
+      },
+    ]);
     expect(tenantService.findAll).toHaveBeenCalledTimes(1);
+    expect(tenantService.getSchemaSizes).toHaveBeenCalledWith([
+      'tenant_a',
+      'tenant_b',
+    ]);
+  });
+
+  it('reports zero when a tenant schema is missing from the size result', async () => {
+    const { service, tenantService } = buildMocks();
+    tenantService.findAll.mockResolvedValue([
+      { id: 1, name: 'A', schemaName: 'tenant_a' },
+    ]);
+    tenantService.getSchemaSizes.mockResolvedValue(new Map());
+
+    await expect(service.listTenants()).resolves.toEqual([
+      {
+        id: 1,
+        name: 'A',
+        schemaName: 'tenant_a',
+        schemaSizeBytes: 0,
+        schemaCapacityBytes: 5000,
+      },
+    ]);
+  });
+
+  it('falls back to zero schema size when the size query fails', async () => {
+    const { service, tenantService } = buildMocks();
+    tenantService.findAll.mockResolvedValue([
+      { id: 1, name: 'A', schemaName: 'tenant_a' },
+    ]);
+    tenantService.getSchemaSizes.mockRejectedValue(new Error('pg down'));
+
+    await expect(service.listTenants()).resolves.toEqual([
+      {
+        id: 1,
+        name: 'A',
+        schemaName: 'tenant_a',
+        schemaSizeBytes: 0,
+        schemaCapacityBytes: 5000,
+      },
+    ]);
   });
 });
 
@@ -63,6 +125,8 @@ describe('PlatformTenantsService.getTenant', () => {
       name: 'Store',
       slug: 'store',
       owner,
+      schemaSizeBytes: 0,
+      schemaCapacityBytes: 5000,
     });
   });
 
@@ -88,22 +152,42 @@ describe('PlatformTenantsService.getTenant', () => {
     await expect(service.getTenant(99)).rejects.toThrow(NotFoundException);
   });
 
-  it('does not consult getSchemaSizes; returns the raw tenant rows', async () => {
+  it('includes the schema size for the tenant schema', async () => {
     const { service, tenantService } = buildMocks();
     tenantService.findByIdWithOwner.mockResolvedValue({
       id: 7,
+      schemaName: 'tenant_store',
       storageUsedBytes: 100n,
       storageCapacityBytes: 1000n,
       owner: null,
     });
+    tenantService.getSchemaSizes.mockResolvedValue(
+      new Map([['tenant_store', 4096]]),
+    );
 
     const result = await service.getTenant(7);
 
-    expect(tenantService.getSchemaSizes).not.toHaveBeenCalled();
+    expect(tenantService.getSchemaSizes).toHaveBeenCalledWith(['tenant_store']);
     expect(result).toMatchObject({
       storageUsedBytes: 100n,
       storageCapacityBytes: 1000n,
+      schemaSizeBytes: 4096,
+      schemaCapacityBytes: 5000,
     });
+  });
+
+  it('falls back to zero schema size when the size query fails', async () => {
+    const { service, tenantService } = buildMocks();
+    tenantService.findByIdWithOwner.mockResolvedValue({
+      id: 7,
+      schemaName: 'tenant_store',
+      owner: null,
+    });
+    tenantService.getSchemaSizes.mockRejectedValue(new Error('pg down'));
+
+    const result = await service.getTenant(7);
+
+    expect(result.schemaSizeBytes).toBe(0);
   });
 });
 

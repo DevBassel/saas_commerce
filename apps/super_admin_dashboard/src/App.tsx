@@ -16,6 +16,11 @@ import { Dashboard } from "./pages/dashboard";
 import { TenantsList, TenantsCreate, TenantsShow } from "./pages/tenants";
 import { PaymentsList, PaymentsShow } from "./pages/payments";
 import { CurrencyRequestsList } from "./pages/currency-requests";
+import {
+  SubscriptionPlanCreate,
+  SubscriptionPlanEdit,
+  SubscriptionPlansList,
+} from "./pages/subscription-plans";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ErrorComponent } from "./components/refine-ui/layout/error-component";
 import { Layout } from "./components/refine-ui/layout/layout";
@@ -74,6 +79,12 @@ function App() {
 
                     <Route path="currency-requests">
                       <Route index element={<CurrencyRequestsList />} />
+                    </Route>
+
+                    <Route path="subscription-plans">
+                      <Route index element={<SubscriptionPlansList />} />
+                      <Route path="create" element={<SubscriptionPlanCreate />} />
+                      <Route path="edit/:id" element={<SubscriptionPlanEdit />} />
                     </Route>
 
                     <Route path="*" element={<ErrorComponent />} />

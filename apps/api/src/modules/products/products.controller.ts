@@ -23,6 +23,11 @@ import { Permissions } from '../auth/decorators/permissions.decorator';
 import { Public } from '../auth/decorators/isPublic.decorator';
 import { ProductPermissionKey } from './constants/product-permissions.enum';
 import {
+  RequireActiveSubscription,
+  RequireSubscriptionLimit,
+} from '../subscriptions/decorators/subscription.decorators';
+import { SubscriptionLimitKey } from '../subscriptions/constants/subscription-limit-key.enum';
+import {
   FALLBACK_MAX_FILE_SIZE,
   MAX_FILES_PER_REQUEST,
 } from './constants/upload.constants';
@@ -47,6 +52,8 @@ export class ProductsController {
 
   @Post()
   @Permissions([ProductPermissionKey.CREATE])
+  @RequireActiveSubscription()
+  @RequireSubscriptionLimit([SubscriptionLimitKey.PRODUCTS])
   create(@Body() createProductDto: CreateProductDto) {
     return this.productsService.create(createProductDto);
   }

@@ -50,6 +50,10 @@ export class TenantService {
     );
   }
 
+  getSchemaCapacityBytes(): number {
+    return this.config.getOrThrow<IDB>('db').tenantDbCapacityBytes;
+  }
+
   async findById(id: number): Promise<Tenant> {
     const tenant = await this.tenantRepo.findOneBy({ id });
     if (!tenant) throw new NotFoundException('Tenant not found');
@@ -151,6 +155,13 @@ export class TenantService {
 
   async setOwnerUserId(id: number, ownerUserId: number): Promise<void> {
     await this.tenantRepo.update({ id }, { ownerUserId });
+  }
+
+  async setStorageCapacity(id: number, capacityBytes: bigint): Promise<void> {
+    await this.tenantRepo.update(
+      { id },
+      { storageCapacityBytes: capacityBytes },
+    );
   }
 
   async toggleActiveTenant(id: number) {

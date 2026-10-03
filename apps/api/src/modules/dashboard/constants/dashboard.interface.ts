@@ -7,4 +7,6 @@ export interface DashboardStats {
   customers: number;
   storageUsedBytes: number;
   storageCapacityBytes: number;
+  schemaSizeBytes: number;
+  schemaCapacityBytes: number;
 }

@@ -28,6 +28,7 @@ const populate = (overrides: Record<string, string | undefined> = {}) =>
     DB_SSL: 'false',
     TENANT_POOL_SIZE: '10',
     TENANT_STORAGE_CAPACITY_BYTES: '1000',
+    TENANT_DB_CAPACITY_BYTES: '2000',
     JWT_ACCESS_SECRET: 'a',
     JWT_REFRESH_SECRET: 'b',
     JWT_ACCESS_EXPIRES_IN: '15m',
@@ -83,6 +84,7 @@ describe('buildEnv', () => {
         ssl: false,
         tenantPoolSize: 10,
         tenantStorageCapacityBytes: 1000,
+        tenantDbCapacityBytes: 2000,
       }),
     );
     expect(env.files).toEqual({ maxFileSize: 5000, maxProductImages: 5 });

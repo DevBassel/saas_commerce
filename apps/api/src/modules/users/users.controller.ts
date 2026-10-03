@@ -22,6 +22,8 @@ import { UserPermissionKey } from './constants/user-permissions.enum';
 import { RoleKey } from '../../common/constants/RoleKey.enum';
 import { presentUser } from './user.presenter';
 import type { RequestWithUser } from '../auth/interfaces/RequestWithUser.interface';
+import { RequireSubscriptionLimit } from '../subscriptions/decorators/subscription.decorators';
+import { SubscriptionLimitKey } from '../subscriptions/constants/subscription-limit-key.enum';
 
 @Controller('users')
 export class UsersController {
@@ -83,6 +85,7 @@ export class UsersController {
   }
 
   @Patch(':id/role')
+  @RequireSubscriptionLimit([SubscriptionLimitKey.STORE_ADMINS])
   @Permissions([UserPermissionKey.ASSIGN_ROLE])
   async assignRole(
     @Param('id', ParseIntPipe) id: number,

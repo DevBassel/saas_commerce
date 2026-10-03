@@ -26,6 +26,8 @@ import {
   resolveSort,
 } from '../../common/pagination/pagination';
 import { ListUsersQueryDto } from './dto/list-users.query.dto';
+import { SubscriptionEntitlementsService } from '../subscriptions/services/subscription-entitlements.service';
+import { SubscriptionService } from '../subscriptions/services/subscription.service';
 
 type FindOneOptions = { withRole?: boolean; withPermissions?: boolean };
 
@@ -53,6 +55,8 @@ export class UsersService {
     private readonly permissionRepo: Repository<Permission>,
     private readonly tenantManager: TenantManagerService,
     private readonly config: ConfigService<IENV>,
+    private readonly subscriptions: SubscriptionService,
+    private readonly entitlements: SubscriptionEntitlementsService,
   ) {}
 
   private buildWhere({
@@ -93,6 +97,22 @@ export class UsersService {
     if (!ASSIGNABLE_ROLE_KEYS.includes(roleKey))
       throw new BadRequestException('Role cannot be assigned');
 
+    if (roleKey === RoleKey.ADMIN || roleKey === RoleKey.STORE_OWNER) {
+      const target = resolveTenantScope(tenant);
+      return this.subscriptions.withTenantLockByRef(target, async () => {
+        await this.entitlements.assertCanCreateStoreAdmin(target);
+        return this.persistUser(createUserDto, roleKey, tenant);
+      });
+    }
+
+    return this.persistUser(createUserDto, roleKey, tenant);
+  }
+
+  private async persistUser(
+    createUserDto: CreateUserDto,
+    roleKey: RoleKey,
+    tenant?: TenantRef,
+  ) {
     const { userRepo, roleRepo, permissionRepo } = await this.repos(tenant);
 
     const existing = await this.findOne(

@@ -88,7 +88,7 @@ flowchart TD
 
     subgraph RS["POST /auth/register-store — @Public @Platform"]
         S0["ValidationPipe: RegisterStoreDto<br/>storeName, storeSlug (slug format), subdomain? + user fields"] --> S1["TenantService.create<br/>schemaName = tenant_ + slug, subdomain defaults to slug"]
-        S1 --> S2["TenantProvisionerService.provision<br/>CREATE SCHEMA IF NOT EXISTS<br/>seedRbac tenant roles: STORE_OWNER, ADMIN, CUSTOMER<br/>+ seedCategories (8 base categories)"]
+        S1 --> S2["TenantProvisionerService.provision<br/>CREATE SCHEMA IF NOT EXISTS<br/>seedRbac tenant roles: STORE_OWNER, ADMIN, CUSTOMER"]
         S2 --> S3["UsersService.create owner<br/>role = STORE_OWNER, bcrypt hash"]
         S3 --> S4["TenantService.setOwnerUserId"]
         S4 --> CRED

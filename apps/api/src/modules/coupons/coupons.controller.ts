@@ -18,6 +18,13 @@ import { UpdateCouponDto } from './dto/update-coupon.dto';
 import { ValidateCouponDto } from './dto/validate-coupon.dto';
 import { UpdateCouponStatusDto } from './dto/update-coupon-status.dto';
 import { ListCouponsQueryDto } from './dto/list-coupons.query.dto';
+import {
+  RequireActiveSubscription,
+  RequireSubscriptionFeature,
+  RequireSubscriptionLimit,
+} from '../subscriptions/decorators/subscription.decorators';
+import { SubscriptionFeatureKey } from '../subscriptions/constants/subscription-feature-key.enum';
+import { SubscriptionLimitKey } from '../subscriptions/constants/subscription-limit-key.enum';
 import type { RequestWithUser } from '../auth/interfaces/RequestWithUser.interface';
 
 @Controller('coupons')
@@ -34,6 +41,9 @@ export class CouponsController {
 
   @Post()
   @Permissions([CouponPermissionKey.CREATE])
+  @RequireActiveSubscription()
+  @RequireSubscriptionFeature([SubscriptionFeatureKey.COUPONS])
+  @RequireSubscriptionLimit([SubscriptionLimitKey.COUPONS_PER_MONTH])
   create(@Body() dto: CreateCouponDto) {
     return this.couponsService.create(dto);
   }

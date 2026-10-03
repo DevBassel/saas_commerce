@@ -121,6 +121,8 @@ export const Dashboard = () => {
         <StorageCard
           usedBytes={stats?.storageUsedBytes ?? 0}
           capacityBytes={stats?.storageCapacityBytes ?? 0}
+          schemaSizeBytes={stats?.schemaSizeBytes ?? 0}
+          schemaCapacityBytes={stats?.schemaCapacityBytes ?? 0}
           isLoading={statsQuery.query.isLoading}
           isError={statsQuery.query.isError}
         />

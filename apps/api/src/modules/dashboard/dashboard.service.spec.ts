@@ -38,7 +38,13 @@ const buildMocks = () => {
     storageUsedBytes: 200n,
     storageCapacityBytes: 1000n,
   });
-  const tenantService = { findBySchemaName } as unknown as TenantService;
+  const getSchemaSizes = jest.fn().mockResolvedValue(new Map());
+  const getSchemaCapacityBytes = jest.fn().mockReturnValue(5000);
+  const tenantService = {
+    findBySchemaName,
+    getSchemaSizes,
+    getSchemaCapacityBytes,
+  } as unknown as TenantService;
 
   const getBalance = jest.fn().mockResolvedValue({
     available: [{ amount: 12345, currency: 'usd' }],
@@ -59,6 +65,8 @@ const buildMocks = () => {
     tenantManager,
     tenantService,
     findBySchemaName,
+    getSchemaSizes,
+    getSchemaCapacityBytes,
     orderRepo,
     userRepo,
     userQb,
@@ -99,6 +107,8 @@ describe('DashboardService', () => {
       customers: 4,
       storageUsedBytes: 200,
       storageCapacityBytes: 1000,
+      schemaSizeBytes: 0,
+      schemaCapacityBytes: 5000,
     });
   });
 
@@ -276,5 +286,36 @@ describe('DashboardService', () => {
 
     expect(stats.storageUsedBytes).toBe(0);
     expect(stats.storageCapacityBytes).toBe(0);
+  });
+
+  it('surfaces the tenant schema size', async () => {
+    const {
+      service,
+      orderRepo,
+      userQb,
+      getSchemaSizes,
+      getSchemaCapacityBytes,
+    } = buildMocks();
+    orderRepo.count.mockResolvedValue(0);
+    userQb.getCount.mockResolvedValue(0);
+    getSchemaSizes.mockResolvedValue(new Map([['tenant_test', 8192]]));
+
+    const stats = await service.getStats(TENANT);
+
+    expect(getSchemaSizes).toHaveBeenCalledWith(['tenant_test']);
+    expect(getSchemaCapacityBytes).toHaveBeenCalled();
+    expect(stats.schemaSizeBytes).toBe(8192);
+    expect(stats.schemaCapacityBytes).toBe(5000);
+  });
+
+  it('falls back to zero schema size when the size query fails', async () => {
+    const { service, orderRepo, userQb, getSchemaSizes } = buildMocks();
+    orderRepo.count.mockResolvedValue(0);
+    userQb.getCount.mockResolvedValue(0);
+    getSchemaSizes.mockRejectedValue(new Error('pg down'));
+
+    const stats = await service.getStats(TENANT);
+
+    expect(stats.schemaSizeBytes).toBe(0);
   });
 });

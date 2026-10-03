@@ -32,6 +32,7 @@ import {
   resolveSort,
 } from '../../common/pagination/pagination';
 import { ListProductsQueryDto } from './dto/list-products.query.dto';
+import { SubscriptionEntitlementsService } from '../subscriptions/services/subscription-entitlements.service';
 
 const PRODUCT_SORTABLE_FIELDS: readonly (keyof Product)[] = [
   'name',
@@ -53,6 +54,7 @@ export class ProductsService {
     private readonly categoriesService: CategoriesService,
     private readonly r2: R2Service,
     private readonly config: ConfigService<IENV>,
+    private readonly entitlements: SubscriptionEntitlementsService,
   ) {}
 
   private async repos(tenant?: TenantRef): Promise<{
@@ -88,6 +90,8 @@ export class ProductsService {
   async create(dto: CreateProductDto, tenant?: TenantRef) {
     const { productRepo } = await this.repos(tenant);
     const target = resolveTenantScope(tenant);
+
+    await this.entitlements.assertCanCreateProduct(target);
 
     const existing = await productRepo.findOneBy({ sku: dto.sku });
     if (existing) throw new BadRequestException('sku already exists');

@@ -63,6 +63,15 @@ const buildMocks = () => {
     }),
   } as unknown as TenantManagerService;
 
+  const subscriptions = {
+    withTenantLockByRef: jest.fn(
+      (_ref: unknown, fn: (...args: unknown[]) => unknown) => fn({}, null),
+    ),
+  };
+  const entitlements = {
+    assertCanCreateStoreAdmin: jest.fn().mockResolvedValue(undefined),
+  };
+
   const service = new UsersService(
     userRepo as unknown as Repository<User>,
     roleRepo as unknown as Repository<Role>,
@@ -73,9 +82,18 @@ const buildMocks = () => {
         key === 'bcrypt' ? { rounds: 12 } : undefined,
       ),
     } as never,
+    subscriptions as never,
+    entitlements as never,
   );
 
-  return { service, userRepo, roleRepo, permissionRepo };
+  return {
+    service,
+    userRepo,
+    roleRepo,
+    permissionRepo,
+    subscriptions,
+    entitlements,
+  };
 };
 
 describe('UsersService.create', () => {

@@ -24,6 +24,7 @@ const db: IDB = {
   ssl: false,
   tenantPoolSize: 5,
   tenantStorageCapacityBytes: 1_000_000,
+  tenantDbCapacityBytes: 2_000_000,
 };
 
 let getOrThrowMock: jest.Mock;

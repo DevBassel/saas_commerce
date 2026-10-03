@@ -68,7 +68,13 @@ flowchart TD
     P5 -->|"yes"| P5E["403 You are not allowed to access this resource"]
     P5 -->|"no"| PSKIP
 
-    PSKIP --> TH0{"ThrottlerGuard<br/>global 20 req/min; register / login 5/min"}
+    PSKIP --> SUB0{"SubscriptionGuard<br/>@Public/@Platform or no entitlement metadata?"}
+    SUB0 -->|"yes (skip)"| TH0
+    SUB0 -->|"no"| SUB1{"@RequireActiveSubscription /<br/>@RequireSubscriptionFeature / @RequireSubscriptionLimit"}
+    SUB1 -->|"inactive / feature off / limit reached"| SUBE["400 { code, message }"]
+    SUB1 -->|"ok"| TH0
+
+    TH0{"ThrottlerGuard<br/>global 20 req/min; register / login 5/min"}
     TH0 -->|"rate exceeded"| THE["429 Too Many Requests"]
     TH0 -->|"ok"| V0{"ValidationPipe<br/>whitelist + forbidNonWhitelisted + transform"}
     V0 -->|"invalid/unknown field"| V0E["400 Bad Request"]

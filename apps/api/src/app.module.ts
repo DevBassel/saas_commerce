@@ -14,10 +14,13 @@ import { AddressesModule } from './modules/addresses/addresses.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { CurrencyRequestsModule } from './modules/currency-requests/currency-requests.module';
 import { StorefrontModule } from './modules/storefront/storefront.module';
+import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
+import { SeedingModule } from './modules/seeding/seeding.module';
 import { APP_GUARD } from '@nestjs/core';
 import { PermissionGuard } from './modules/auth/guards/permission.guard';
 import { JwtGuard } from './modules/auth/guards/jwt.guard';
 import { TenantGuard } from './modules/auth/guards/tenant.guard';
+import { SubscriptionGuard } from './modules/subscriptions/guards/subscription.guard';
 import { TenantMiddleware } from './modules/auth/tenant.middleware';
 import PaymentsModule from './modules/payments/payments.module';
 import { ThrottlerGuard } from '@nestjs/throttler';
@@ -40,6 +43,8 @@ import { ThrottlerGuard } from '@nestjs/throttler';
     PaymentsModule,
     CurrencyRequestsModule,
     StorefrontModule,
+    SubscriptionsModule,
+    SeedingModule,
   ],
   providers: [
     {
@@ -53,6 +58,10 @@ import { ThrottlerGuard } from '@nestjs/throttler';
     {
       provide: APP_GUARD,
       useClass: PermissionGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: SubscriptionGuard,
     },
     {
       provide: APP_GUARD,

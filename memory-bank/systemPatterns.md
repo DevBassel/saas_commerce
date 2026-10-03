@@ -44,6 +44,20 @@ Browser (store subdomain)                 Browser (admin subdomains)
   transaction.
 - **PaymentIntent-first:** Stripe PaymentIntent is created before the `Payment` row is persisted,
   the inverse of the older documented design. Stripe is called directly (no provider seam).
+- **Public-schema subscriptions, enforced by one service.** Plans/subscriptions/counters are
+  public entities managed by Super Admin; every other module checks entitlements through
+  `SubscriptionEntitlementsService`. Plan `STORAGE_BYTES` is mirrored into
+  `Tenant.storageCapacityBytes`; coupon quota uses an atomic monthly counter; store-admin creation
+  is serialized by a pessimistic lock on the public subscription row. Stripe SaaS billing is
+  deferred, so the `stripe*` columns stay nullable/unused.
+- **Platform-scoped reads for the non-tenant console.** Because `super_admin_dash` is not
+  tenant-scoped, a tenant's subscription and live usage are exposed under
+  `GET platform/tenants/:id/subscription[/usage]` (usage resolves the schema by id via
+  `TenantService.findById`) rather than reusing the tenant `GET /subscription*` routes.
+- **Registry-driven seeding.** All seed logic lives in `apps/api/src/modules/seeding/` behind a
+  `SeederRegistry` (explicit DI registration; Nest 10 has no multi-providers). Every seeder is
+  idempotent/conflict-safe; `SeedingBootstrapService` is the single boot owner; `test/seed.ts` drives
+  the same seeders. Tenant seeders use only the tenant DataSource.
 - **Frontends derive the tenant slug from the `Host` first label**; super admin never sends the
   header. Frontends are not the security boundary — the API is.
 
