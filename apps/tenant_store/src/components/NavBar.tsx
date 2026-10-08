@@ -1,8 +1,7 @@
 "use client";
 import type { ComponentType, SVGProps } from "react";
 import { useState } from "react";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
   House,
@@ -24,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "./ui/avatar";
 import { cn } from "@/lib/utils";
 import { logout } from "@/api/authApi";
+import { TenantLink as Link, useTenantRouter } from "@/lib/tenant/nav";
 
 type NavItem = {
   icon: ComponentType<SVGProps<SVGSVGElement>>;
@@ -44,7 +44,7 @@ const userItems: NavItem[] = [
 ];
 
 export function NavBar() {
-  const router = useRouter();
+  const router = useTenantRouter();
   const pathname = usePathname();
   const { data: session } = useSession();
   const user = session?.user;

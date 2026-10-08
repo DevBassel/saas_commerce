@@ -24,6 +24,7 @@ export const requester = (
   id: 7,
   name: 'Customer',
   email: 'customer@test.com',
+  emailVerified: true,
   role: null,
   permissions: [
     OrderPermissionKey.CREATE,

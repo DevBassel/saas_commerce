@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useTenantRouter } from "@/lib/tenant/nav";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,7 +17,7 @@ import StripePaymentStep from "@/components/payments/StripePaymentStep";
 const PAYABLE: PaymentStatus[] = ["UNPAID", "PENDING", "FAILED"];
 
 export default function OrderPaymentActions({ order }: { order: IOrder }) {
-  const router = useRouter();
+  const router = useTenantRouter();
   const [open, setOpen] = useState(false);
 
   if (order.status === "CANCELLED" || !PAYABLE.includes(order.paymentStatus)) {

@@ -25,23 +25,51 @@ The console is tenant-scoped by subdomain. Open `http://my-store.localhost:5174`
   with fewer than 3 dot-separated labels; otherwise it returns the first label. So
   `my-store.localhost` (2 labels) yields `null` and the JWT/tenant match guard is skipped, while
   `my-store.example.com` yields `my-store`.
-- `src/api/client.ts` always sets `x-tenant-slug` from the first host label with no `localhost`
+- `src/api/client.ts` sets `x-tenant-slug` from the first host label with no `localhost`
   special case, so a bare `localhost` sends `x-tenant-slug: localhost`.
 - `src/providers/auth.ts` cross-checks the host slug against the JWT's tenant claim as a UX guard
   (skipped when the slug is `null`).
 
 Always develop against a tenant subdomain so both paths agree.
 
+### Apex `?tenant=` mode
+
+The storefront's apex fallback is mirrored here. It is a **client-only** SPA (no server, no proxy,
+no middleware), so the tenant is resolved in the browser and attached by `apiClient`.
+
+- Gated by the build-time flag `VITE_ALLOW_SUBDOMAIN` (`allowSubdomain()`; only the literal string
+  `"false"` turns subdomain mode off). Unset/empty/`true` keeps today's subdomain behavior
+  byte-identical and ignores `?tenant=` and persistence entirely.
+- When the flag is off, `VITE_APP_ROOT_DOMAIN` (default `localhost`) classifies the host:
+  `<label>.<root>` is a tenant, `<root>`/`www.<root>` is the apex, anything else yields no tenant.
+- Precedence in param mode: host label, then a valid `?tenant=<slug>`, then the per-tab
+  `sessionStorage` key `tenant-slug` (persisted on read, kept across logout). Only a syntactically
+  valid slug counts (`isValidTenantSlug`). A newly seen valid param overwrites the stored slug.
+- Two entry points: `getTenantHeaderSlug()` (for `apiClient`; flag ON = first host label) and
+  `getGuardTenantSlug()` (for `authProvider`; flag ON = strict `getTenantSlug()`). They intentionally
+  differ so flag-ON behavior is unchanged.
+- The tenant stays in the URL: `TenantParamSync` calls `ensureTenantParamInUrl()` on every route
+  change, re-appending `?tenant=<slug>` (merging existing query/hash). Refine's own navigation
+  (`useLink`, `NavigateToResource`, button components) drops the param, so the param is re-appended
+  rather than threaded through every link.
+- When no tenant resolves, no `x-tenant-slug` is sent and the API returns its clear
+  `Tenant not resolvable` 400; errors surface rather than redirecting to the API URL.
+- Known limitation: token keys stay in `localStorage`, so on a shared apex origin two tabs with
+  different `?tenant=` values share one token set; the JWT guard clears the session on mismatch.
+  The keys are load-bearing and must not be renamed or namespaced.
+
 ## Layout and routing
 
 - Entry is `src/index.tsx` (`index.html` loads `/src/index.tsx`); `src/App.tsx` wires
   `BrowserRouter → RefineKbarProvider → ThemeProvider → DevtoolsProvider → Refine`.
 - Routing is React Router v7 `<Routes>`, not resource-driven. Auth-gated routes render inside
-  `Layout`; `/login` is wrapped by an `Authenticated` group that redirects signed-in users away.
+  `Layout`; the public auth routes (`/login`, `/verify-email`, `/forgot-password`,
+  `/reset-password`) are wrapped by an `Authenticated` group that redirects signed-in users away.
 - Routes: `/` dashboard; `/products`, `/products/create`, `/products/edit/:id`, `/products/show/:id`;
   `/categories` + create/edit/show; `/orders`, `/orders/show/:id`; `/users`,
   `/users/admins`, `/users/customers`, `/users/create`, `/users/edit/:id`, `/users/show/:id`;
-  `/settings/payments`, `/settings/store`; `*` → `ErrorComponent`.
+  `/settings/payments`, `/settings/store`; public `/login`, `/verify-email`, `/forgot-password`,
+  `/reset-password`; `*` → `ErrorComponent`.
 - Refine resource/metadata definitions live in `src/lib/Resources.tsx`.
 - Devtools (`@refinedev/devtools`) are imported unconditionally and ship in the production bundle.
   They bind port 5001 by default; set `REFINE_DEVTOOLS_PORT` when running both dashboards.
@@ -69,8 +97,26 @@ Always develop against a tenant subdomain so both paths agree.
     redirects to `/login` only when the refresh token is gone.
   - `toApiError` normalizes axios errors and joins array `message` values.
 - Endpoint modules: `auth.api.ts`, `products.api.ts` (image upload/delete/reorder), `orders.api.ts`,
-  `payments.api.ts` (Stripe account/connect), `dashboard.api.ts`, `currency.api.ts`.
+  `payments.api.ts` (Stripe account/connect), `dashboard.api.ts`, `currency.api.ts`, `otp.api.ts`.
 - `VITE_API_URL` defaults to `http://localhost:4000/api/v1`.
+
+## Email verification and password reset
+
+- `src/api/otp.api.ts` wraps the tenant-scoped OTP routes: `requestOtp(email, purpose)` →
+  `POST auth/email-otp/request`, `verifyEmailOtp(email, code)` → `POST auth/email-otp/verify`
+  (`EMAIL_VERIFICATION`), and `confirmPasswordReset(email, code, newPassword)` →
+  `POST auth/password-reset/confirm`. `x-tenant-slug` is attached by `apiClient`, so these only work
+  on a tenant subdomain.
+- `authProvider.login` treats an unverified email as a redirect: a successful login with
+  `verified === false`, or a `401 { code: 'EMAIL_NOT_VERIFIED' }`, returns
+  `{ success: true, redirectTo: '/verify-email?email=…' }` and stores **no** session, so the
+  `EmailVerifiedGuard` never blocks the dashboard.
+- Pages `VerifyEmail`, `ForgotPassword`, `ResetPassword` (forms in
+  `src/components/refine-ui/form/`) are public; the sign-in form links to `/forgot-password`. The
+  code is entered with the vendored `input-otp` component (`src/components/ui/input-otp.tsx`,
+  `input-otp` dependency), shared via `otp-field.tsx`.
+- `ApiError` (`src/api/client.ts`) now carries the optional `code` from `{ code, message }` bodies;
+  OTP/password-reset routes are in `AUTH_ENDPOINTS` so their `401`s never trigger a token refresh.
 
 ## Data provider and list contract
 
@@ -102,15 +148,17 @@ Always develop against a tenant subdomain so both paths agree.
 
 ## Environment
 
-Only `VITE_API_URL` is read (`src/api/constants.ts`). Copy `.env.example` to `.env`; the value is
-inlined at build time, so change it before building.
+`VITE_API_URL` is read in `src/api/constants.ts`; `VITE_ALLOW_SUBDOMAIN` and `VITE_APP_ROOT_DOMAIN`
+are read in `src/api/tenant.ts` at call time. Copy `.env.example` to `.env`; all values are inlined
+at build time, so change them before building.
 
 ## Docker
 
 `Dockerfile` builds from the repository root context:
 `docker build -f apps/store_owner_dashboard/Dockerfile .`. It installs the workspace, inlines the
-`VITE_API_URL` build arg, runs `pnpm --filter tenant_dash build`, and serves `dist` with `serve` on
-`${PORT:-3000}`. Changing `VITE_API_URL` requires a rebuild.
+`VITE_API_URL`, `VITE_ALLOW_SUBDOMAIN`, and `VITE_APP_ROOT_DOMAIN` build args, runs
+`pnpm --filter tenant_dash build`, and serves `dist` with `serve` on `${PORT:-3000}`. Changing any
+`VITE_*` value requires a rebuild.
 
 ## Pitfalls
 

@@ -1,4 +1,5 @@
 import { signOut } from "next-auth/react";
+import { getBrowserTenantSlug, withTenantParam } from "@/lib/tenant/url";
 import { apiClient } from "./apiClient";
 
 export interface IRegister {
@@ -19,6 +20,6 @@ export async function logout() {
     // Sign out locally even if the server call fails.
   } finally {
     await signOut({ redirect: false });
-    window.location.href = "/login";
+    window.location.href = withTenantParam("/login", getBrowserTenantSlug());
   }
 }

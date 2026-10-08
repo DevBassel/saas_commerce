@@ -7,7 +7,7 @@ import {
 } from "@/components/ui/carousel";
 import { ProductItem } from "./Product_item";
 import { getProducts } from "@/api/productsApi";
-import { toApiError } from "@/api/handelError";
+import { toApiError } from "@/api/handleError";
 import ApiErrorFallback from "@/components/ApiErrorFallback";
 import { PackageOpen } from "lucide-react";
 import { apiClient } from "@/api/apiClient";

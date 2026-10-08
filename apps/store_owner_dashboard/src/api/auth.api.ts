@@ -10,6 +10,12 @@ export type TokenPair = {
   refresh_token: string;
 };
 
+export type TenantLoginResponse = TokenPair & {
+  id: number;
+  email: string;
+  verified: boolean;
+};
+
 export type RegisterUserPayload = {
   name: string;
   email: string;
@@ -22,8 +28,11 @@ export type RegisterUserResponse = {
 };
 
 export const authApi = {
-  loginTenant: async (payload: TenantLoginPayload): Promise<TokenPair> => {
-    const response = await apiClient.post<TokenPair>("auth/login", payload);
+  loginTenant: async (payload: TenantLoginPayload): Promise<TenantLoginResponse> => {
+    const response = await apiClient.post<TenantLoginResponse>(
+      "auth/login",
+      payload,
+    );
     return response.data;
   },
 

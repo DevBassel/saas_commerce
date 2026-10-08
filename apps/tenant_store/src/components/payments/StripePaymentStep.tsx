@@ -11,8 +11,9 @@ import { LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { CreateStripePayment } from "@/api/paymentsApi";
-import { toApiError } from "@/api/handelError";
+import { toApiError } from "@/api/handleError";
 import { stripePromise } from "@/lib/stripe";
+import { getBrowserTenantSlug, withTenantParam } from "@/lib/tenant/url";
 import { useCurrency } from "@/components/currency/currency-provider";
 import { formatMoney } from "@/lib/money";
 
@@ -44,7 +45,10 @@ function PaymentForm({ orderNumber, amount, onSuccess }: PaymentFormProps) {
       const { error } = await stripe.confirmPayment({
         elements,
         confirmParams: {
-          return_url: `${window.location.origin}/orders?payment=return`,
+          return_url: `${window.location.origin}${withTenantParam(
+            "/orders?payment=return",
+            getBrowserTenantSlug(),
+          )}`,
         },
         redirect: "if_required",
       });

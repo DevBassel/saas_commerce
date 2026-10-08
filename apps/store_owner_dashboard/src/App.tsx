@@ -12,6 +12,9 @@ import routerProvider, {
 import { dataProvider } from "./providers/data";
 import { authProvider } from "./providers/auth";
 import { Login } from "./pages/login";
+import { VerifyEmail } from "./pages/verify-email";
+import { ForgotPassword } from "./pages/forgot-password";
+import { ResetPassword } from "./pages/reset-password";
 import { Dashboard } from "./pages/dashboard";
 import {
   ProductsList,
@@ -43,6 +46,7 @@ import {
   UsersEdit,
 } from "./pages/users";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { TenantParamSync } from "./components/TenantParamSync";
 import { ErrorComponent } from "./components/refine-ui/layout/error-component";
 import { Layout } from "./components/refine-ui/layout/layout";
 import { UnsavedChangesDialog } from "./components/refine-ui/unsaved-changes-dialog";
@@ -56,6 +60,7 @@ import { Resources } from "./lib/Resources";
 function App() {
   return (
     <BrowserRouter>
+      <TenantParamSync />
       <ErrorBoundary>
         <RefineKbarProvider>
           <ThemeProvider>
@@ -144,6 +149,9 @@ function App() {
                     }
                   >
                     <Route path="/login" element={<Login />} />
+                    <Route path="/verify-email" element={<VerifyEmail />} />
+                    <Route path="/forgot-password" element={<ForgotPassword />} />
+                    <Route path="/reset-password" element={<ResetPassword />} />
                   </Route>
                 </Routes>
 

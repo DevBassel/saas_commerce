@@ -2,7 +2,12 @@ import type { AuthProvider } from "@refinedev/core";
 
 import { authApi } from "@/api/auth.api";
 import { refreshSession, tokenStorage, toApiError } from "@/api/client";
-import { getTenantSlug, tenantMatchesSlug } from "@/api/tenant";
+import {
+  allowSubdomain,
+  getGuardTenantSlug,
+  tenantMatchesSlug,
+  withTenantParam,
+} from "@/api/tenant";
 
 type JwtPayload = {
   type?: string;
@@ -39,31 +44,55 @@ const isTokenValid = (token: string | null): boolean => {
 };
 
 const isTenantValid = (payload: JwtPayload | null): boolean => {
-  const slug = getTenantSlug();
+  const slug = getGuardTenantSlug();
   if (!slug) return true;
   return tenantMatchesSlug(payload?.tenantSchema, slug);
 };
 
+const withTenant = (path: string): string =>
+  allowSubdomain() ? path : withTenantParam(path, getGuardTenantSlug());
+
 export const authProvider: AuthProvider = {
   login: async ({ email, password }) => {
+    const loginEmail = String(email);
+
     try {
       const session = await authApi.loginTenant({
-        email: String(email),
+        email: loginEmail,
         password: String(password),
       });
+
+      if (!session.verified) {
+        return {
+          success: true,
+          redirectTo: withTenant(
+            `/verify-email?email=${encodeURIComponent(loginEmail)}`
+          ),
+        };
+      }
 
       tokenStorage.setSession(
         session.access_token,
         session.refresh_token,
-        String(email)
+        loginEmail
       );
 
       return {
         success: true,
-        redirectTo: "/",
+        redirectTo: withTenant("/"),
       };
     } catch (error) {
       const apiError = toApiError(error);
+
+      if (apiError.code === "EMAIL_NOT_VERIFIED") {
+        return {
+          success: true,
+          redirectTo: withTenant(
+            `/verify-email?email=${encodeURIComponent(loginEmail)}`
+          ),
+        };
+      }
+
       return {
         success: false,
         error: {
@@ -78,7 +107,7 @@ export const authProvider: AuthProvider = {
     tokenStorage.clear();
     return {
       success: true,
-      redirectTo: "/login",
+      redirectTo: withTenant("/login"),
     };
   },
 
@@ -110,7 +139,7 @@ export const authProvider: AuthProvider = {
 
     return {
       authenticated: false,
-      redirectTo: "/login",
+      redirectTo: withTenant("/login"),
     };
   },
 
@@ -138,7 +167,7 @@ export const authProvider: AuthProvider = {
     if (statusCode === 401 && !tokenStorage.getRefreshToken()) {
       return {
         logout: true,
-        redirectTo: "/login",
+        redirectTo: withTenant("/login"),
         error,
       };
     }

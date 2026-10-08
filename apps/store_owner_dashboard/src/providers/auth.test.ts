@@ -3,6 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { authProvider, decodeJwt } from "./auth";
 import { tokenStorage } from "@/api/client";
+import { authApi } from "@/api/auth.api";
+
+vi.mock("@/api/auth.api", () => ({
+  authApi: {
+    loginTenant: vi.fn(),
+    registerTenantUser: vi.fn(),
+  },
+}));
 
 const base64url = (value: unknown): string =>
   Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -109,6 +117,80 @@ describe("authProvider.check", () => {
 
     await expect(authProvider.check({})).resolves.toMatchObject({
       authenticated: false,
+    });
+  });
+});
+
+describe("authProvider.login", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.mocked(authApi.loginTenant).mockReset();
+  });
+
+  it("stores the session and redirects home when the email is verified", async () => {
+    vi.mocked(authApi.loginTenant).mockResolvedValue({
+      id: 1,
+      email: "a@b.c",
+      verified: true,
+      access_token: "access",
+      refresh_token: "refresh",
+    });
+
+    await expect(
+      authProvider.login({ email: "a@b.c", password: "pw" }),
+    ).resolves.toMatchObject({ success: true, redirectTo: "/" });
+
+    expect(tokenStorage.getAccessToken()).toBe("access");
+    expect(tokenStorage.getEmail()).toBe("a@b.c");
+  });
+
+  it("keeps no session and routes to verification when unverified", async () => {
+    vi.mocked(authApi.loginTenant).mockResolvedValue({
+      id: 1,
+      email: "a@b.c",
+      verified: false,
+      access_token: "access",
+      refresh_token: "refresh",
+    });
+
+    await expect(
+      authProvider.login({ email: "a@b.c", password: "pw" }),
+    ).resolves.toMatchObject({
+      success: true,
+      redirectTo: "/verify-email?email=a%40b.c",
+    });
+
+    expect(tokenStorage.getAccessToken()).toBeNull();
+  });
+
+  it("routes to verification on a 401 EMAIL_NOT_VERIFIED", async () => {
+    vi.mocked(authApi.loginTenant).mockRejectedValue({
+      isAxiosError: true,
+      response: {
+        status: 401,
+        data: { code: "EMAIL_NOT_VERIFIED", message: "Email is not verified" },
+      },
+    });
+
+    await expect(
+      authProvider.login({ email: "a@b.c", password: "pw" }),
+    ).resolves.toMatchObject({
+      success: true,
+      redirectTo: "/verify-email?email=a%40b.c",
+    });
+  });
+
+  it("returns an error for rejected credentials", async () => {
+    vi.mocked(authApi.loginTenant).mockRejectedValue({
+      isAxiosError: true,
+      response: { status: 401, data: { message: "invalid credentials" } },
+    });
+
+    await expect(
+      authProvider.login({ email: "a@b.c", password: "pw" }),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { name: "LoginError", message: "invalid credentials" },
     });
   });
 });

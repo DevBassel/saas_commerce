@@ -1,13 +1,13 @@
 "use client";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useTenantRouter } from "@/lib/tenant/nav";
 import { Card, CardContent } from "../ui/card";
 import { IProduct } from "@/api/productsApi";
 import { useCurrency } from "@/components/currency/currency-provider";
 import { formatMoney } from "@/lib/money";
 
 export function ProductItem(product: IProduct) {
-  const router = useRouter();
+  const router = useTenantRouter();
   const currency = useCurrency();
   const imageUrl = product.images[0]?.url;
   const soldOut = product.stock <= 0;

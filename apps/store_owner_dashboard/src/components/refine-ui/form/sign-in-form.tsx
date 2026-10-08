@@ -133,6 +133,20 @@ export const SignInForm = () => {
                 )}
               />
 
+              <div className={cn("flex", "justify-end", "mt-2")}>
+                <Link
+                  to="/forgot-password"
+                  className={cn(
+                    "text-sm",
+                    "text-muted-foreground",
+                    "hover:text-primary",
+                    "hover:underline",
+                  )}
+                >
+                  Forgot password?
+                </Link>
+              </div>
+
               <Button
                 type="submit"
                 size="lg"

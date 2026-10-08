@@ -1,5 +1,7 @@
 // src/lib/axios.ts
 import { authOptions } from "@/lib/auth";
+import { getTenantSlugFromHost } from "@/lib/tenant/host";
+import { getBrowserTenantSlug, withTenantParam } from "@/lib/tenant/url";
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { getSession, signOut } from "next-auth/react";
 import { jwtDecode } from "jwt-decode";
@@ -43,7 +45,7 @@ function isExpired(accessToken?: string | null) {
 
 async function requestNewAccessToken() {
   const { data } = await axios.post<{ access_token?: string }>(
-    "/api/refresh",
+    withTenantParam("/api/refresh", getBrowserTenantSlug()),
     {},
     { headers: { "Content-Type": "application/json" } },
   );
@@ -53,9 +55,38 @@ async function requestNewAccessToken() {
   return data.access_token;
 }
 
+/** Backend error body (Nest `HttpException` with a `{ code, message }` shape). */
+type ApiErrorBody = { code?: string; message?: string };
+
+function isEmailNotVerified(err: AxiosError) {
+  return (
+    (err.response?.data as ApiErrorBody | undefined)?.code ===
+    "EMAIL_NOT_VERIFIED"
+  );
+}
+
+/**
+ * Browser-only redirect. The server-rendered path (initial navigation to a
+ * protected page) is covered proactively by the proxy, so here we only react to
+ * requests issued after a page has loaded.
+ */
+function redirectToVerifyEmail() {
+  if (typeof window === "undefined") return;
+  if (window.location.pathname === "/verify-email") return;
+  window.location.assign(withTenantParam("/verify-email", getBrowserTenantSlug()));
+}
+
 apiClient.interceptors.response.use(
   (res) => res,
   async (err: AxiosError) => {
+    // Any tenant route rejected because the account's email is not verified
+    // sends the browser to the verification page instead of surfacing a raw
+    // error. The page reads the address from the session.
+    if (isEmailNotVerified(err)) {
+      redirectToVerifyEmail();
+      return Promise.reject(err);
+    }
+
     const config = err.config as RetryableConfig | undefined;
 
     // Only the browser can talk to the NextAuth refresh route, and each request
@@ -66,11 +97,6 @@ apiClient.interceptors.response.use(
       !config ||
       config._retry
     ) {
-      console.log(
-        "🚀 ~ apiClient.ts:71 ~ err.response?.data:",
-        err.response?.data,
-      );
-
       return Promise.reject(err);
     }
 
@@ -80,11 +106,6 @@ apiClient.interceptors.response.use(
     // No session, or the access token is still valid: this 401 is not an
     // expiry and refreshing would not help.
     if (!currentToken || !isExpired(currentToken)) {
-      console.log(
-        "🚀 ~ apiClient.ts:85 ~ err.response?.data:",
-        err.response?.data,
-      );
-
       return Promise.reject(err);
     }
 
@@ -99,8 +120,6 @@ apiClient.interceptors.response.use(
       config.headers.Authorization = `Bearer ${accessToken}`;
       return apiClient(config);
     } catch (error) {
-      console.log("🚀 ~ apiClient.ts:104 ~ error:", error);
-
       // A 401 means the refresh token is unusable; clear the stale session so
       // the user is sent back through sign-in on the next protected navigation.
       // Transient failures (network/5xx) keep the session intact for a retry.
@@ -119,10 +138,13 @@ async function getClientSession() {
     const { getServerSession } = await import("next-auth");
     const { headers } = await import("next/headers");
     session = await getServerSession(authOptions);
-    tenantSlug = (await headers()).get("host")?.split(".")[0];
+    const requestHeaders = await headers();
+    tenantSlug =
+      requestHeaders.get("x-tenant-slug") ??
+      getTenantSlugFromHost(requestHeaders.get("host"));
   } else {
     session = await getSession();
-    tenantSlug = window.location.hostname.split(".")[0];
+    tenantSlug = getBrowserTenantSlug();
   }
 
   return {

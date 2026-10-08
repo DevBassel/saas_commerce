@@ -40,6 +40,31 @@ describe("toApiError", () => {
       statusCode: 500,
     });
   });
+
+  it("surfaces a machine-readable error code when the body has one", () => {
+    const axiosError = {
+      isAxiosError: true,
+      response: {
+        status: 401,
+        data: { code: "EMAIL_NOT_VERIFIED", message: "Email is not verified" },
+      },
+    };
+
+    expect(toApiError(axiosError)).toEqual({
+      message: "Email is not verified",
+      statusCode: 401,
+      code: "EMAIL_NOT_VERIFIED",
+    });
+  });
+
+  it("omits the code when the body has none", () => {
+    const axiosError = {
+      isAxiosError: true,
+      response: { status: 400, data: { message: "bad request" } },
+    };
+
+    expect(toApiError(axiosError)).not.toHaveProperty("code");
+  });
 });
 
 describe("tokenStorage", () => {

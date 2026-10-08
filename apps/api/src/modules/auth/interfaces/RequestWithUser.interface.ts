@@ -8,6 +8,7 @@ export type RequestWithUser = Request & {
     id: number;
     name: string;
     email: string;
+    emailVerified: boolean;
     role: { id: number; key: RoleKey } | null;
     permissions: PermissionKey[];
   };

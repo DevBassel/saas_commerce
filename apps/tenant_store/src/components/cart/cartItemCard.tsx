@@ -4,12 +4,13 @@ import Image from "next/image";
 import { Button } from "../ui/button";
 import { Eye, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { useRouter } from "next/navigation";
+import { useTenantRouter } from "@/lib/tenant/nav";
 import { useCurrency } from "@/components/currency/currency-provider";
 import { formatMoney } from "@/lib/money";
+import { handleError } from "@/api/toastError";
 
 export default function CartItemCard({ item }: { item: ICartItem }) {
-  const router = useRouter();
+  const router = useTenantRouter();
   const currency = useCurrency();
 
   const removeItem = async () => {
@@ -17,7 +18,9 @@ export default function CartItemCard({ item }: { item: ICartItem }) {
       await RemoveItemFromCart({ productId: item.productId });
       toast.success("Item removed from cart");
       router.refresh();
-    } catch (error) {}
+    } catch (error) {
+      handleError(error);
+    }
   };
 
   return (

@@ -31,6 +31,30 @@ const secretRule = (label: string): joi.StringSchema =>
       'any.invalid': `"${label}" must not contain a placeholder value in production`,
     });
 
+const optionalSecretRule = (label: string): joi.StringSchema =>
+  joi
+    .string()
+    .min(32)
+    .allow('')
+    .optional()
+    .custom((value: string, helpers) => {
+      if (!value) return value;
+      const ancestors = helpers.state.ancestors as Array<{
+        NODE_ENV?: string;
+      }>;
+      const root = ancestors[0];
+      if (root?.NODE_ENV !== 'production') return value;
+      const lowered = value.toLowerCase();
+      if (PLACEHOLDER_SECRETS.some((p) => lowered.includes(p))) {
+        return helpers.error('any.invalid');
+      }
+      return value;
+    })
+    .messages({
+      'string.min': `"${label}" must be at least 32 characters when set`,
+      'any.invalid': `"${label}" must not contain a placeholder value in production`,
+    });
+
 export const EnvSchema = joi.object({
   // APP
   NODE_ENV: joi.string().valid('development', 'production', 'test').required(),
@@ -119,4 +143,45 @@ export const EnvSchema = joi.object({
   STRIPE_ONBOARDING_REFRESH_URL: joi.string().uri().optional().allow(''),
   // Seeding safety: production seeding additionally requires --force on the CLI.
   SEED_ALLOW_PRODUCTION: joi.boolean().default(false),
+  // Email OTP
+  OTP_LENGTH: joi.number().integer().min(4).max(10).default(6),
+  OTP_EXPIRATION_SECONDS: joi
+    .number()
+    .integer()
+    .min(30)
+    .max(86400)
+    .default(600),
+  OTP_MAX_ATTEMPTS: joi.number().integer().min(1).max(20).default(5),
+  OTP_RESEND_COOLDOWN_SECONDS: joi
+    .number()
+    .integer()
+    .min(0)
+    .max(3600)
+    .default(60),
+  OTP_MAX_REQUESTS: joi.number().integer().min(1).max(50).default(5),
+  OTP_REQUEST_WINDOW_SECONDS: joi
+    .number()
+    .integer()
+    .min(60)
+    .max(604800)
+    .default(3600),
+  OTP_HASH_SECRET: secretRule('OTP_HASH_SECRET'),
+  OTP_REQUIRE_EMAIL_VERIFIED: joi.boolean().default(false),
+  // Email delivery
+  EMAIL_PROVIDER: joi.string().valid('smtp', 'log', 'memory').default('smtp'),
+  EMAIL_FROM_ADDRESS: joi.string().email().required(),
+  EMAIL_FROM_NAME: joi.string().optional().allow(''),
+  SMTP_HOST: joi.string().when('EMAIL_PROVIDER', {
+    is: 'smtp',
+    then: joi.required(),
+    otherwise: joi.optional().allow(''),
+  }),
+  SMTP_PORT: joi.number().integer().min(1).max(65535).when('EMAIL_PROVIDER', {
+    is: 'smtp',
+    then: joi.required(),
+    otherwise: joi.optional(),
+  }),
+  SMTP_USER: joi.string().optional().allow(''),
+  SMTP_PASSWORD: optionalSecretRule('SMTP_PASSWORD'),
+  SMTP_SECURE: joi.boolean().default(true),
 });

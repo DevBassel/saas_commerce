@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useTenantParam, useTenantRouter } from "@/lib/tenant/nav";
+import { withTenantParam } from "@/lib/tenant/url";
 import { toast } from "sonner";
 import { GetOrder, type IOrder } from "@/api/orderApi";
 
@@ -9,7 +10,8 @@ const POLL_INTERVAL_MS = 3000;
 const MAX_ATTEMPTS = 20;
 
 export default function OrderPaymentWatcher({ orders }: { orders: IOrder[] }) {
-  const router = useRouter();
+  const router = useTenantRouter();
+  const tenantParam = useTenantParam();
 
   const pendingKey = orders
     .filter((order) => order.paymentStatus === "PENDING")
@@ -29,8 +31,12 @@ export default function OrderPaymentWatcher({ orders }: { orders: IOrder[] }) {
       toast.info("Payment is processing");
     }
 
-    window.history.replaceState({}, "", "/orders");
-  }, []);
+    window.history.replaceState(
+      {},
+      "",
+      withTenantParam("/orders", tenantParam),
+    );
+  }, [tenantParam]);
 
   useEffect(() => {
     if (!pendingKey) return;

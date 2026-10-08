@@ -40,6 +40,9 @@ const baseEnv = (): Record<string, unknown> => ({
   STRIPE_SECRET_KEY: `sk_test_${SECRET}`,
   STRIPE_PUBLISHABLE_KEY: 'pk_test_123',
   STRIPE_WEBHOOK_SECRET: `whsec_${SECRET}`,
+  OTP_HASH_SECRET: `otp_${SECRET}`,
+  EMAIL_PROVIDER: 'log',
+  EMAIL_FROM_ADDRESS: 'no-reply@example.com',
 });
 
 const validate = (overrides: Record<string, unknown> = {}) =>

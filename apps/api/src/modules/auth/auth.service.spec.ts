@@ -1,10 +1,11 @@
 import {
+  BadRequestException,
   ForbiddenException,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { compare } from 'bcrypt';
+import { compare, hash } from 'bcrypt';
 import { AuthService } from './auth.service';
 import { User } from '../users/entities/user.entity';
 import { RoleKey } from 'src/common/constants/RoleKey.enum';
@@ -12,10 +13,13 @@ import { TenantStatus } from '../tenants/enums/tenantStatus.enum';
 import { Tenant } from '../tenants/entities/tenant.entity';
 import { tenantStorage } from './tenant-context';
 import { TenantIdentity } from './tenant-ref.util';
+import { OtpPurpose } from '../email-otp/constants/otp-purpose.enum';
+import { OtpErrorCode } from '../email-otp/constants/otp.constants';
 
-jest.mock('bcrypt', () => ({ compare: jest.fn() }));
+jest.mock('bcrypt', () => ({ compare: jest.fn(), hash: jest.fn() }));
 
 const compareMock = compare as unknown as jest.Mock;
+const hashMock = hash as unknown as jest.Mock;
 
 const jwtConfig = {
   accessSecret: `access_${'a'.repeat(64)}`,
@@ -26,8 +30,12 @@ const jwtConfig = {
   audience: 'saas_store',
 };
 
+const otpConfig = { requireEmailVerified: false };
+
 const jwt = new JwtService();
-const config = { getOrThrow: jest.fn().mockReturnValue(jwtConfig) };
+const config = {
+  getOrThrow: jest.fn((key: string) => (key === 'otp' ? otpConfig : jwtConfig)),
+};
 
 const TENANT: TenantIdentity = { id: 3, schemaName: 'tenant_acme' };
 const tenantEntity = {
@@ -48,6 +56,8 @@ const buildMocks = () => {
   const userService = {
     updateSession: jest.fn().mockResolvedValue(undefined),
     updateSessionPublic: jest.fn().mockResolvedValue(undefined),
+    markEmailVerified: jest.fn().mockResolvedValue(undefined),
+    updatePassword: jest.fn().mockResolvedValue(undefined),
     findOne: jest.fn(),
     findOnePublic: jest.fn(),
     create: jest.fn(),
@@ -61,7 +71,11 @@ const buildMocks = () => {
   const subscriptions = {
     ensureFreeSubscription: jest.fn().mockResolvedValue(undefined),
   };
-  return { userService, tenantService, provisioner, subscriptions };
+  const emailOtp = {
+    request: jest.fn().mockResolvedValue({ success: true }),
+    verify: jest.fn(),
+  };
+  return { userService, tenantService, provisioner, subscriptions, emailOtp };
 };
 
 const buildService = (mocks: ReturnType<typeof buildMocks>) =>
@@ -72,6 +86,7 @@ const buildService = (mocks: ReturnType<typeof buildMocks>) =>
     mocks.tenantService as never,
     mocks.provisioner as never,
     mocks.subscriptions as never,
+    mocks.emailOtp as never,
   );
 
 const signRefresh = (payload: Record<string, unknown>) =>
@@ -497,6 +512,175 @@ describe('AuthService', () => {
       await expect(service.refresh_user_credentials(bad)).rejects.toThrow(
         UnauthorizedException,
       );
+    });
+  });
+});
+
+describe('AuthService email OTP flows', () => {
+  let mocks: ReturnType<typeof buildMocks>;
+  let service: AuthService;
+
+  const TENANT_CTX = {
+    tenant: tenantEntity,
+    tenantSchema: TENANT.schemaName,
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mocks = buildMocks();
+    service = buildService(mocks);
+  });
+
+  describe('register', () => {
+    it('dispatches an EMAIL_VERIFICATION OTP after creating the user', async () => {
+      await tenantStorage.run(TENANT_CTX, () =>
+        service.register({
+          name: 'A',
+          email: 'a@test.dev',
+          password: 'password1',
+        }),
+      );
+
+      expect(mocks.emailOtp.request).toHaveBeenCalledWith({
+        email: 'a@test.dev',
+        purpose: OtpPurpose.EMAIL_VERIFICATION,
+        tenant: tenantEntity,
+      });
+    });
+
+    it('still registers when the OTP dispatch fails', async () => {
+      mocks.emailOtp.request.mockRejectedValue(new Error('smtp down'));
+
+      const result = await tenantStorage.run(TENANT_CTX, () =>
+        service.register({
+          name: 'A',
+          email: 'a@test.dev',
+          password: 'password1',
+        }),
+      );
+
+      expect(result).toEqual({ success: true, msg: 'register success' });
+    });
+  });
+
+  describe('verifyEmailOtp', () => {
+    it('marks the email verified for EMAIL_VERIFICATION', async () => {
+      mocks.emailOtp.verify.mockResolvedValue({
+        user: makeUser(),
+        challenge: {},
+      });
+
+      const result = await tenantStorage.run(TENANT_CTX, () =>
+        service.verifyEmailOtp({
+          email: 'jane@test.dev',
+          purpose: OtpPurpose.EMAIL_VERIFICATION,
+          code: '123456',
+        }),
+      );
+
+      expect(result).toEqual({ verified: true });
+      expect(mocks.userService.markEmailVerified).toHaveBeenCalledWith(
+        1,
+        tenantEntity,
+      );
+    });
+
+    it('issues credentials for LOGIN_MFA', async () => {
+      mocks.emailOtp.verify.mockResolvedValue({
+        user: makeUser(),
+        challenge: {},
+      });
+
+      const result = (await tenantStorage.run(TENANT_CTX, () =>
+        service.verifyEmailOtp({
+          email: 'jane@test.dev',
+          purpose: OtpPurpose.LOGIN_MFA,
+          code: '123456',
+        }),
+      )) as { access_token: string; refresh_token: string };
+
+      expect(result.access_token).toEqual(expect.any(String));
+      expect(result.refresh_token).toEqual(expect.any(String));
+    });
+
+    it('rejects PASSWORD_RESET before consuming the code', async () => {
+      const error = (await tenantStorage
+        .run(TENANT_CTX, () =>
+          service.verifyEmailOtp({
+            email: 'jane@test.dev',
+            purpose: OtpPurpose.PASSWORD_RESET,
+            code: '123456',
+          }),
+        )
+        .catch((e: unknown) => e)) as BadRequestException;
+
+      expect(error.getResponse()).toMatchObject({
+        code: OtpErrorCode.PURPOSE_REQUIRES_CONFIRM,
+      });
+      expect(mocks.emailOtp.verify).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('confirmPasswordReset', () => {
+    it('verifies the code, hashes the password and revokes sessions', async () => {
+      mocks.emailOtp.verify.mockResolvedValue({
+        user: makeUser(),
+        challenge: {},
+      });
+      hashMock.mockResolvedValue('new-hash');
+
+      const result = await tenantStorage.run(TENANT_CTX, () =>
+        service.confirmPasswordReset({
+          email: 'jane@test.dev',
+          code: '123456',
+          newPassword: 'newpass12',
+        }),
+      );
+
+      expect(result).toEqual({ success: true });
+      expect(mocks.emailOtp.verify).toHaveBeenCalledWith({
+        email: 'jane@test.dev',
+        purpose: OtpPurpose.PASSWORD_RESET,
+        code: '123456',
+        tenant: tenantEntity,
+      });
+      expect(mocks.userService.updatePassword).toHaveBeenCalledWith(
+        1,
+        'new-hash',
+        tenantEntity,
+      );
+    });
+  });
+
+  describe('login email-verification gate', () => {
+    it('blocks login when the user has not verified their email', async () => {
+      otpConfig.requireEmailVerified = true;
+      mocks.userService.findOne.mockResolvedValue(
+        makeUser({ password: 'hash', emailVerified: false }),
+      );
+      compareMock.mockResolvedValue(true);
+
+      await expect(
+        tenantStorage.run(TENANT_CTX, () =>
+          service.login({ email: 'jane@test.dev', password: 'password1' }),
+        ),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(mocks.userService.updateSession).not.toHaveBeenCalled();
+
+      otpConfig.requireEmailVerified = false;
+    });
+
+    it('allows login when the gate is disabled', async () => {
+      mocks.userService.findOne.mockResolvedValue(
+        makeUser({ password: 'hash', emailVerified: false }),
+      );
+      compareMock.mockResolvedValue(true);
+
+      const result = await tenantStorage.run(TENANT_CTX, () =>
+        service.login({ email: 'jane@test.dev', password: 'password1' }),
+      );
+
+      expect(result.access_token).toEqual(expect.any(String));
     });
   });
 });

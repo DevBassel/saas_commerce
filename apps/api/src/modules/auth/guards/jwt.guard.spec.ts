@@ -245,6 +245,7 @@ describe('JwtGuard', () => {
       id: 1,
       name: 'Jane',
       email: 'jane@test.dev',
+      emailVerified: true,
       role: {
         id: 3,
         key: RoleKey.ADMIN,
@@ -276,6 +277,7 @@ describe('JwtGuard', () => {
       id: 1,
       name: 'Jane',
       email: 'jane@test.dev',
+      emailVerified: true,
       role: { id: 3, key: RoleKey.ADMIN },
       permissions: ['products:read', 'users:read', 'products:update'],
     });

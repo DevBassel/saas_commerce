@@ -3,16 +3,16 @@ import { useState } from "react";
 import { Button } from "../ui/button";
 import { IProduct } from "@/api/productsApi";
 import { AddToCart as AddToCartRequest } from "@/api/cartApi";
-import { handelError } from "@/api/handelError";
+import { handleError } from "@/api/toastError";
 import { toast } from "sonner";
 import { Input } from "../ui/input";
-import { useRouter } from "next/navigation";
+import { useTenantRouter } from "@/lib/tenant/nav";
 import { Minus, Plus, ShoppingCart } from "lucide-react";
 import { useCurrency } from "@/components/currency/currency-provider";
 import { formatMoney } from "@/lib/money";
 
 export default function AddToCart({ product }: { product: IProduct }) {
-  const router = useRouter();
+  const router = useTenantRouter();
   const currency = useCurrency();
   const [quantity, setQuantity] = useState(1);
   const [submitting, setSubmitting] = useState(false);
@@ -27,7 +27,7 @@ export default function AddToCart({ product }: { product: IProduct }) {
       toast.success("Product added to cart");
       router.push("/cart");
     } catch (error) {
-      handelError(error);
+      handleError(error);
     } finally {
       setSubmitting(false);
     }

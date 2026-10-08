@@ -13,6 +13,7 @@ import { Payment } from '../../payments/entities/payment.entity';
 import { Address } from '../../addresses/entities/address.entity';
 import { Coupon } from '../../coupons/entities/coupon.entity';
 import { CouponRedemption } from '../../coupons/entities/coupon-redemption.entity';
+import { OtpChallenge } from '../../email-otp/entities/otp-challenge.entity';
 
 export const TENANT_ENTITIES: PostgresConnectionOptions['entities'] = [
   User,
@@ -29,4 +30,5 @@ export const TENANT_ENTITIES: PostgresConnectionOptions['entities'] = [
   Address,
   Coupon,
   CouponRedemption,
+  OtpChallenge,
 ];

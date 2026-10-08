@@ -12,7 +12,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useRouter } from "next/navigation";
+import { useTenantRouter } from "@/lib/tenant/nav";
 import { useState } from "react";
 import {
   CancelOrder,
@@ -21,7 +21,7 @@ import {
   PaymentStatus,
   RequestReturn,
 } from "@/api/orderApi";
-import { handelError } from "@/api/handelError";
+import { handleError } from "@/api/toastError";
 import { toast } from "sonner";
 import OrderPaymentActions from "@/components/orders/OrderPaymentActions";
 import { useCurrency } from "@/components/currency/currency-provider";
@@ -96,7 +96,7 @@ const PAYMENT_LABELS: Record<PaymentStatus, string> = {
 const OWNER_CANCELLABLE: OrderStatus[] = ["PENDING", "CONFIRMED"];
 
 export default function OrderItem({ order }: { order: IOrder }) {
-  const router = useRouter();
+  const router = useTenantRouter();
   const currency = useCurrency();
   const [busy, setBusy] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -117,7 +117,7 @@ export default function OrderItem({ order }: { order: IOrder }) {
       toast.success(successMessage);
       router.refresh();
     } catch (error) {
-      handelError(error);
+      handleError(error);
     } finally {
       setBusy(false);
     }

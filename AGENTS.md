@@ -67,9 +67,19 @@ These are the interfaces every frontend must honor when talking to the API.
 - API base path is `/api/v1` (`API_PREFIX`/`API_VERSION` env, default `api`/`v1`). The frontends
   configure it once: `VITE_API_URL` for both dashboards, `NEXT_PUBLIC_BACKEND_URL` for the storefront.
 - Tenant context travels on the `x-tenant-slug` header (or `x-tenant-id`, or the request subdomain).
-  The API resolves it to a `tenant_<slug>` schema. The store-owner dashboard and the storefront
-  derive the slug from the first `Host` label; the super-admin dashboard is not tenant-scoped and
-  never sends the header.
+  The API resolves it to a `tenant_<slug>` schema. The store-owner dashboard derives the slug from
+  the first `Host` label; the storefront derives it from the subdomain of `NEXT_PUBLIC_APP_ROOT_DOMAIN`
+  (the apex is the platform context and sends no header); the super-admin dashboard is not
+  tenant-scoped and never sends the header.
+- The storefront can also serve tenants from the apex via `?tenant=<slug>`: set
+  `NEXT_PUBLIC_ALLOW_SUBDOMAIN=false` (build-time) and it resolves the slug server-side in
+  `src/proxy.ts`, still sending it downstream as `x-tenant-slug`. Unset/`true` keeps subdomain-only
+  resolution. Only a syntactically valid slug counts; see `apps/tenant_store/AGENTS.md` → Tenant
+  resolution.
+- The store-owner dashboard mirrors that fallback: set `VITE_ALLOW_SUBDOMAIN=false` (build-time) and
+  it resolves the slug in the browser (host, then `?tenant=`, then per-tab `sessionStorage`) and
+  attaches it as `x-tenant-slug`. Unset/`true` keeps subdomain-only resolution byte-identical; see
+  `apps/store_owner_dashboard/AGENTS.md` → Dev URL and tenant header.
 - Auth is stateless JWT. Access tokens are sent as `Authorization: Bearer <token>`. Refresh tokens
   are rotated server-side, so refresh must be single-flight in every client. Access tokens are
   never sent to a tenant that does not match their `tenantId`/`tenantSchema` claims.

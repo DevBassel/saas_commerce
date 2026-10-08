@@ -224,6 +224,23 @@ export class UsersService {
     await userRepo.update({ id }, { jti } as never);
   }
 
+  async markEmailVerified(id: number, tenant?: TenantRef) {
+    const { userRepo } = await this.repos(tenant);
+    await userRepo.update({ id }, { emailVerified: true });
+  }
+
+  /**
+   * Replaces the password hash and revokes every existing refresh token by
+   * clearing the stored `jti` (a refresh must match it to be accepted).
+   */
+  async updatePassword(id: number, passwordHash: string, tenant?: TenantRef) {
+    const { userRepo } = await this.repos(tenant);
+    await userRepo.update({ id }, {
+      password: passwordHash,
+      jti: null,
+    } as never);
+  }
+
   async clearSession(id: number, tenant?: TenantRef) {
     await this.updateSession(id, null, tenant);
   }

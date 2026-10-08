@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { LoaderCircle } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useTenantRouter } from "@/lib/tenant/nav";
 import {
   createAddress,
   getAddresses,
@@ -32,7 +32,7 @@ import {
   ValidateCoupon,
   type ICouponValidation,
 } from "@/api/couponsApi";
-import { handelError } from "@/api/handelError";
+import { handleError } from "@/api/toastError";
 import StripePaymentStep from "@/components/payments/StripePaymentStep";
 import { useCurrency } from "@/components/currency/currency-provider";
 import { formatMoney } from "@/lib/money";
@@ -43,7 +43,7 @@ const optionalField = (formData: FormData, name: string) => {
 };
 
 export default function PlaceOrder() {
-  const router = useRouter();
+  const router = useTenantRouter();
   const currency = useCurrency();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"address" | "payment">("address");
@@ -70,6 +70,7 @@ export default function PlaceOrder() {
       );
       setShowCreate(list.length === 0);
     } catch (error) {
+      handleError(error);
     } finally {
       setLoading(false);
     }
@@ -110,6 +111,7 @@ export default function PlaceOrder() {
       setShowCreate(false);
       await loadAddresses(created.id);
     } catch (error) {
+      handleError(error);
     } finally {
       setSubmitting(false);
     }
@@ -127,7 +129,7 @@ export default function PlaceOrder() {
       toast.success(`Coupon ${validation.code} applied`);
     } catch (error) {
       setCoupon(null);
-      handelError(error);
+      handleError(error);
     } finally {
       setValidatingCoupon(false);
     }
@@ -158,7 +160,7 @@ export default function PlaceOrder() {
         setCouponInput(appliedCoupon.code);
       } catch (error) {
         setCoupon(null);
-        handelError(error);
+        handleError(error);
         return;
       } finally {
         setValidatingCoupon(false);
@@ -174,7 +176,7 @@ export default function PlaceOrder() {
       setOrder(placed);
       setStep("payment");
     } catch (error) {
-      handelError(error);
+      handleError(error);
     } finally {
       setSubmitting(false);
     }

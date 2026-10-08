@@ -44,9 +44,9 @@ npx ts-node -r tsconfig-paths/register test/seed-load-test.ts  # seeds >=10 tena
   `ValidationPipe({ whitelist, forbidNonWhitelisted, transform })`; global
   `ClassSerializerInterceptor` (strips `@Exclude`); `listen(APP_PORT)`. There is no global exception
   filter.
-- `src/app.module.ts` — imports all feature modules and registers five global guards in this exact
-  order: **TenantGuard → JwtGuard → PermissionGuard → SubscriptionGuard → ThrottlerGuard**.
-  `TenantMiddleware` is applied to `*`.
+- `src/app.module.ts` — imports all feature modules and registers six global guards in this exact
+  order: **TenantGuard → JwtGuard → EmailVerifiedGuard → PermissionGuard → SubscriptionGuard →
+  ThrottlerGuard**. `TenantMiddleware` is applied to `*`.
 - `src/core.module.ts` — global `ConfigModule` (Joi `EnvSchema`, typed env load), global
   `JwtModule` (access secret/expiry), `ThrottlerModule`, pino logger, R2 module, and the
   public-schema TypeORM DataSource. `PUBLIC_ENTITIES = [Tenant, User, Role, Permission,
@@ -98,7 +98,12 @@ Never add a tenant entity to `PUBLIC_ENTITIES` in `src/core.module.ts`. Add it t
   `issuer`, and `audience`; rejects `type !== 'access'`; rejects tenant claims on platform routes
   (403) and missing tenant claims on tenant routes (403); requires the resolved tenant to match the
   token `tenantId` + `tenantSchema` (403); loads the user and its deduplicated direct+role
-  permissions.
+  permissions, and sets `request.user.emailVerified`.
+- **EmailVerifiedGuard**: requires a verified email on **every** authenticated tenant route. It
+  runs after `JwtGuard` and skips `@Public` and `@Platform`. An unverified user is rejected with
+  `403 { code: 'EMAIL_NOT_VERIFIED' }`. A route or controller opts out with
+  `@AllowUnverifiedEmail()` — used only for recovery paths (`POST /auth/logout`). Unverified users
+  verify via the `@Public` `POST /auth/email-otp/verify` route.
 - **PermissionGuard**: `@Public` skip; `SUPER_ADMIN` bypass; then `@Roles()`; then `@Permissions()`
   where all listed permissions are required.
 - JWT claims (`jwt-payload.dto.ts`): `type` (`access` | `refresh`), `id`, `role`, `jti?`,
@@ -109,6 +114,26 @@ Never add a tenant entity to `PUBLIC_ENTITIES` in `src/core.module.ts`. Add it t
 - `POST /auth/logout` clears the tenant `user.jti`; `POST /auth/logout/platform` clears the public one.
 - Roles: `SUPER_ADMIN` (rank 5), `STORE_OWNER` (4), `ADMIN` (3), `CUSTOMER` (0), with rank-based
   guards against privilege escalation in `UsersService`.
+
+## Email OTP
+
+- `src/modules/email-otp/` owns generation, storage, throttling counters and atomic consumption
+  (`EmailOtpService`); `src/modules/email/` is the delivery seam (`EmailService` over an
+  `EMAIL_TRANSPORT` factory: `smtp` via `nodemailer`, `log` for dev, `memory` for tests). Provider is
+  selected by `EMAIL_PROVIDER`; the `log` transport never writes the code.
+- `OtpChallenge` (`otp_challenges`) is a **tenant** entity (add to `TENANT_ENTITIES`, never
+  `PUBLIC_ENTITIES`). At most one active row per `(userId, purpose)` via a partial unique index
+  (`WHERE "consumedAt" IS NULL`). `codeHash = hex(HMAC-SHA256(OTP_HASH_SECRET, "<id>:<code>"))`,
+  compared with `timingSafeEqual`; the challenge id is generated in-app so it can be part of the
+  HMAC. Resend replaces the prior challenge; verify locks the latest row (`pessimistic_write`) and
+  consumes it exactly once.
+- Routes (all `@Public()`, tenant-scoped — clients must send `x-tenant-slug`/`x-tenant-id` or use
+  the tenant subdomain): `POST /auth/email-otp/request` (generic `200` even for unknown emails),
+  `POST /auth/email-otp/verify`, `POST /auth/password-reset/confirm`. `POST /auth/register` also
+  dispatches an `EMAIL_VERIFICATION` OTP. Errors use `{ code, message }`: `OTP_INVALID`,
+  `OTP_EXPIRED`, `OTP_ALREADY_USED`, `OTP_TOO_MANY_ATTEMPTS`, `OTP_PURPOSE_REQUIRES_CONFIRM`.
+- Platform (`SUPER_ADMIN`) OTP is out of scope; this is tenant-schema only. Production schema
+  changes use the idempotent `test/migrate-otp-challenges.ts`; dev/staging rely on `synchronize`.
 
 ## Data model
 
@@ -344,8 +369,17 @@ Groups in `IENV` (`env.interface.ts`): `app` (`APP_*`, `BOOTSTRAP_SUPER_ADMIN_*`
 `THROTTLE_LIMIT`), `cors`, `r2`, `files` (`MAX_FILE_SIZE`, `MAX_PRODUCT_IMAGES`), `stripe`
 (`STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`,
 `STRIPE_APPLICATION_FEE_BPS`, optional `STRIPE_ONBOARDING_RETURN_URL`,
-`STRIPE_ONBOARDING_REFRESH_URL`), `seeding` (`SEED_ALLOW_PRODUCTION`). There is **no** `payments`
+`STRIPE_ONBOARDING_REFRESH_URL`), `seeding` (`SEED_ALLOW_PRODUCTION`), `otp` (`OTP_LENGTH`,
+`OTP_EXPIRATION_SECONDS`, `OTP_MAX_ATTEMPTS`, `OTP_RESEND_COOLDOWN_SECONDS`, `OTP_MAX_REQUESTS`,
+`OTP_REQUEST_WINDOW_SECONDS`, `OTP_HASH_SECRET`, `OTP_REQUIRE_EMAIL_VERIFIED`), and `email`
+(`EMAIL_PROVIDER` = `smtp|log|memory`, `EMAIL_FROM_ADDRESS`, `EMAIL_FROM_NAME`, `SMTP_HOST`,
+`SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_SECURE`). There is **no** `payments`
 group, `PAYMENT_PROVIDER`, `STRIPE_CURRENCY`, or `STRIPE_CONNECT_COUNTRY`.
+
+`OTP_HASH_SECRET` and `EMAIL_FROM_ADDRESS` are required (like the JWT/R2 secrets), so an `.env`
+copied before the OTP feature fails to boot until they are added (see `.env.example`); with
+`EMAIL_PROVIDER=smtp` (the default) `SMTP_HOST`/`SMTP_PORT` are required too, so set
+`EMAIL_PROVIDER=log` for local dev.
 
 Access config through `ConfigService<IENV>` typed groups and `getOrThrow<IX>('group')`.
 

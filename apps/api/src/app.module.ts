@@ -20,6 +20,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { PermissionGuard } from './modules/auth/guards/permission.guard';
 import { JwtGuard } from './modules/auth/guards/jwt.guard';
 import { TenantGuard } from './modules/auth/guards/tenant.guard';
+import { EmailVerifiedGuard } from './modules/auth/guards/email-verified.guard';
 import { SubscriptionGuard } from './modules/subscriptions/guards/subscription.guard';
 import { TenantMiddleware } from './modules/auth/tenant.middleware';
 import PaymentsModule from './modules/payments/payments.module';
@@ -54,6 +55,10 @@ import { ThrottlerGuard } from '@nestjs/throttler';
     {
       provide: APP_GUARD,
       useClass: JwtGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: EmailVerifiedGuard,
     },
     {
       provide: APP_GUARD,

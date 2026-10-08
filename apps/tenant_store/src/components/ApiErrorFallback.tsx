@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { TriangleAlert } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useTenantRouter } from "@/lib/tenant/nav";
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 
@@ -17,7 +17,7 @@ export default function ApiErrorFallback({
   message,
   compact = false,
 }: ApiErrorFallbackProps) {
-  const router = useRouter();
+  const router = useTenantRouter();
   const fired = useRef(false);
 
   useEffect(() => {

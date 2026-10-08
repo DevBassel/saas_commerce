@@ -11,8 +11,10 @@ import { CreateUserDto } from '../users/dto/create-user.dto';
 import { RegisterStoreDto } from './dto/register-store.dto';
 import { LoginUserDto } from './dto/login-user.dto';
 import { RefreshTokenDto } from './dto/refreshtoken.dto';
+import { ConfirmPasswordResetDto } from './dto/confirm-password-reset.dto';
 import { Public } from './decorators/isPublic.decorator';
 import { Platform } from './decorators/isPlatform.decorator';
+import { AllowUnverifiedEmail } from './decorators/allow-unverified-email.decorator';
 import { Throttle } from '@nestjs/throttler';
 import type { RequestWithUser } from './interfaces/RequestWithUser.interface';
 
@@ -59,6 +61,15 @@ export class AuthController {
     return this.authService.refresh_user_credentials(refreshData.refresh_token);
   }
 
+  @Public()
+  @Post('password-reset/confirm')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  confirmPasswordReset(@Body() resetData: ConfirmPasswordResetDto) {
+    return this.authService.confirmPasswordReset(resetData);
+  }
+
+  @AllowUnverifiedEmail()
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   logout(@Req() request: RequestWithUser) {

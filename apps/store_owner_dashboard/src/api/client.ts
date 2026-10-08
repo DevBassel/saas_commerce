@@ -11,10 +11,12 @@ import {
   TOKEN_KEY,
   USER_EMAIL_KEY,
 } from "./constants";
+import { getTenantHeaderSlug } from "./tenant";
 
 export type ApiError = {
   message: string;
   statusCode: number;
+  code?: string;
 };
 
 export const tokenStorage = {
@@ -37,11 +39,14 @@ export const tokenStorage = {
   },
 };
 
-const AUTH_ENDPOINTS = ["auth/login", "auth/register", "auth/refresh"];
+const AUTH_ENDPOINTS = [
+  "auth/login",
+  "auth/register",
+  "auth/refresh",
+  "auth/email-otp",
+  "auth/password-reset",
+];
 const REFRESH_ENDPOINT = "auth/refresh";
-
-const getTenantHeaderValue = (): string =>
-  window.location.hostname.split(".")[0];
 
 const isAuthRequest = (url?: string): boolean =>
   !!url && AUTH_ENDPOINTS.some((endpoint) => url.includes(endpoint));
@@ -56,11 +61,10 @@ export const apiClient: AxiosInstance = axios.create({
 });
 
 apiClient.interceptors.request.use((config) => {
-  const tenantSubdomain = getTenantHeaderValue();
+  const tenantSlug = getTenantHeaderSlug();
 
-  if (!tenantSubdomain) window.location.replace(`${API_URL}`);
+  if (tenantSlug) config.headers.set("x-tenant-slug", tenantSlug);
 
-  config.headers.set("x-tenant-slug", tenantSubdomain);
   const token = tokenStorage.getAccessToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -87,13 +91,14 @@ export const refreshSession = (): Promise<string | null> => {
     if (!refreshToken) return null; // definitive: nothing to refresh with
 
     try {
+      const tenantSlug = getTenantHeaderSlug();
       const { data } = await axios.post<{
         access_token: string;
         refresh_token: string;
       }>(
         `${API_URL}/${REFRESH_ENDPOINT}`,
         { refresh_token: refreshToken },
-        { headers: { "x-tenant-slug": getTenantHeaderValue() } },
+        tenantSlug ? { headers: { "x-tenant-slug": tenantSlug } } : undefined,
       );
       tokenStorage.setTokens(data.access_token, data.refresh_token);
       return data.access_token;
@@ -164,11 +169,18 @@ const extractMessage = (error: AxiosError): string => {
   return data.message;
 };
 
+const extractCode = (error: AxiosError): string | undefined => {
+  const data = error.response?.data as { code?: string } | undefined;
+  return typeof data?.code === "string" ? data.code : undefined;
+};
+
 export const toApiError = (error: unknown): ApiError => {
   if (axios.isAxiosError(error)) {
+    const code = extractCode(error);
     return {
       message: extractMessage(error),
       statusCode: error.response?.status ?? 0,
+      ...(code ? { code } : {}),
     };
   }
   return {

@@ -16,6 +16,7 @@ import { SubscriptionPlansService } from '../services/subscription-plans.service
 import { CreateSubscriptionPlanDto } from '../dto/create-subscription-plan.dto';
 import { UpdateSubscriptionPlanDto } from '../dto/update-subscription-plan.dto';
 import { ListSubscriptionPlansQueryDto } from '../dto/list-subscription-plans.query.dto';
+import { Public } from 'src/modules/auth/decorators/isPublic.decorator';
 
 @Platform()
 @Roles([RoleKey.SUPER_ADMIN])
@@ -23,6 +24,7 @@ import { ListSubscriptionPlansQueryDto } from '../dto/list-subscription-plans.qu
 export class PlatformSubscriptionPlansController {
   constructor(private readonly plans: SubscriptionPlansService) {}
 
+  @Public()
   @Get()
   findAll(@Query() query: ListSubscriptionPlansQueryDto) {
     return this.plans.findAll(query);

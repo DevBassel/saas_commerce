@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -10,20 +11,28 @@ import { LoginUserDto } from './dto/login-user.dto';
 import { JwtService } from '@nestjs/jwt';
 import { User } from '../users/entities/user.entity';
 import { ConfigService } from '@nestjs/config';
-import { IENV, IJWT } from '../../common/config/env.interface';
+import { IENV, IJWT, IOtp } from '../../common/config/env.interface';
 import { JwtPayload } from './dto/jwt-payload.dto';
 import { RoleKey } from 'src/common/constants/RoleKey.enum';
 import { randomUUID } from 'crypto';
-import { compare } from 'bcrypt';
+import { compare, hash } from 'bcrypt';
 import { TenantService } from '../tenants/tenant.service';
 import { TenantProvisionerService } from '../tenants/services/tenant-provisioner.service';
 import { assertTenantActive } from '../tenants/utils/tenant-policy';
 import { requireTenantContext } from '../tenants/utils/tenant-scope';
 import { SubscriptionService } from '../subscriptions/services/subscription.service';
 import { TenantIdentity, tenantRefFromPayload } from './tenant-ref.util';
+import { EmailOtpService } from '../email-otp/email-otp.service';
+import { OtpPurpose } from '../email-otp/constants/otp-purpose.enum';
+import { OtpErrorCode, otpError } from '../email-otp/constants/otp.constants';
+import { RequestOtpDto } from '../email-otp/dto/request-otp.dto';
+import { VerifyOtpDto } from '../email-otp/dto/verify-otp.dto';
+import { ConfirmPasswordResetDto } from './dto/confirm-password-reset.dto';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly userService: UsersService,
     private readonly jwt: JwtService,
@@ -31,12 +40,33 @@ export class AuthService {
     private readonly tenantService: TenantService,
     private readonly provisioner: TenantProvisionerService,
     private readonly subscriptions: SubscriptionService,
+    private readonly emailOtp: EmailOtpService,
   ) {}
 
   async register(userData: CreateUserDto) {
     const tenant = this.requireTenant();
     await this.userService.create(userData, RoleKey.CUSTOMER, tenant);
+
+    await this.dispatchVerificationOtp(userData.email, tenant);
+
     return { success: true, msg: 'register success' };
+  }
+
+  private async dispatchVerificationOtp(
+    email: string,
+    tenant: TenantIdentity,
+  ): Promise<void> {
+    try {
+      await this.emailOtp.request({
+        email,
+        purpose: OtpPurpose.EMAIL_VERIFICATION,
+        tenant,
+      });
+    } catch {
+      this.logger.error(
+        `Failed to dispatch the registration verification OTP for ${email}`,
+      );
+    }
   }
 
   async registerStore(userData: RegisterStoreDto) {
@@ -78,6 +108,14 @@ export class AuthService {
 
     const check = await compare(loginData.password, user.password);
     if (!check) throw new UnauthorizedException('invalid credentials');
+
+    const { requireEmailVerified } = this.config.getOrThrow<IOtp>('otp');
+    if (requireEmailVerified && !user.emailVerified) {
+      throw new UnauthorizedException({
+        code: 'EMAIL_NOT_VERIFIED',
+        message: 'Email is not verified',
+      });
+    }
 
     return this.returnUserCredential(user, tenant);
   }
@@ -197,7 +235,65 @@ export class AuthService {
       await this.userService.updateSessionPublic(user.id, jti);
     }
 
-    return { id: payload.id, access_token, refresh_token };
+    return {
+      id: payload.id,
+      email: user.email,
+      verified: user.emailVerified,
+      access_token,
+      refresh_token,
+    };
+  }
+
+  async requestEmailOtp(dto: RequestOtpDto) {
+    const tenant = this.requireTenant();
+    return this.emailOtp.request({
+      email: dto.email,
+      purpose: dto.purpose,
+      tenant,
+    });
+  }
+
+  async verifyEmailOtp(dto: VerifyOtpDto) {
+    const tenant = this.requireTenant();
+
+    if (dto.purpose === OtpPurpose.PASSWORD_RESET)
+      throw otpError(OtpErrorCode.PURPOSE_REQUIRES_CONFIRM);
+    if (dto.purpose === OtpPurpose.SENSITIVE_ACTION)
+      throw otpError(OtpErrorCode.PURPOSE_NOT_SUPPORTED);
+
+    const { user } = await this.emailOtp.verify({
+      email: dto.email,
+      purpose: dto.purpose,
+      code: dto.code,
+      tenant,
+    });
+
+    if (dto.purpose === OtpPurpose.EMAIL_VERIFICATION) {
+      await this.userService.markEmailVerified(user.id, tenant);
+      return { verified: true };
+    }
+
+    // LOGIN_MFA: the challenge is consumed; issue the standard credentials.
+    return this.returnUserCredential(user, tenant);
+  }
+
+  async confirmPasswordReset(dto: ConfirmPasswordResetDto) {
+    const tenant = this.requireTenant();
+
+    const { user } = await this.emailOtp.verify({
+      email: dto.email,
+      purpose: OtpPurpose.PASSWORD_RESET,
+      code: dto.code,
+      tenant,
+    });
+
+    const password = await hash(
+      dto.newPassword,
+      this.config.getOrThrow<IENV['bcrypt']>('bcrypt').rounds,
+    );
+    await this.userService.updatePassword(user.id, password, tenant);
+
+    return { success: true };
   }
 
   private requireTenant(): TenantIdentity {

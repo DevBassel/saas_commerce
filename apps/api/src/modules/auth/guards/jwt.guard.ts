@@ -109,6 +109,7 @@ export class JwtGuard implements CanActivate {
       id: user.id,
       name: user.name,
       email: user.email,
+      emailVerified: user.emailVerified ?? false,
       role: user.role
         ? { id: user.role.id, key: String(user.role.key) as RoleKey }
         : null,

@@ -12,6 +12,34 @@ export interface IENV {
   files: IFiles;
   stripe: IStripe;
   seeding: ISeeding;
+  otp: IOtp;
+  email: IEmail;
+}
+
+export interface IOtp {
+  length: number;
+  expirationSeconds: number;
+  maxAttempts: number;
+  resendCooldownSeconds: number;
+  maxRequests: number;
+  requestWindowSeconds: number;
+  hashSecret: string;
+  requireEmailVerified: boolean;
+}
+
+export type EmailProvider = 'smtp' | 'log' | 'memory';
+
+export interface IEmail {
+  provider: EmailProvider;
+  fromAddress: string;
+  fromName: string;
+  smtp: {
+    host?: string;
+    port?: number;
+    user?: string;
+    password?: string;
+    secure: boolean;
+  };
 }
 
 export interface ISeeding {

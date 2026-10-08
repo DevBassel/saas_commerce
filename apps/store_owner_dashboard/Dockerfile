@@ -19,6 +19,12 @@ ENV NODE_ENV=production
 # Vite inlines VITE_API_URL at build time; Railway passes it as a build arg.
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
+# Tenant-resolution mode (build-time): set VITE_ALLOW_SUBDOMAIN=false to enable the
+# apex `?tenant=<slug>` fallback; VITE_APP_ROOT_DOMAIN sets the apex root domain.
+ARG VITE_ALLOW_SUBDOMAIN
+ENV VITE_ALLOW_SUBDOMAIN=$VITE_ALLOW_SUBDOMAIN
+ARG VITE_APP_ROOT_DOMAIN
+ENV VITE_APP_ROOT_DOMAIN=$VITE_APP_ROOT_DOMAIN
 COPY --from=deps /repo ./
 COPY . .
 RUN pnpm --filter tenant_dash build

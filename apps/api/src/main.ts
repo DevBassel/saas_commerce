@@ -6,9 +6,16 @@ import { IAPP, ICORS, IENV } from './common/config/env.interface';
 import { buildCorsOrigin } from './common/config/cors.util';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
-
+import compression from 'compression';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
+
+  app.use(
+    compression({
+      threshold: 512,
+      level: 9,
+    }),
+  );
 
   const { name, apiPrefix, apiVersion, port, rootDomain } = app
     .get(ConfigService<IENV>)
@@ -44,6 +51,7 @@ async function bootstrap() {
       transform: true,
     }),
   );
+
   app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
   app.setGlobalPrefix(`${apiPrefix}/${apiVersion}`);
   app.enableShutdownHooks();

@@ -2,14 +2,14 @@
 import { ICartItem } from "@/api/cartApi";
 import { Button } from "../ui/button";
 import { BrushCleaning } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useTenantRouter } from "@/lib/tenant/nav";
 import CartItemCard from "./cartItemCard";
 import PlaceOrder from "./PlaceOrder";
 import { useCurrency } from "@/components/currency/currency-provider";
 import { formatMoney } from "@/lib/money";
 
 export default function CartItems({ items }: { items: ICartItem[] }) {
-  const router = useRouter();
+  const router = useTenantRouter();
   const currency = useCurrency();
   const subtotal = items.reduce((acc, item) => acc + item.lineTotal, 0);
   const totalQuantity = items.reduce((acc, item) => acc + item.quantity, 0);

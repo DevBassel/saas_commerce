@@ -126,7 +126,7 @@ function SidebarItemCollapsible({ item, selectedKey }: MenuItemProps) {
   const Link = useLink();
 
   return (
-    <Collapsible defaultOpen className={cn("group/collapsible")}>
+    <Collapsible className={cn("group/collapsible")}>
       <ShadcnSidebarMenuItem>
         <CollapsibleTrigger asChild>
           <ShadcnSidebarMenuButton tooltip={getDisplayName(item)}>

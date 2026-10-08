@@ -1,4 +1,4 @@
-import { IENV } from './env.interface';
+import { EmailProvider, IENV } from './env.interface';
 
 export const buildEnv = (): IENV => ({
   app: {
@@ -82,5 +82,41 @@ export const buildEnv = (): IENV => ({
   seeding: {
     allowProduction:
       String(process.env.SEED_ALLOW_PRODUCTION).toLocaleLowerCase() === 'true',
+  },
+  otp: {
+    length: process.env.OTP_LENGTH ? Number(process.env.OTP_LENGTH) : 6,
+    expirationSeconds: process.env.OTP_EXPIRATION_SECONDS
+      ? Number(process.env.OTP_EXPIRATION_SECONDS)
+      : 600,
+    maxAttempts: process.env.OTP_MAX_ATTEMPTS
+      ? Number(process.env.OTP_MAX_ATTEMPTS)
+      : 5,
+    resendCooldownSeconds: process.env.OTP_RESEND_COOLDOWN_SECONDS
+      ? Number(process.env.OTP_RESEND_COOLDOWN_SECONDS)
+      : 60,
+    maxRequests: process.env.OTP_MAX_REQUESTS
+      ? Number(process.env.OTP_MAX_REQUESTS)
+      : 5,
+    requestWindowSeconds: process.env.OTP_REQUEST_WINDOW_SECONDS
+      ? Number(process.env.OTP_REQUEST_WINDOW_SECONDS)
+      : 3600,
+    hashSecret: process.env.OTP_HASH_SECRET!,
+    requireEmailVerified:
+      String(process.env.OTP_REQUIRE_EMAIL_VERIFIED).toLocaleLowerCase() ===
+      'true',
+  },
+  email: {
+    provider: (process.env.EMAIL_PROVIDER || 'smtp') as EmailProvider,
+    fromAddress: process.env.EMAIL_FROM_ADDRESS!,
+    fromName: process.env.EMAIL_FROM_NAME || process.env.APP_NAME || '',
+    smtp: {
+      host: process.env.SMTP_HOST || undefined,
+      port: process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefined,
+      user: process.env.SMTP_USER || undefined,
+      password: process.env.SMTP_PASSWORD || undefined,
+      secure:
+        String(process.env.SMTP_SECURE || 'true').toLocaleLowerCase() ===
+        'true',
+    },
   },
 });

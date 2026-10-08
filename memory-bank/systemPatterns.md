@@ -12,7 +12,7 @@ Browser (store subdomain)                 Browser (admin subdomains)
         +--------------------+------------------+
                              v
                  NestJS API (/api/v1, port 4000)
-        TenantMiddleware -> TenantGuard -> JwtGuard -> PermissionGuard -> ThrottlerGuard
+        TenantMiddleware -> TenantGuard -> JwtGuard -> EmailVerifiedGuard -> PermissionGuard -> ThrottlerGuard
                              |
              +---------------+----------------+
              v                                v
@@ -31,8 +31,9 @@ Browser (store subdomain)                 Browser (admin subdomains)
   in-flight dedupe, move-to-front, destroy on eviction). `getRepository(entity, tenant)` takes an
   explicit `TenantRef` — it does not read AsyncLocalStorage. Context enforcement lives in
   `tenant-scope.ts` (`requireTenantContext` → 403).
-- **Guard order is load-bearing:** `TenantGuard → JwtGuard → PermissionGuard → ThrottlerGuard`.
-  Tenant must resolve before the JWT can be matched against `tenantId`/`tenantSchema`.
+- **Guard order is load-bearing:** `TenantGuard → JwtGuard → EmailVerifiedGuard → PermissionGuard →
+  ThrottlerGuard`. Tenant must resolve before the JWT can be matched against
+  `tenantId`/`tenantSchema`.
 - **Auth is stateless JWT with rotation.** Access + refresh use separate secrets; refresh rotates
   `jti` and rejects a stored `user.jti` mismatch. Refresh is single-flight in every client.
 - **Entity placement rule:** tenant entities go in `src/modules/tenants/utils/tenant-entities.ts`;
@@ -58,8 +59,11 @@ Browser (store subdomain)                 Browser (admin subdomains)
   `SeederRegistry` (explicit DI registration; Nest 10 has no multi-providers). Every seeder is
   idempotent/conflict-safe; `SeedingBootstrapService` is the single boot owner; `test/seed.ts` drives
   the same seeders. Tenant seeders use only the tenant DataSource.
-- **Frontends derive the tenant slug from the `Host` first label**; super admin never sends the
-  header. Frontends are not the security boundary — the API is.
+- **Frontends derive the tenant slug from the request host.** The store-owner dashboard uses the
+  first `Host` label; the storefront is root-domain aware (`classifyHost`) so the apex
+  (`NEXT_PUBLIC_APP_ROOT_DOMAIN` and `www.`) is a tenant-less platform context and only a
+  single-label subdomain resolves a tenant. The super admin never sends the header. Frontends are
+  not the security boundary — the API is.
 
 ## Cross-cutting contracts
 
