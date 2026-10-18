@@ -17,6 +17,9 @@ export interface PlanSeed {
   slug: string;
   name: string;
   description: string;
+  monthlyPrice: number;
+  yearlyPrice: number;
+  currency: string;
   sortOrder: number;
   limits: PlanLimitSeed[];
   features: PlanFeatureSeed[];
@@ -30,11 +33,7 @@ const COUNT = LimitValueType.COUNT;
 
 const F = SubscriptionFeatureKey;
 
-const FREE_FEATURES: SubscriptionFeatureKey[] = [
-  F.STRIPE_PAYMENTS,
-  F.STORE_CUSTOMIZATION,
-  F.COUPONS,
-];
+const FREE_FEATURES: SubscriptionFeatureKey[] = [F.STRIPE_PAYMENTS, F.COUPONS];
 
 const STARTER_FEATURES: SubscriptionFeatureKey[] = [
   ...FREE_FEATURES,
@@ -66,6 +65,9 @@ export const PLAN_SEEDS: PlanSeed[] = [
     slug: 'free',
     name: 'Free',
     description: 'Entry plan for new stores',
+    monthlyPrice: 0,
+    yearlyPrice: 0,
+    currency: 'usd',
     sortOrder: 0,
     limits: [
       { key: SubscriptionLimitKey.STORAGE_BYTES, value: 500 * MB, type: BYTES },
@@ -88,6 +90,9 @@ export const PLAN_SEEDS: PlanSeed[] = [
     slug: 'starter',
     name: 'Starter',
     description: 'For growing stores',
+    monthlyPrice: 29,
+    yearlyPrice: 290,
+    currency: 'usd',
     sortOrder: 1,
     limits: [
       { key: SubscriptionLimitKey.STORAGE_BYTES, value: 10 * GB, type: BYTES },
@@ -110,6 +115,9 @@ export const PLAN_SEEDS: PlanSeed[] = [
     slug: 'growth',
     name: 'Growth',
     description: 'More capacity and analytics',
+    monthlyPrice: 99,
+    yearlyPrice: 990,
+    currency: 'usd',
     sortOrder: 2,
     limits: [
       { key: SubscriptionLimitKey.STORAGE_BYTES, value: 50 * GB, type: BYTES },
@@ -132,6 +140,9 @@ export const PLAN_SEEDS: PlanSeed[] = [
     slug: 'pro',
     name: 'Pro',
     description: 'High volume stores',
+    monthlyPrice: 299,
+    yearlyPrice: 2990,
+    currency: 'usd',
     sortOrder: 3,
     limits: [
       { key: SubscriptionLimitKey.STORAGE_BYTES, value: 200 * GB, type: BYTES },
@@ -154,6 +165,9 @@ export const PLAN_SEEDS: PlanSeed[] = [
     slug: 'enterprise',
     name: 'Enterprise',
     description: 'Unlimited usage and every feature',
+    monthlyPrice: 999,
+    yearlyPrice: 9990,
+    currency: 'usd',
     sortOrder: 4,
     limits: [],
     features: features(ALL_FEATURES),

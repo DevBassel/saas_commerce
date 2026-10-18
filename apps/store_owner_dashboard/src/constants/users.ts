@@ -21,6 +21,14 @@ export const rankOf = (key?: string | null): number =>
 export const canCreateUsers = (key?: string | null): boolean =>
   rankOf(key) >= (ROLE_RANK.ADMIN ?? 0);
 
+/**
+ * Catalog resources (products, categories, coupons) share the same manager
+ * threshold as order management. Backend RBAC is authoritative; this only
+ * keeps the console's affordances consistent with what the API will allow.
+ */
+export const canManageCatalog = (key?: string | null): boolean =>
+  rankOf(key) >= (ROLE_RANK.ADMIN ?? 0);
+
 export const isBypassRole = (key?: string | null): boolean =>
   key != null && ASSIGN_BYPASS_ROLES.includes(key);
 

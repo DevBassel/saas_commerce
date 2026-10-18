@@ -8,6 +8,7 @@ import {
   PaymentStatusBadge,
 } from "@/components/orders/order-status-badge";
 import { DetailRow } from "@/components/refine-ui/views/detail-row";
+import { QueryErrorState } from "@/components/refine-ui/views/query-state";
 import {
   ShowView,
   ShowViewHeader,
@@ -67,6 +68,8 @@ export const OrdersShow = () => {
             </CardContent>
           </Card>
         </div>
+      ) : query.isError ? (
+        <QueryErrorState onRetry={() => void query.refetch()} />
       ) : !record ? (
         <p
           className={cn(

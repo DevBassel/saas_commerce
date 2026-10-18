@@ -8,6 +8,14 @@ export const UNLIMITED_STORAGE_BYTES = BigInt(Number.MAX_SAFE_INTEGER);
 
 export const FREE_PLAN_SLUG = 'free';
 
+/**
+ * Self-serve cancel + refund window, measured from the latest PAID
+ * `SubscriptionPayment` (`paidAt`, falling back to `createdAt`). Kept in ms so
+ * the service and the `GET /subscription` eligibility read compute the same
+ * deadline. Not an env var by design.
+ */
+export const SUBSCRIPTION_REFUND_WINDOW_DAYS = 7;
+
 export const SUBSCRIPTION_SORTABLE_FIELDS = [
   'name',
   'slug',

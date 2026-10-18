@@ -10,9 +10,9 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { Tenant } from 'src/modules/tenants/entities/tenant.entity';
-import { BillingInterval } from '../constants/billing-interval.enum';
-import { SubscriptionStatus } from '../constants/subscription-status.enum';
-import { SubscriptionPlan } from './subscription-plan.entity';
+import { BillingInterval } from '../../subscriptions/constants/billing-interval.enum';
+import { SubscriptionStatus } from '../../subscriptions/constants/subscription-status.enum';
+import { SubscriptionPlan } from '../../subscriptions/entities/subscription-plan.entity';
 
 @Entity('subscriptions')
 export class Subscription extends BaseEntity {
@@ -51,26 +51,11 @@ export class Subscription extends BaseEntity {
   })
   billingInterval: BillingInterval;
 
-  @Column({ type: 'varchar', length: 255, nullable: true })
-  stripeCustomerId: string | null;
-
-  @Column({ type: 'varchar', length: 255, nullable: true })
-  stripeSubscriptionId: string | null;
-
-  @Column({ type: 'varchar', length: 255, nullable: true })
-  stripePriceId: string | null;
-
   @Column({ type: 'timestamp', nullable: true })
   currentPeriodStart: Date | null;
 
   @Column({ type: 'timestamp', nullable: true })
   currentPeriodEnd: Date | null;
-
-  @Column({ type: 'boolean', default: false })
-  cancelAtPeriodEnd: boolean;
-
-  @Column({ type: 'timestamp', nullable: true })
-  canceledAt: Date | null;
 
   @Column({ type: 'timestamp', nullable: true })
   trialStart: Date | null;

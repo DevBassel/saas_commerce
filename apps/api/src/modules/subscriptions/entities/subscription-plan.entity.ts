@@ -11,7 +11,7 @@ import {
 import { moneyColumnWithDefault } from 'src/common/db/money-column';
 import { SubscriptionPlanLimit } from './subscription-plan-limit.entity';
 import { SubscriptionPlanFeature } from './subscription-plan-feature.entity';
-import { Subscription } from './subscription.entity';
+import { Subscription } from '../../payments/entities/subscription.entity';
 
 @Entity('subscription_plans')
 export class SubscriptionPlan extends BaseEntity {

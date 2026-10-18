@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   useCustomMutation,
   useGetIdentity,
@@ -20,6 +20,14 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { canManageTarget, filterAssignableRoles } from "@/constants/users";
 import type { Role } from "@/types/role";
@@ -44,16 +52,17 @@ export const UserRoleCard = ({ user }: { user: User }) => {
   const [selectedRoleId, setSelectedRoleId] = useState<string | undefined>(
     incomingRoleId,
   );
-  const [syncedRoleId, setSyncedRoleId] = useState(incomingRoleId);
 
-  if (syncedRoleId !== incomingRoleId) {
-    setSyncedRoleId(incomingRoleId);
+  // Re-sync the selection when the server-provided role changes, without
+  // writing state during render.
+  useEffect(() => {
     setSelectedRoleId(incomingRoleId);
-  }
+  }, [incomingRoleId]);
 
   const { mutateAsync, mutation } = useCustomMutation();
   const invalidate = useInvalidate();
   const { open } = useNotification();
+  const [removeOpen, setRemoveOpen] = useState(false);
 
   const isSubmitting = mutation.isPending;
   const hasRole = user.roleId != null;
@@ -103,8 +112,14 @@ export const UserRoleCard = ({ user }: { user: User }) => {
     }
   };
 
+  const confirmRemove = async () => {
+    await handleRemove();
+    setRemoveOpen(false);
+  };
+
   return (
-    <Card>
+    <>
+      <Card>
       <CardHeader>
         <CardTitle>Role</CardTitle>
       </CardHeader>
@@ -139,7 +154,7 @@ export const UserRoleCard = ({ user }: { user: User }) => {
             type="button"
             variant="outline"
             disabled={!canChangeRole || !hasRole || isSubmitting}
-            onClick={handleRemove}
+            onClick={() => setRemoveOpen(true)}
           >
             {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             Remove role
@@ -155,6 +170,44 @@ export const UserRoleCard = ({ user }: { user: User }) => {
         </div>
       </CardContent>
     </Card>
+      <Dialog
+        open={removeOpen}
+        onOpenChange={(next) => {
+          if (!isSubmitting) setRemoveOpen(next);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove role?</DialogTitle>
+            <DialogDescription>
+              {user.name} will lose the permissions inherited from this role.
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isSubmitting}
+              onClick={() => setRemoveOpen(false)}
+            >
+              Keep role
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={isSubmitting}
+              onClick={() => void confirmRemove()}
+            >
+              {isSubmitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : null}
+              Remove role
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 

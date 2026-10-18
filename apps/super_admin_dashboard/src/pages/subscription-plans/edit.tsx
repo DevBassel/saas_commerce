@@ -91,7 +91,10 @@ export const SubscriptionPlanEdit = () => {
           </CardHeader>
           <CardContent className={cn("flex", "flex-col", "gap-4")}>
             {Array.from({ length: 6 }).map((_, index) => (
-              <Skeleton key={`plan-skeleton-${index}`} className="h-10 w-full" />
+              <Skeleton
+                key={`plan-skeleton-${index}`}
+                className="h-10 w-full"
+              />
             ))}
           </CardContent>
         </Card>
@@ -107,7 +110,7 @@ export const SubscriptionPlanEdit = () => {
           Plan not found.
         </p>
       ) : (
-        <Card className={cn("max-w-3xl")}>
+        <Card>
           <CardHeader>
             <CardTitle className={cn("flex", "items-center", "gap-2")}>
               <LayersIcon className="h-5 w-5" />

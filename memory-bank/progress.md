@@ -10,7 +10,22 @@ What works, what is left, and known issues. Update when work completes or debt i
   endpoints, dashboard endpoints, currency requests, and SaaS subscription plans (limits/features,
   Super-Admin assignment + platform reads for a tenant's subscription and usage, tenant read-only
   APIs, enforcement in user/coupon/product/order flows, plus an opt-in HTTP-layer
-  `SubscriptionGuard` on annotated routes). ~75 unit spec files.
+  `SubscriptionGuard` on annotated routes). Tenant subscription routes are **read-only**; plans are
+  assigned by Super Admin. Recurring self-serve subscription billing was removed (2026-10-09): no
+  `StripeBillingService`, no checkout/cancel/resume routes, no billing webhook handling, and no
+  `stripe*` columns on `Subscription`. A one-off purchase flow was re-added the same day:
+  `POST /payments/stripe/subscription` (`subscriptions:manage`, STORE_OWNER only) creates a
+  platform-account Stripe PaymentIntent for a public/active plan and writes a `PENDING`
+  `SubscriptionPayment`; the webhook split then assigns the plan on `payment_intent.succeeded`
+  (`kind === 'subscription'` → `handleSubscriptionEvents` → ledger `PAID` +
+  `SubscriptionService.assignPlan`), with `CANCELED`/`FAILED` ledger transitions and a full refund
+  falling back to the free plan. Super Admin can also `POST /platform/tenants/:id/subscription/cancel`
+  to cancel and refund the latest paid purchase in one call (implemented in `PaymentsModule`). Tenants
+  have a self-serve counterpart — `POST /payments/stripe/subscription/cancel` (`subscriptions:manage`)
+  refunds the latest PAID purchase within a 7-day window (`SUBSCRIPTION_REFUND_WINDOW_DAYS`, from
+  `paidAt`/`createdAt`) and downgrades to free; `GET /subscription` reports additive
+  `refundEligible`/`refundDeadline`. Seeded plans carry `monthlyPrice`/`yearlyPrice`/`currency`.
+  ~79 unit spec files.
 - **Email OTP** (`apps/api/src/modules/email-otp/` + `src/modules/email/`): tenant-scoped OTP with
   an `otp_challenges` tenant entity, HMAC-SHA256 code hashing, resend cooldown/per-window cap/
   attempt limits, pessimistic-lock consume, and an `EMAIL_TRANSPORT` seam (`nodemailer` SMTP / log /
@@ -33,11 +48,32 @@ What works, what is left, and known issues. Update when work completes or debt i
   `0`.
 - **Store owner dashboard** (`tenant_dash`): auth + single-flight refresh, tenant-scoped lists and
   forms for products/categories/orders/users, payments and store settings, plus public
-  `/verify-email`, `/forgot-password`, `/reset-password` pages backed by `otp.api.ts`. An unverified
-  login redirects to `/verify-email` without storing a session. Tenant resolution has an optional
-  apex `?tenant=<slug>` fallback when the build-time `VITE_ALLOW_SUBDOMAIN=false` (browser resolve in
-  `src/api/tenant.ts`; `apiClient` attaches `x-tenant-slug`; `TenantParamSync` re-appends the param
-  after Refine navigation). Twelve Vitest files.
+  `/verify-email`, `/forgot-password`, `/reset-password` pages backed by `otp.api.ts`. The
+  `/settings/subscription` page shows the current plan (status/billing/price/period/trial) and live
+  usage against `subscription`, `subscription/plans`, `subscription/usage` plus an "Available plans"
+  shadcn `Tabs` section with a Monthly/Yearly toggle. Self-serve checkout is restored (2026-10-09):
+  each non-current billable tab has an **Upgrade** button opening a Stripe Elements
+  `PlanCheckoutDialog` (`src/lib/stripe.ts` + `@stripe/*` deps, build-time
+  `VITE_STRIPE_PUBLISHABLE_KEY`) that creates a `POST payments/stripe/subscription` intent, confirms
+  the card, and polls `GET subscription` until the webhook assigns the plan. Self-serve **cancel +
+  refund** is now built (2026-10-09): a destructive button + `CancelSubscriptionDialog` on the
+  current-plan card when `subscription.refundEligible`, posting `payments/stripe/subscription/cancel`
+  and `refetchAll()` on success (Resume remains unbuilt). `subscriptions.api.ts` gained
+  `createPaymentIntent` (in-flight dedupe) and `cancelSubscription`.
+  An unverified login redirects to `/verify-email` without storing a session. Tenant resolution has
+  an optional apex `?tenant=<slug>` fallback when the build-time `VITE_ALLOW_SUBDOMAIN=false`
+  (browser resolve in `src/api/tenant.ts`; `apiClient` attaches `x-tenant-slug`; `TenantParamSync`
+  re-appends the param after Refine navigation). Fourteen Vitest files (169 tests).
+  A 2026-10-09 review-fix pass (plan `.kilo/plans/1791552085658-tenant-dashboard-review-fix-plan.md`)
+  added: full-reload cache reset on logout / tenant switch (`src/lib/client-reset.ts`,
+  `src/lib/tenant-sync.ts`), tenant-aware forced-401 redirect, `canManageCatalog` role gates on
+  catalog create/row actions, explicit-`null` clearing for product category and coupon optionals,
+  `PENDING`/`CANCELED` payment statuses, list/detail error+retry states (`QueryErrorState`), a
+  route-level error boundary, confirmation dialogs for destructive actions, `nextStatuses`-gated
+  order-status options, accessibility labels, and `import.meta.env.DEV` gating of
+   Refine Devtools (removed from the production bundle). Low findings are deferred to the plan's
+   backlog. (That pass also hardened an older subscription checkout; it was removed and then
+   freshly re-added as the 2026-10-09 self-serve checkout described above.)
 - **Super admin dashboard** (`super_admin_dash`): tenant provisioning/lifecycle, platform payments
   oversight, currency request approve/reject, and subscription plan CRUD (list/create/edit/delete)
   plus a per-tenant subscription panel (current plan/status/period, live usage, change plan +
@@ -64,8 +100,18 @@ What works, what is left, and known issues. Update when work completes or debt i
 
 - No migrations system; tenant schemas rely on entity metadata + `DB_SYNCHRONIZE_TENANTS`. The
   public-schema subscription tables are also created by `synchronize`, not migrations.
-- Stripe SaaS billing is **deferred**: subscription `stripeCustomerId`/`stripeSubscriptionId`/
-  `stripePriceId` columns exist but are unused; plans are assigned by Super Admin only.
+- Stripe SaaS billing **phase 2** is not wired: no plan switching/proration, no Billing Portal,
+  no stored Stripe Price ids on `SubscriptionPlan`, and no webhook event-dedupe table (idempotent
+  upserts only). Already-billed tenants are blocked from a new checkout intent. Super Admin can
+  still assign plans directly.
+- The public `SubscriptionPayment` entity (`subscription_payments`) now has an end-to-end flow:
+  `POST /payments/stripe/subscription` writes a `PENDING` row, and the Stripe webhook reconciles it
+  via the two-handler split (`handleOrderPaymentEvents` / `handleSubscriptionEvents`, classified on
+  `metadata.data.kind`). Subscription `succeeded` assigns the plan (`assignPlan`, idempotent when
+  already `PAID`), `canceled`/`payment_failed` update the ledger, and a **fully refunded** payment
+  falls back to the free plan (`SubscriptionService.downgradeToFree`; partial refunds keep the paid
+  plan). A `PLAN_INACTIVE`/missing-row error on `succeeded` still returns non-2xx, so Stripe
+  retries until resolved. Table is created by `synchronize` on boot.
 - Subscription database-size gate runs `pg_total_relation_size` only at checkout; product create is
   gated by a live `PRODUCTS` count (free 10 / starter 100 / growth 1000 / pro 5000 / enterprise
   unlimited). The HTTP-layer `SubscriptionGuard` is parity-only and runs the same checks as the
@@ -95,8 +141,9 @@ What works, what is left, and known issues. Update when work completes or debt i
 - Storefront `src/app/page.tsx` debug button and the login/401 `console.log`s were removed, and the
   swallowed `catch {}` blocks in register/cart/checkout now surface errors (2026-10-08 review).
 - Storefront `.gitignore` now covers `.env*.local` (including `.env.production.local`).
-- Dashboards import Refine Devtools unconditionally, so they ship in the production bundle and both
-  bind port 5001 (set `REFINE_DEVTOOLS_PORT` to separate).
+- Dashboards import Refine Devtools: `tenant_dash` now gates them behind `import.meta.env.DEV`
+  (2026-10-09) so they are tree-shaken from its production bundle; `super_admin_dash` still imports
+  them unconditionally. Both bind port 5001 in dev (set `REFINE_DEVTOOLS_PORT` to separate).
 
 ## Verification commands
 

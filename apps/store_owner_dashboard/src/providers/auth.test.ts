@@ -4,12 +4,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { authProvider, decodeJwt } from "./auth";
 import { tokenStorage } from "@/api/client";
 import { authApi } from "@/api/auth.api";
+import { resetClientState } from "@/lib/client-reset";
 
 vi.mock("@/api/auth.api", () => ({
   authApi: {
     loginTenant: vi.fn(),
     registerTenantUser: vi.fn(),
   },
+}));
+
+vi.mock("@/lib/client-reset", () => ({
+  resetClientState: vi.fn(),
 }));
 
 const base64url = (value: unknown): string =>
@@ -207,5 +212,78 @@ describe("authProvider.getPermissions", () => {
 
   it("returns null when there is no token", async () => {
     await expect(authProvider.getPermissions?.({})).resolves.toBeNull();
+  });
+});
+
+describe("authProvider.logout", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.mocked(resetClientState).mockClear();
+  });
+
+  it("clears the session, resets client state and redirects to /login", async () => {
+    tokenStorage.setSession("access", "refresh", "a@b.c");
+
+    await expect(authProvider.logout({})).resolves.toMatchObject({
+      success: true,
+      redirectTo: "/login",
+    });
+
+    expect(tokenStorage.getAccessToken()).toBeNull();
+    expect(tokenStorage.getRefreshToken()).toBeNull();
+    expect(tokenStorage.getEmail()).toBeNull();
+    expect(resetClientState).toHaveBeenCalledWith("/login");
+  });
+});
+
+describe("authProvider.check tenant isolation", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    localStorage.clear();
+    window.sessionStorage.clear();
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("clears the session when the token tenant does not match the guard slug", async () => {
+    vi.stubEnv("VITE_ALLOW_SUBDOMAIN", "false");
+    window.history.replaceState(null, "", "/?tenant=globex");
+    tokenStorage.setTokens(
+      makeJwt({ type: "access", exp: futureExp, tenantSchema: "tenant_acme" }),
+      "",
+    );
+
+    await expect(authProvider.check({})).resolves.toMatchObject({
+      authenticated: false,
+    });
+    expect(tokenStorage.getAccessToken()).toBeNull();
+  });
+
+  it("authenticates when the token tenant matches the guard slug", async () => {
+    vi.stubEnv("VITE_ALLOW_SUBDOMAIN", "false");
+    window.history.replaceState(null, "", "/?tenant=acme");
+    tokenStorage.setTokens(
+      makeJwt({ type: "access", exp: futureExp, tenantSchema: "tenant_acme" }),
+      "refresh-1",
+    );
+
+    await expect(authProvider.check({})).resolves.toMatchObject({
+      authenticated: true,
+    });
+  });
+});
+
+describe("authProvider.onError", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("requests logout on a 401 without a refresh token", async () => {
+    const result = await authProvider.onError?.({ statusCode: 401 });
+    expect(result).toMatchObject({ logout: true, redirectTo: "/login" });
+  });
+
+  it("passes through non-401 errors", async () => {
+    const result = await authProvider.onError?.({ statusCode: 500 });
+    expect(result).not.toMatchObject({ logout: true });
   });
 });

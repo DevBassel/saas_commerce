@@ -49,8 +49,13 @@ Browser (store subdomain)                 Browser (admin subdomains)
   public entities managed by Super Admin; every other module checks entitlements through
   `SubscriptionEntitlementsService`. Plan `STORAGE_BYTES` is mirrored into
   `Tenant.storageCapacityBytes`; coupon quota uses an atomic monthly counter; store-admin creation
-  is serialized by a pessimistic lock on the public subscription row. Stripe SaaS billing is
-  deferred, so the `stripe*` columns stay nullable/unused.
+  is serialized by a pessimistic lock on the public subscription row. Recurring Stripe Billing was
+  **removed** (2026-10-09): no `StripeBillingService`, no `stripe*` columns on `Subscription`. A
+  one-off purchase path exists instead — `POST /payments/stripe/subscription` (platform-account
+  PaymentIntent, plan assigned by the `payment_intent.succeeded` webhook) and a tenant self-serve
+  cancel+refund (`POST /payments/stripe/subscription/cancel`, 7-day window, then free-plan
+  downgrade). Resume/re-subscribe is not built. Order payments (`payments` module, Stripe Connect)
+  are unaffected.
 - **Platform-scoped reads for the non-tenant console.** Because `super_admin_dash` is not
   tenant-scoped, a tenant's subscription and live usage are exposed under
   `GET platform/tenants/:id/subscription[/usage]` (usage resolves the schema by id via

@@ -3,7 +3,7 @@ import { SubscriptionPlansService } from './subscription-plans.service';
 import { SubscriptionPlan } from '../entities/subscription-plan.entity';
 import { SubscriptionPlanLimit } from '../entities/subscription-plan-limit.entity';
 import { SubscriptionPlanFeature } from '../entities/subscription-plan-feature.entity';
-import { Subscription } from '../entities/subscription.entity';
+import { Subscription } from '../../payments/entities/subscription.entity';
 import { SubscriptionLimitKey } from '../constants/subscription-limit-key.enum';
 import { SubscriptionFeatureKey } from '../constants/subscription-feature-key.enum';
 import { LimitValueType } from '../constants/limit-value-type.enum';

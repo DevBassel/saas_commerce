@@ -1,16 +1,28 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { TenantRef } from '../tenants/utils/tenant.utils';
 import { resolveTenantScope } from '../tenants/utils/tenant-scope';
 import { Payment } from './entities/payment.entity';
 import { Order } from '../orders/entities/order.entity';
+import { SubscriptionPayment } from './entities/subscription-payment.entity';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
 import { PaymentStatus } from './constants/payment-status.enum';
-import { paymentMetaData } from './constants/payment-metadata';
+import {
+  paymentMetaData,
+  subscriptionPaymentMetaData,
+} from './constants/payment-metadata';
 import { toMajorUnit } from '../../common/utils/money';
+import { SubscriptionService } from '../subscriptions/services/subscription.service';
 
 @Injectable()
 export default class PaymentService {
-  constructor(private readonly tenantManager: TenantManagerService) {}
+  constructor(
+    private readonly tenantManager: TenantManagerService,
+    @InjectRepository(SubscriptionPayment)
+    private readonly subscriptionPaymentRepo: Repository<SubscriptionPayment>,
+    private readonly subscriptions: SubscriptionService,
+  ) {}
 
   async repos(tenant?: TenantRef) {
     const target = resolveTenantScope(tenant);
@@ -21,7 +33,7 @@ export default class PaymentService {
     return { paymentRepo, orderRepo };
   }
 
-  async successPayment(
+  async successOrderPayment(
     { orderId, tenant, userId }: paymentMetaData,
     paymentId: string,
   ) {
@@ -49,7 +61,7 @@ export default class PaymentService {
     ]);
   }
 
-  async canceledPayment(
+  async cancelOrderPayment(
     { orderId, tenant, userId }: paymentMetaData,
     paymentId: string,
   ) {
@@ -77,7 +89,7 @@ export default class PaymentService {
     ]);
   }
 
-  async refundedPayment(
+  async refundedOrderPayment(
     { orderId, tenant, userId }: paymentMetaData,
     refund: {
       paymentIntentId: string;
@@ -131,7 +143,7 @@ export default class PaymentService {
     ]);
   }
 
-  async failedPayment(
+  async failedOrderPayment(
     { orderId, tenant, userId }: paymentMetaData,
     paymentId: string,
   ) {
@@ -157,5 +169,110 @@ export default class PaymentService {
         failedAt: new Date(),
       }),
     ]);
+  }
+
+  async successSubscriptionPayment(
+    meta: subscriptionPaymentMetaData,
+    paymentRef: string,
+  ) {
+    const payment = await this.subscriptionPaymentRepo.findOne({
+      where: { paymentRef },
+    });
+    if (!payment)
+      throw new NotFoundException(
+        `Subscription payment ${paymentRef} not found`,
+      );
+    if (payment.status === PaymentStatus.PAID) return;
+
+    await this.subscriptions.assignPlan(meta.tenantId, {
+      planId: meta.planId,
+      billingInterval: meta.billingInterval,
+    });
+
+    await this.subscriptionPaymentRepo.update(
+      { id: payment.id },
+      { status: PaymentStatus.PAID, paidAt: new Date() },
+    );
+  }
+
+  async cancelSubscriptionPayment(paymentRef: string) {
+    const payment = await this.subscriptionPaymentRepo.findOne({
+      where: { paymentRef },
+    });
+    if (!payment)
+      throw new NotFoundException(
+        `Subscription payment ${paymentRef} not found`,
+      );
+    await this.subscriptionPaymentRepo.update(
+      { id: payment.id },
+      { status: PaymentStatus.CANCELED },
+    );
+  }
+
+  async failedSubscriptionPayment(
+    paymentRef: string,
+    failureReason: string | null,
+  ) {
+    const payment = await this.subscriptionPaymentRepo.findOne({
+      where: { paymentRef },
+    });
+    if (!payment)
+      throw new NotFoundException(
+        `Subscription payment ${paymentRef} not found`,
+      );
+    await this.subscriptionPaymentRepo.update(
+      { id: payment.id },
+      { status: PaymentStatus.FAILED, failureReason },
+    );
+  }
+
+  async refundedSubscriptionPayment(
+    paymentRef: string,
+    refund: {
+      amountRefunded: number;
+      refundReference: string | null;
+    },
+  ) {
+    const payment = await this.subscriptionPaymentRepo.findOne({
+      where: { paymentRef },
+    });
+    if (!payment)
+      throw new NotFoundException(
+        `Subscription payment ${paymentRef} not found`,
+      );
+
+    const refundedAmount = toMajorUnit(refund.amountRefunded);
+    const total = Number(payment.amount);
+    const status =
+      refundedAmount <= 0
+        ? PaymentStatus.PAID
+        : refundedAmount >= total
+          ? PaymentStatus.REFUNDED
+          : PaymentStatus.PARTIALLY_REFUNDED;
+    const refundedAt =
+      refundedAmount > 0 ? (payment.refundedAt ?? new Date()) : null;
+
+    await this.subscriptionPaymentRepo.update(
+      { id: payment.id },
+      {
+        status,
+        refundedAmount,
+        refundReference:
+          refund.refundReference ??
+          (refundedAmount > 0 ? payment.refundReference : null),
+        refundedAt,
+      },
+    );
+
+    // A fully refunded purchase revokes the plan: fall back to the free plan.
+    // Partial refunds keep the paid plan. Idempotent on webhook retries.
+    if (status === PaymentStatus.REFUNDED) {
+      await this.subscriptions.downgradeToFree(payment.subscriptionId);
+    }
+  }
+
+  /** Moves a subscription back to the free plan (used by cancel+refund). */
+  async downgradeSubscriptionToFree(subscriptionId: number) {
+    return this.subscriptions.downgradeToFree(subscriptionId);
   }
 }

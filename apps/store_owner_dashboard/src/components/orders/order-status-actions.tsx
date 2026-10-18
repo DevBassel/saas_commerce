@@ -31,6 +31,7 @@ import {
   ORDER_STATUSES,
   canCancelOrder,
   canManageOrders,
+  nextStatuses,
 } from "@/constants/orders";
 import { cn } from "@/lib/utils";
 import type { Order, OrderStatus } from "@/types/order";
@@ -53,6 +54,7 @@ export const OrderStatusActions = ({ order }: { order: Order }) => {
 
   const isOptionEnabled = (status: OrderStatus): boolean => {
     if (status === order.status) return false;
+    if (!nextStatuses(order.status).includes(status)) return false;
     if (status === "CANCELLED") return cancellable;
     return manageable;
   };
@@ -125,7 +127,7 @@ export const OrderStatusActions = ({ order }: { order: Order }) => {
         onValueChange={handleAction}
         disabled={isSubmitting || !hasEnabledOption}
       >
-        <SelectTrigger className="w-full">
+        <SelectTrigger className="w-full" aria-label="Change order status">
           <SelectValue
             placeholder={isSubmitting ? "Updating…" : "Change status"}
           />

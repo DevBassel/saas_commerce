@@ -3,6 +3,7 @@
 import { useShow } from "@refinedev/core";
 
 import { DetailRow } from "@/components/refine-ui/views/detail-row";
+import { QueryErrorState } from "@/components/refine-ui/views/query-state";
 import { ShowView, ShowViewHeader } from "@/components/refine-ui/views/show-view";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,6 +44,8 @@ export const UsersShow = () => {
             ))}
           </CardContent>
         </Card>
+      ) : query.isError ? (
+        <QueryErrorState onRetry={() => void query.refetch()} />
       ) : !record ? (
         <p
           className={cn(

@@ -5,7 +5,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { ActiveBadge } from "@/components/refine-ui/data-table/active-badge";
 import { CurrencyCell } from "@/components/currency/currency-cell";
 import { DateCell } from "@/components/refine-ui/data-table/date-cell";
-import { RowActions } from "@/components/refine-ui/data-table/row-actions";
+import { ProductRowActions } from "@/components/products/product-row-actions";
 import { sortableHeader } from "@/components/refine-ui/data-table/sortable-header";
 import { cn } from "@/lib/utils";
 import type { Product } from "@/types/product";
@@ -81,16 +81,6 @@ export const productColumns: ColumnDef<Product>[] = [
     header: "",
     enableSorting: false,
     size: 140,
-    cell: ({ row }) => (
-      <RowActions
-        resource="products"
-        recordItemId={row.original.id}
-        labels={{
-          show: "Show product",
-          edit: "Edit product",
-          delete: "Delete product",
-        }}
-      />
-    ),
+    cell: ({ row }) => <ProductRowActions id={row.original.id} />,
   },
 ];

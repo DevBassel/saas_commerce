@@ -22,11 +22,28 @@ const buildMocks = () => {
       Promise.resolve(entity === Payment ? paymentRepo : orderRepo),
     ),
   };
+  const subscriptionPaymentRepo = {
+    findOne: jest.fn(),
+    update: jest.fn(),
+  };
+  const subscriptions = {
+    assignPlan: jest.fn(),
+    downgradeToFree: jest.fn(),
+  };
 
   const service = new PaymentService(
     tenantManager as unknown as TenantManagerService,
+    subscriptionPaymentRepo as never,
+    subscriptions as never,
   );
-  return { service, paymentRepo, orderRepo, tenantManager };
+  return {
+    service,
+    paymentRepo,
+    orderRepo,
+    tenantManager,
+    subscriptionPaymentRepo,
+    subscriptions,
+  };
 };
 
 const payment = (overrides: Record<string, unknown> = {}) => ({
@@ -54,7 +71,7 @@ describe('PaymentService', () => {
     paymentRepo.findOne.mockResolvedValue(payment());
     orderRepo.findOne.mockResolvedValue(order());
 
-    await service.successPayment(META, 'pi_1');
+    await service.successOrderPayment(META, 'pi_1');
 
     expect(tenantManager.getRepository).toHaveBeenCalledWith(Payment, {
       schemaName: TENANT,
@@ -68,7 +85,7 @@ describe('PaymentService', () => {
     const tenantManager = {
       getRepository: jest.fn(),
     } as unknown as TenantManagerService;
-    const service = new PaymentService(tenantManager);
+    const service = new PaymentService(tenantManager, {} as never, {} as never);
 
     await expect(
       (
@@ -85,7 +102,7 @@ describe('PaymentService', () => {
       paymentRepo.findOne.mockResolvedValue(p);
       orderRepo.findOne.mockResolvedValue(o);
 
-      await service.successPayment(META, 'pi_1');
+      await service.successOrderPayment(META, 'pi_1');
 
       expect(paymentRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -110,9 +127,9 @@ describe('PaymentService', () => {
       const { service, paymentRepo } = buildMocks();
       paymentRepo.findOne.mockResolvedValue(null);
 
-      await expect(service.successPayment(META, 'pi_1')).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        service.successOrderPayment(META, 'pi_1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('throws NotFound when the order is missing or foreign', async () => {
@@ -120,9 +137,9 @@ describe('PaymentService', () => {
       paymentRepo.findOne.mockResolvedValue(payment());
       orderRepo.findOne.mockResolvedValue(null);
 
-      await expect(service.successPayment(META, 'pi_1')).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        service.successOrderPayment(META, 'pi_1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
       expect(orderRepo.save).not.toHaveBeenCalled();
     });
   });
@@ -133,7 +150,7 @@ describe('PaymentService', () => {
       paymentRepo.findOne.mockResolvedValue(payment());
       orderRepo.findOne.mockResolvedValue(order());
 
-      await service.canceledPayment(META, 'pi_1');
+      await service.cancelOrderPayment(META, 'pi_1');
 
       expect(paymentRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -154,7 +171,7 @@ describe('PaymentService', () => {
       paymentRepo.findOne.mockResolvedValue(null);
 
       await expect(
-        service.canceledPayment(META, 'pi_1'),
+        service.cancelOrderPayment(META, 'pi_1'),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
@@ -164,7 +181,7 @@ describe('PaymentService', () => {
       orderRepo.findOne.mockResolvedValue(null);
 
       await expect(
-        service.canceledPayment(META, 'pi_1'),
+        service.cancelOrderPayment(META, 'pi_1'),
       ).rejects.toBeInstanceOf(NotFoundException);
       expect(orderRepo.save).not.toHaveBeenCalled();
     });
@@ -176,7 +193,7 @@ describe('PaymentService', () => {
       paymentRepo.findOne.mockResolvedValue(payment());
       orderRepo.findOne.mockResolvedValue(order());
 
-      await service.failedPayment(META, 'pi_1');
+      await service.failedOrderPayment(META, 'pi_1');
 
       expect(paymentRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -196,9 +213,9 @@ describe('PaymentService', () => {
       const { service, paymentRepo } = buildMocks();
       paymentRepo.findOne.mockResolvedValue(null);
 
-      await expect(service.failedPayment(META, 'pi_1')).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        service.failedOrderPayment(META, 'pi_1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('throws NotFound when the order is missing or foreign', async () => {
@@ -206,9 +223,9 @@ describe('PaymentService', () => {
       paymentRepo.findOne.mockResolvedValue(payment());
       orderRepo.findOne.mockResolvedValue(null);
 
-      await expect(service.failedPayment(META, 'pi_1')).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        service.failedOrderPayment(META, 'pi_1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
       expect(orderRepo.save).not.toHaveBeenCalled();
     });
   });
@@ -227,7 +244,10 @@ describe('PaymentService', () => {
         payment({ amount: 1, ...paymentOverrides }),
       );
       mocks.orderRepo.findOne.mockResolvedValue(order());
-      await mocks.service.refundedPayment(META, refund({ amountRefunded }));
+      await mocks.service.refundedOrderPayment(
+        META,
+        refund({ amountRefunded }),
+      );
       return mocks;
     };
 
@@ -286,7 +306,7 @@ describe('PaymentService', () => {
       );
       mocks.orderRepo.findOne.mockResolvedValue(order());
 
-      await mocks.service.refundedPayment(
+      await mocks.service.refundedOrderPayment(
         META,
         refund({ amountRefunded: 50, refundReference: 're_new' }),
       );
@@ -301,7 +321,7 @@ describe('PaymentService', () => {
       paymentRepo.findOne.mockResolvedValue(null);
 
       await expect(
-        service.refundedPayment(META, refund({ amountRefunded: 50 })),
+        service.refundedOrderPayment(META, refund({ amountRefunded: 50 })),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
@@ -311,7 +331,10 @@ describe('PaymentService', () => {
       mocks.orderRepo.findOne.mockResolvedValue(null);
 
       await expect(
-        mocks.service.refundedPayment(META, refund({ amountRefunded: 50 })),
+        mocks.service.refundedOrderPayment(
+          META,
+          refund({ amountRefunded: 50 }),
+        ),
       ).rejects.toBeInstanceOf(NotFoundException);
       expect(mocks.orderRepo.save).not.toHaveBeenCalled();
     });

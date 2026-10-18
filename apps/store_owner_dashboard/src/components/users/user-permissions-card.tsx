@@ -23,6 +23,14 @@ import { toApiError } from "@/api/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import {
@@ -96,6 +104,7 @@ export const UserPermissionsCard = ({ user }: { user: User }) => {
   );
 
   const [busyId, setBusyId] = useState<number | "all" | null>(null);
+  const [revokeAllOpen, setRevokeAllOpen] = useState(false);
   const { mutateAsync, mutation } = useCustomMutation();
   const invalidate = useInvalidate();
   const { open } = useNotification();
@@ -169,8 +178,14 @@ export const UserPermissionsCard = ({ user }: { user: User }) => {
     }
   };
 
+  const confirmRevokeAll = async () => {
+    await handleRevokeAll();
+    setRevokeAllOpen(false);
+  };
+
   return (
-    <Card>
+    <>
+      <Card>
       <CardHeader
         className={cn("flex", "flex-row", "items-center", "justify-between")}
       >
@@ -180,7 +195,7 @@ export const UserPermissionsCard = ({ user }: { user: User }) => {
           variant="outline"
           size="sm"
           disabled={!manageable || directIds.size === 0 || isSubmitting}
-          onClick={handleRevokeAll}
+          onClick={() => setRevokeAllOpen(true)}
         >
           {busyId === "all" ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -288,7 +303,46 @@ export const UserPermissionsCard = ({ user }: { user: User }) => {
           ))
         )}
       </CardContent>
-    </Card>
+      </Card>
+      <Dialog
+        open={revokeAllOpen}
+        onOpenChange={(next) => {
+          if (!isSubmitting) setRevokeAllOpen(next);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Revoke all direct permissions?</DialogTitle>
+            <DialogDescription>
+              Every permission granted directly to {user.name} will be removed.
+              Permissions inherited from their role stay in effect. This action
+              cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isSubmitting}
+              onClick={() => setRevokeAllOpen(false)}
+            >
+              Keep permissions
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={isSubmitting}
+              onClick={() => void confirmRevokeAll()}
+            >
+              {busyId === "all" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : null}
+              Revoke all
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 

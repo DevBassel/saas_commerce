@@ -73,8 +73,6 @@ export type Subscription = {
   billingInterval: BillingInterval;
   currentPeriodStart: string | null;
   currentPeriodEnd: string | null;
-  cancelAtPeriodEnd: boolean;
-  canceledAt: string | null;
   trialStart: string | null;
   trialEnd: string | null;
   plan?: SubscriptionPlan;

@@ -1,6 +1,7 @@
 import { Refine, Authenticated } from "@refinedev/core";
 import { DevtoolsPanel, DevtoolsProvider } from "@refinedev/devtools";
 import { RefineKbar, RefineKbarProvider } from "@refinedev/kbar";
+import type { ReactNode } from "react";
 
 import { BrowserRouter, Route, Routes, Outlet } from "react-router";
 import routerProvider, {
@@ -37,6 +38,7 @@ import {
 import { OrdersList, OrdersShow } from "./pages/orders";
 import { StripePayments } from "./pages/settings/payments";
 import { StoreSettings } from "./pages/settings/store";
+import { SubscriptionSettings } from "./pages/settings/subscription";
 import {
   UsersList,
   UsersAdminsList,
@@ -46,6 +48,7 @@ import {
   UsersEdit,
 } from "./pages/users";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { RouteErrorBoundary } from "./components/RouteErrorBoundary";
 import { TenantParamSync } from "./components/TenantParamSync";
 import { ErrorComponent } from "./components/refine-ui/layout/error-component";
 import { Layout } from "./components/refine-ui/layout/layout";
@@ -57,6 +60,19 @@ import { ThemeProvider } from "./components/refine-ui/theme/theme-provider";
 import "./App.css";
 import { Resources } from "./lib/Resources";
 
+// Refine Devtools are a development aid. `import.meta.env.DEV` is inlined as
+// `false` for production builds, so this branch (and the `@refinedev/devtools`
+// import, which is side-effect free) is tree-shaken out of the shipped bundle.
+const Devtools = ({ children }: { children: ReactNode }) => {
+  if (!import.meta.env.DEV) return <>{children}</>;
+  return (
+    <DevtoolsProvider>
+      {children}
+      <DevtoolsPanel />
+    </DevtoolsProvider>
+  );
+};
+
 function App() {
   return (
     <BrowserRouter>
@@ -64,7 +80,7 @@ function App() {
       <ErrorBoundary>
         <RefineKbarProvider>
           <ThemeProvider>
-            <DevtoolsProvider>
+            <Devtools>
               <Refine
                 dataProvider={dataProvider}
                 notificationProvider={useNotificationProvider()}
@@ -78,7 +94,8 @@ function App() {
                   title: { text: "Store Owner" },
                 }}
               >
-                <Routes>
+                <RouteErrorBoundary>
+                  <Routes>
                   <Route
                     element={
                       <Authenticated
@@ -134,6 +151,10 @@ function App() {
                     <Route path="settings">
                       <Route path="payments" element={<StripePayments />} />
                       <Route path="store" element={<StoreSettings />} />
+                      <Route
+                        path="subscription"
+                        element={<SubscriptionSettings />}
+                      />
                     </Route>
 
                     <Route path="*" element={<ErrorComponent />} />
@@ -154,14 +175,14 @@ function App() {
                     <Route path="/reset-password" element={<ResetPassword />} />
                   </Route>
                 </Routes>
+                </RouteErrorBoundary>
 
                 <Toaster />
                 <RefineKbar />
                 <UnsavedChangesDialog />
                 <DocumentTitleHandler />
               </Refine>
-              <DevtoolsPanel />
-            </DevtoolsProvider>
+            </Devtools>
           </ThemeProvider>
         </RefineKbarProvider>
       </ErrorBoundary>

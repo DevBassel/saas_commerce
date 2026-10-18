@@ -129,7 +129,7 @@ const UserDropdown = () => {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger>
+      <DropdownMenuTrigger aria-label="Account menu">
         <UserAvatar />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">

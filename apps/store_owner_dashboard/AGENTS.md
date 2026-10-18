@@ -68,7 +68,7 @@ no middleware), so the tenant is resolved in the browser and attached by `apiCli
 - Routes: `/` dashboard; `/products`, `/products/create`, `/products/edit/:id`, `/products/show/:id`;
   `/categories` + create/edit/show; `/orders`, `/orders/show/:id`; `/users`,
   `/users/admins`, `/users/customers`, `/users/create`, `/users/edit/:id`, `/users/show/:id`;
-  `/settings/payments`, `/settings/store`; public `/login`, `/verify-email`, `/forgot-password`,
+  `/settings/payments`, `/settings/store`, `/settings/subscription`; public `/login`, `/verify-email`, `/forgot-password`,
   `/reset-password`; `*` → `ErrorComponent`.
 - Refine resource/metadata definitions live in `src/lib/Resources.tsx`.
 - Devtools (`@refinedev/devtools`) are imported unconditionally and ship in the production bundle.
@@ -97,8 +97,57 @@ no middleware), so the tenant is resolved in the browser and attached by `apiCli
     redirects to `/login` only when the refresh token is gone.
   - `toApiError` normalizes axios errors and joins array `message` values.
 - Endpoint modules: `auth.api.ts`, `products.api.ts` (image upload/delete/reorder), `orders.api.ts`,
-  `payments.api.ts` (Stripe account/connect), `dashboard.api.ts`, `currency.api.ts`, `otp.api.ts`.
+  `payments.api.ts` (Stripe account/connect), `dashboard.api.ts`, `currency.api.ts`, `otp.api.ts`,
+  `subscriptions.api.ts` (subscription/plans/usage reads plus `createPaymentIntent`).
 - `VITE_API_URL` defaults to `http://localhost:4000/api/v1`.
+
+## Subscription
+
+`/settings/subscription` (`src/pages/settings/subscription/index.tsx`) shows the current plan/usage
+plus an "Available plans" tab set with a Monthly/Yearly toggle. Reads `GET subscription`,
+`GET subscription/plans`, and `GET subscription/usage` via `src/api/subscriptions.api.ts`.
+
+Self-serve checkout is **enabled** via Stripe Elements (re-introducing the purchase path):
+
+- Each non-current, billable plan tab (`monthlyPrice > 0 || yearlyPrice > 0`) renders an **Upgrade**
+  button that opens `PlanCheckoutDialog.tsx`; the current plan and free/non-billable plans keep a
+  disabled button. The upgrade uses the page's selected Monthly/Yearly interval.
+- `PlanCheckoutDialog` calls `subscriptionsApi.createPaymentIntent(planId, billingInterval)` →
+  `POST payments/stripe/subscription` (returns `{ clientSecret }`), then renders `Elements` +
+  `PaymentElement` and calls `stripe.confirmPayment({ redirect: "if_required" })`. The API creates a
+  `PENDING` `SubscriptionPayment`; only the `payment_intent.succeeded` webhook assigns the plan, so
+  the dialog does **not** optimistically update anything.
+- `createPaymentIntent` dedupes concurrent requests per `(planId, billingInterval)` with an in-flight
+  `Map` (mirroring the storefront's `CreateStripePayment`), so React StrictMode's double-invoked mount
+  effect creates a single `PENDING` row.
+- Completion is **polled**: after `confirmPayment` returns without error, `index.tsx` sets
+  `pendingPlanId` and polls `GET subscription` (~2s, 30s cap) until `subscription.planId` matches,
+  then refreshes subscription + usage and toasts; on timeout it shows "Payment is still processing —
+  refresh in a moment" and stops.
+- 3DS/redirect returns land on `/settings/subscription?stripe=return&plan=<id>`; on mount a
+  `redirect_status` of `succeeded`/`processing`/`requires_action` starts the same poll, a failure
+  value toasts, and Stripe's `stripe`/`plan`/`redirect_status`/`payment_intent*` params are stripped
+  via `replaceState`.
+- The Upgrade button is shown to **any** signed-in user (no client role gate); the API's
+  `subscriptions:manage` (STORE_OWNER only) returns `403` for an ADMIN and the dialog surfaces it.
+  Errors (`SUBSCRIPTION_NOT_FOUND`, `PLAN_INACTIVE`, `PLAN_NOT_PUBLIC`, `PLAN_NOT_PURCHASABLE`, 403)
+  render inline with a Retry.
+- Requires `VITE_STRIPE_PUBLISHABLE_KEY` (build-time, inlined); when unset `src/lib/stripe.ts` exports
+  `stripePromise = null` and the dialog shows "Payments are not configured for this store."
+- Self-serve **cancel + refund** is enabled. The current-plan card renders a destructive
+  "Cancel subscription & request refund" button plus a muted "Refund available until {date}" line
+  **only** when `subscription.refundEligible` is true (`GET subscription` now returns the additive
+  `refundEligible`/`refundDeadline` fields). The button opens `CancelSubscriptionDialog.tsx`, which
+  states the action is irreversible, refunds the latest payment in full, and drops the store to the
+  Free plan; Confirm (`variant="destructive"`) calls `subscriptionsApi.cancelSubscription()` →
+  `POST payments/stripe/subscription/cancel`, toasts on success, and `refetchAll()` reloads the page
+  (the plan card flips to Free). Errors (`SUBSCRIPTION_NOT_REFUNDABLE`, `REFUND_WINDOW_EXPIRED`,
+  `SUBSCRIPTION_NOT_FOUND`, `403` for an ADMIN) render inline with the dialog left open. The button
+  is shown to any signed-in user; the API is the gate. Resume / re-subscribe remains **out of scope**
+  (no API). Other plan changes are made by the platform (Super Admin).
+
+- The current-plan card shows the plan, billing interval, price, current period, and trial window. It
+  no longer reads `stripeSubscriptionId`/`cancelAtPeriodEnd` (those fields were removed).
 
 ## Email verification and password reset
 
@@ -149,16 +198,17 @@ no middleware), so the tenant is resolved in the browser and attached by `apiCli
 ## Environment
 
 `VITE_API_URL` is read in `src/api/constants.ts`; `VITE_ALLOW_SUBDOMAIN` and `VITE_APP_ROOT_DOMAIN`
-are read in `src/api/tenant.ts` at call time. Copy `.env.example` to `.env`; all values are inlined
-at build time, so change them before building.
+are read in `src/api/tenant.ts` at call time; `VITE_STRIPE_PUBLISHABLE_KEY` is read in
+`src/lib/stripe.ts` at module load. Copy `.env.example` to `.env`; all values are inlined at build
+time, so change them before building.
 
 ## Docker
 
 `Dockerfile` builds from the repository root context:
 `docker build -f apps/store_owner_dashboard/Dockerfile .`. It installs the workspace, inlines the
-`VITE_API_URL`, `VITE_ALLOW_SUBDOMAIN`, and `VITE_APP_ROOT_DOMAIN` build args, runs
-`pnpm --filter tenant_dash build`, and serves `dist` with `serve` on `${PORT:-3000}`. Changing any
-`VITE_*` value requires a rebuild.
+`VITE_API_URL`, `VITE_ALLOW_SUBDOMAIN`, `VITE_APP_ROOT_DOMAIN`, and `VITE_STRIPE_PUBLISHABLE_KEY`
+build args, runs `pnpm --filter tenant_dash build`, and serves `dist` with `serve` on
+`${PORT:-3000}`. Changing any `VITE_*` value requires a rebuild.
 
 ## Pitfalls
 

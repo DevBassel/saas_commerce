@@ -5,6 +5,7 @@ import { useShow } from "@refinedev/core";
 import { ShowView, ShowViewHeader } from "@/components/refine-ui/views/show-view";
 import { ActiveBadge } from "@/components/refine-ui/data-table/active-badge";
 import { DetailRow } from "@/components/refine-ui/views/detail-row";
+import { QueryErrorState } from "@/components/refine-ui/views/query-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
@@ -37,6 +38,8 @@ export const CategoriesShow = () => {
             ))}
           </CardContent>
         </Card>
+      ) : query.isError ? (
+        <QueryErrorState onRetry={() => void query.refetch()} />
       ) : !record ? (
         <p
           className={cn(

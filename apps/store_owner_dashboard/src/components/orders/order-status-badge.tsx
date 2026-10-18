@@ -18,6 +18,8 @@ const ORDER_STATUS_VARIANTS: Record<OrderStatus, BadgeVariant> = {
 };
 
 const PAYMENT_STATUS_VARIANTS: Record<PaymentStatus, BadgeVariant> = {
+  PENDING: "outline",
+  CANCELED: "outline",
   UNPAID: "outline",
   PAID: "default",
   PARTIALLY_REFUNDED: "secondary",
@@ -26,16 +28,16 @@ const PAYMENT_STATUS_VARIANTS: Record<PaymentStatus, BadgeVariant> = {
 };
 
 export const OrderStatusBadge = ({ status }: { status: OrderStatus }) => (
-  <Badge variant={ORDER_STATUS_VARIANTS[status]}>
-    {ORDER_STATUS_LABELS[status]}
+  <Badge variant={ORDER_STATUS_VARIANTS[status] ?? "outline"}>
+    {ORDER_STATUS_LABELS[status] ?? status}
   </Badge>
 );
 
 OrderStatusBadge.displayName = "OrderStatusBadge";
 
 export const PaymentStatusBadge = ({ status }: { status: PaymentStatus }) => (
-  <Badge variant={PAYMENT_STATUS_VARIANTS[status]}>
-    {PAYMENT_STATUS_LABELS[status]}
+  <Badge variant={PAYMENT_STATUS_VARIANTS[status] ?? "outline"}>
+    {PAYMENT_STATUS_LABELS[status] ?? status}
   </Badge>
 );
 

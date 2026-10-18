@@ -3,21 +3,25 @@
 import type { ColumnDef } from "@tanstack/react-table";
 
 import { ActiveBadge } from "@/components/refine-ui/data-table/active-badge";
+import { CategoryRowActions } from "@/components/categories/category-row-actions";
 import { DateCell } from "@/components/refine-ui/data-table/date-cell";
-import { RowActions } from "@/components/refine-ui/data-table/row-actions";
-import { sortableHeader } from "@/components/refine-ui/data-table/sortable-header";
 import { cn } from "@/lib/utils";
 import type { Category } from "@/types/category";
 
+// GET /categories returns a plain array and ignores list params, so the table
+// sorts and paginates client-side (data-provider fallback). Headers are kept
+// non-sortable to avoid advertising server-side sorting that does not exist.
 export const categoryColumns: ColumnDef<Category>[] = [
   {
     accessorKey: "name",
-    header: sortableHeader<Category>("Name"),
+    header: "Name",
+    enableSorting: false,
     size: 240,
   },
   {
     accessorKey: "slug",
-    header: sortableHeader<Category>("Slug"),
+    header: "Slug",
+    enableSorting: false,
     size: 200,
     cell: ({ getValue }) => (
       <span className={cn("text-muted-foreground")}>
@@ -34,7 +38,8 @@ export const categoryColumns: ColumnDef<Category>[] = [
   },
   {
     accessorKey: "createdAt",
-    header: sortableHeader<Category>("Created"),
+    header: "Created",
+    enableSorting: false,
     size: 140,
     cell: ({ getValue }) => (
       <DateCell value={getValue() as string | undefined} />
@@ -45,16 +50,6 @@ export const categoryColumns: ColumnDef<Category>[] = [
     header: "",
     enableSorting: false,
     size: 140,
-    cell: ({ row }) => (
-      <RowActions
-        resource="categories"
-        recordItemId={row.original.id}
-        labels={{
-          show: "Show category",
-          edit: "Edit category",
-          delete: "Delete category",
-        }}
-      />
-    ),
+    cell: ({ row }) => <CategoryRowActions id={row.original.id} />,
   },
 ];

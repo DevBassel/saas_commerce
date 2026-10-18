@@ -1,6 +1,11 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  TENANT_SLUG_KEY,
+  ensureTenantParamInUrl,
+  getCurrentTenantSlug,
+  getGuardTenantSlug,
+  getTenantHeaderSlug,
   getTenantSlugFromHost,
   getTenantSlugFromParam,
   isValidTenantSlug,
@@ -162,6 +167,70 @@ describe("resolveTenantSlugFrom", () => {
   it("returns null on the apex with no parameter or persisted slug", () => {
     vi.stubEnv("VITE_ALLOW_SUBDOMAIN", "false");
     expect(resolveTenantSlugFrom({ hostname: "localhost", search: "" })).toBeNull();
+  });
+});
+
+describe("tenant slug resolution wrappers", () => {
+  const resetLocation = () => window.history.replaceState(null, "", "/");
+
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    resetLocation();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    window.sessionStorage.clear();
+    resetLocation();
+  });
+
+  it("subdomain mode reads the first host label and ignores ?tenant=", () => {
+    vi.stubEnv("VITE_ALLOW_SUBDOMAIN", "true");
+    window.history.replaceState(null, "", "/?tenant=other");
+    expect(getTenantHeaderSlug()).toBe("localhost");
+    expect(getCurrentTenantSlug()).toBe("localhost");
+    // The strict guard needs >= 3 labels, so a bare host yields no slug.
+    expect(getGuardTenantSlug()).toBeNull();
+  });
+
+  it("apex mode resolves and persists a valid ?tenant=", () => {
+    vi.stubEnv("VITE_ALLOW_SUBDOMAIN", "false");
+    window.history.replaceState(null, "", "/?tenant=my-store");
+    expect(getCurrentTenantSlug()).toBe("my-store");
+    expect(getTenantHeaderSlug()).toBe("my-store");
+    expect(getGuardTenantSlug()).toBe("my-store");
+    expect(window.sessionStorage.getItem(TENANT_SLUG_KEY)).toBe("my-store");
+  });
+
+  it("apex mode falls back to the persisted slug without a param", () => {
+    vi.stubEnv("VITE_ALLOW_SUBDOMAIN", "false");
+    window.sessionStorage.setItem(TENANT_SLUG_KEY, "persisted");
+    window.history.replaceState(null, "", "/");
+    expect(getCurrentTenantSlug()).toBe("persisted");
+  });
+
+  it("a newly seen valid ?tenant= overwrites the stored slug", () => {
+    vi.stubEnv("VITE_ALLOW_SUBDOMAIN", "false");
+    window.sessionStorage.setItem(TENANT_SLUG_KEY, "old-store");
+    window.history.replaceState(null, "", "/?tenant=new-store");
+    expect(getCurrentTenantSlug()).toBe("new-store");
+    expect(window.sessionStorage.getItem(TENANT_SLUG_KEY)).toBe("new-store");
+  });
+
+  it("ensureTenantParamInUrl appends the slug while keeping the query", () => {
+    vi.stubEnv("VITE_ALLOW_SUBDOMAIN", "false");
+    window.history.replaceState(null, "", "/products?foo=1");
+    window.sessionStorage.setItem(TENANT_SLUG_KEY, "my-store");
+    ensureTenantParamInUrl();
+    expect(window.location.search).toContain("tenant=my-store");
+    expect(window.location.search).toContain("foo=1");
+  });
+
+  it("ensureTenantParamInUrl is a no-op in subdomain mode", () => {
+    vi.stubEnv("VITE_ALLOW_SUBDOMAIN", "true");
+    window.history.replaceState(null, "", "/products");
+    ensureTenantParamInUrl();
+    expect(window.location.search).toBe("");
   });
 });
 

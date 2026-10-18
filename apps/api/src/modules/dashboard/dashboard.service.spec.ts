@@ -102,8 +102,10 @@ describe('DashboardService', () => {
       totalOrders: 10,
       fulfilledOrders: 3,
       pendingOrders: 2,
-      totalPaid: 123.45,
-      waitingAmount: 10,
+      balance: {
+        available: [{ amount: 12345, currency: 'usd' }],
+        pending: [{ amount: 1000, currency: 'usd' }],
+      },
       customers: 4,
       storageUsedBytes: 200,
       storageCapacityBytes: 1000,
@@ -131,25 +133,25 @@ describe('DashboardService', () => {
     });
   });
 
-  it('sums every balance entry and converts cents to dollars', async () => {
+  it('returns the raw Stripe balance snapshot unchanged', async () => {
     const { service, orderRepo, userQb, getBalance } = buildMocks();
     orderRepo.count.mockResolvedValue(0);
     userQb.getCount.mockResolvedValue(0);
-    getBalance.mockResolvedValue({
+    const balance = {
       available: [
         { amount: 1000, currency: 'usd' },
         { amount: 250, currency: 'usd' },
       ],
       pending: [{ amount: 99, currency: 'usd' }],
-    });
+    };
+    getBalance.mockResolvedValue(balance);
 
     const stats = await service.getStats(TENANT);
 
-    expect(stats.totalPaid).toBe(12.5);
-    expect(stats.waitingAmount).toBe(0.99);
+    expect(stats.balance).toEqual(balance);
   });
 
-  it('skips Stripe and returns zero money when the store has no account', async () => {
+  it('returns a null balance when the store has no Stripe account', async () => {
     const { service, orderRepo, userQb, getBalance, findBySchemaName } =
       buildMocks();
     findBySchemaName.mockResolvedValue({
@@ -163,23 +165,19 @@ describe('DashboardService', () => {
     const stats = await service.getStats(TENANT);
 
     expect(getBalance).not.toHaveBeenCalled();
-    expect(stats.totalPaid).toBe(0);
-    expect(stats.waitingAmount).toBe(0);
+    expect(stats.balance).toBeNull();
   });
 
-  it('falls back to zero money when Stripe is unavailable', async () => {
+  it('propagates a Stripe balance failure', async () => {
     const { service, orderRepo, userQb, getBalance } = buildMocks();
     orderRepo.count.mockResolvedValue(0);
     userQb.getCount.mockResolvedValue(0);
     getBalance.mockRejectedValue(new Error('stripe down'));
 
-    const stats = await service.getStats(TENANT);
-
-    expect(stats.totalPaid).toBe(0);
-    expect(stats.waitingAmount).toBe(0);
+    await expect(service.getStats(TENANT)).rejects.toThrow('stripe down');
   });
 
-  it('returns zero money when the connected account is empty', async () => {
+  it('returns a null balance when the connected account is empty', async () => {
     const { service, orderRepo, userQb, getBalance } = buildMocks();
     orderRepo.count.mockResolvedValue(0);
     userQb.getCount.mockResolvedValue(0);
@@ -187,8 +185,7 @@ describe('DashboardService', () => {
 
     const stats = await service.getStats(TENANT);
 
-    expect(stats.totalPaid).toBe(0);
-    expect(stats.waitingAmount).toBe(0);
+    expect(stats.balance).toBeNull();
   });
 
   it('falls back to zero storage when the tenant row is missing', async () => {
@@ -218,19 +215,16 @@ describe('DashboardService', () => {
     expect(stats.totalOrders).toBe(0);
   });
 
-  it('degrades gracefully when Stripe rejects with a non-Error', async () => {
+  it('propagates a non-Error Stripe rejection', async () => {
     const { service, orderRepo, userQb, getBalance } = buildMocks();
     orderRepo.count.mockResolvedValue(0);
     userQb.getCount.mockResolvedValue(0);
     getBalance.mockRejectedValue('stripe exploded');
 
-    const stats = await service.getStats(TENANT);
-
-    expect(stats.totalPaid).toBe(0);
-    expect(stats.waitingAmount).toBe(0);
+    await expect(service.getStats(TENANT)).rejects.toBe('stripe exploded');
   });
 
-  it('returns zero money when the balance payload has no entry arrays', async () => {
+  it('passes through a balance payload with no entry arrays', async () => {
     const { service, orderRepo, userQb, getBalance } = buildMocks();
     orderRepo.count.mockResolvedValue(0);
     userQb.getCount.mockResolvedValue(0);
@@ -238,11 +232,10 @@ describe('DashboardService', () => {
 
     const stats = await service.getStats(TENANT);
 
-    expect(stats.totalPaid).toBe(0);
-    expect(stats.waitingAmount).toBe(0);
+    expect(stats.balance).toEqual({ available: undefined, pending: [] });
   });
 
-  it('returns zero money when both balance lists are empty', async () => {
+  it('passes through a balance with both lists empty', async () => {
     const { service, orderRepo, userQb, getBalance } = buildMocks();
     orderRepo.count.mockResolvedValue(0);
     userQb.getCount.mockResolvedValue(0);
@@ -250,26 +243,25 @@ describe('DashboardService', () => {
 
     const stats = await service.getStats(TENANT);
 
-    expect(stats.totalPaid).toBe(0);
-    expect(stats.waitingAmount).toBe(0);
+    expect(stats.balance).toEqual({ available: [], pending: [] });
   });
 
-  it('sums multiple pending entries as well as available ones', async () => {
+  it('passes through multiple pending entries as well as available ones', async () => {
     const { service, orderRepo, userQb, getBalance } = buildMocks();
     orderRepo.count.mockResolvedValue(0);
     userQb.getCount.mockResolvedValue(0);
-    getBalance.mockResolvedValue({
+    const balance = {
       available: [{ amount: 500, currency: 'usd' }],
       pending: [
         { amount: 250, currency: 'usd' },
         { amount: 2500, currency: 'usd' },
       ],
-    });
+    };
+    getBalance.mockResolvedValue(balance);
 
     const stats = await service.getStats(TENANT);
 
-    expect(stats.totalPaid).toBe(5);
-    expect(stats.waitingAmount).toBe(27.5);
+    expect(stats.balance).toEqual(balance);
   });
 
   it('coerces null storage counters to zero', async () => {

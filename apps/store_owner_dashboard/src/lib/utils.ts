@@ -37,3 +37,16 @@ export function storagePercent(
   }
   return Math.min(100, Math.max(0, (used / capacity) * 100));
 }
+
+export function formatCurrency(amount: number, currency: string): string {
+  const value = Number(amount);
+  if (!Number.isFinite(value)) return "—";
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: currency.toUpperCase(),
+    }).format(value);
+  } catch {
+    return `${value.toFixed(2)} ${currency.toUpperCase()}`;
+  }
+}

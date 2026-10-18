@@ -149,7 +149,9 @@ Public schema:
 - Subscription entities (all **public**, see `## Subscriptions`): `SubscriptionPlan`
   (`subscription_plans`, unique `slug`), `SubscriptionPlanLimit` / `SubscriptionPlanFeature`
   (`subscription_plan_limits` / `subscription_plan_features`, unique `(planId, key)`, FK cascade),
-  `Subscription` (`subscriptions`, numeric `tenantId` unique, `planId` FK `ON DELETE RESTRICT`), and
+  `Subscription` (`subscriptions`, numeric `tenantId` unique, `planId` FK `ON DELETE RESTRICT`),
+  `SubscriptionPayment` (`subscription_payments`, FK `subscriptionId` `ON DELETE CASCADE`, non-FK
+  `planId`/`billingInterval` snapshot; a public ledger mirroring tenant `Payment`), and
   `TenantUsageCounter` (`tenant_usage_counters`, unique `(tenantId, metric, periodStart)`).
 
 Tenant schema (`TENANT_ENTITIES`):
@@ -245,17 +247,48 @@ Payments are **implemented** in `src/modules/payments/` (controller, service,
 `payment.entity.ts` calling it a scaffold is out of date.
 
 - Routes: `POST /payments/stripe` (create a PaymentIntent for an order),
-  `POST /payments/stripe/webhook` (`@Platform @Public`, raw-body signature verification),
-  `GET /payments/stripe/account` (`payments:manage`), `POST /payments/stripe/connect`
-  (`payments:manage`).
+  `POST /payments/stripe/subscription` (create a PaymentIntent for a subscription plan; returns
+  `{ clientSecret }`), `POST /payments/stripe/subscription/cancel` (tenant self-serve cancel + full
+  refund, `subscriptions:manage`, see `## Subscriptions`), `POST /payments/stripe/webhook`
+  (`@Platform @Public`, raw-body signature verification), `GET /payments/stripe/account`
+  (`payments:manage`), `POST /payments/stripe/connect` (`payments:manage`). `PaymentsModule` also
+  hosts the platform `POST /platform/tenants/:id/subscription/cancel` (SUPER_ADMIN): it refunds the
+  tenant's latest paid `SubscriptionPayment` on the platform account and falls back to the free plan.
 - Stripe is called directly (no `PaymentProvider` seam, no `PAYMENT_PROVIDER` token, no
   `payments.provider` env). `Stripe` is the only payment provider constant in code.
 - Destination charges use `transfer_data.destination` and an optional `application_fee_amount`
   derived from `STRIPE_APPLICATION_FEE_BPS`. `on_behalf_of` is **not** used.
 - The PaymentIntent is created before the `Payment` row is persisted, so the "persist first, then
   call Stripe" design in older docs does not apply.
-- Webhook handling covers `payment_intent.*`, `charge.refunded`, and `refund.*`; handlers read
-  `RawBodyRequest.rawBody`.
+- `POST /payments/stripe/subscription` charges the **platform** Stripe account (no `transfer_data`,
+  no `application_fee_amount`, no Connect account required, no `paymentsPaused` check) because plan
+  revenue is platform revenue. It is gated by `subscriptions:manage` (STORE_OWNER only; ADMIN has
+  `subscriptions:read` only, SUPER_ADMIN bypasses), requires a tenant `Subscription` row, and
+  persists a `SubscriptionPayment` (`status = PENDING`, `paymentRef = intent.id`).
+- `POST /payments/stripe/subscription/cancel` (`subscriptions:manage`, tenant-scoped) is the
+  self-serve counterpart: it refunds the tenant's latest **PAID** `SubscriptionPayment` on the
+  platform account (shared private helper, idempotency key `refund-subscription-{paymentId}`), then
+  downgrades to the free plan. It is allowed only within
+  `SUBSCRIPTION_REFUND_WINDOW_DAYS` (7) days of that payment's `paidAt` (fallback `createdAt`).
+  Errors use `{ code, message }`: `404 SUBSCRIPTION_NOT_FOUND`, `409 SUBSCRIPTION_NOT_REFUNDABLE`
+  (no paid purchase), `409 REFUND_WINDOW_EXPIRED`. An already-refunded repeat is a `200` no-op
+  (idempotent with the `charge.refunded` webhook path below).
+- Webhook handling covers `payment_intent.*`, `charge.refunded`, and `refund.*`. `webHook` verifies
+  the raw-body signature (handlers read `RawBodyRequest.rawBody`), then classifies each event by
+  parsing `metadata.data.kind` and dispatches to one of two handlers:
+  - `handleOrderPaymentEvents` — order intents (metadata has no `kind`); updates the tenant
+    `Payment`/`Order` exactly as before (byte-identical path).
+  - `handleSubscriptionEvents` — subscription intents (`kind === 'subscription'`);
+    `succeeded` marks the public `SubscriptionPayment` row `PAID` and calls
+    `SubscriptionService.assignPlan` (sets the plan `ACTIVE`/`TRIALING`, the period, and mirrors
+    storage capacity); `canceled` → ledger `CANCELED`, `payment_failed` → `FAILED` + `failureReason`,
+    refunds reconcile the ledger (`REFUNDED`/`PARTIALLY_REFUNDED`/`PAID`), and a **fully** refunded
+    payment falls back to the free plan via `SubscriptionService.downgradeToFree` (partial refunds
+    and reversals keep the paid plan; idempotent on webhook retries).
+  - Refund-family events carry no metadata; the intent is fetched once with `latest_charge`, then
+    classified and routed (cumulative `charge.amount_refunded` keeps partial/repeated refunds
+    idempotent). `successSubscriptionPayment` early-returns when the ledger row is already `PAID`, so
+    Stripe redeliveries do not reset the subscription period.
 - Only `publishableKey` is ever returned; secrets are never serialized or logged.
 - Permission keys depend on the shared union: `payments:create|read|manage` (CUSTOMER get
   create+read, ADMIN all three, STORE_OWNER/SUPER_ADMIN inherit all keys).
@@ -282,37 +315,58 @@ Payments are **implemented** in `src/modules/payments/` (controller, service,
 
 ## Subscriptions
 
-SaaS subscription plans are **platform-level** (public schema). Super Admin manages plans and
-assigns them; tenants only read their own subscription. Stripe SaaS billing is **deferred**: the
-`stripe*` columns exist but are unused, and `src/modules/payments/**` (customer Stripe Connect) is
-untouched.
+SaaS subscription plans are **platform-level** (public schema). Super Admin manages plans and assigns
+them; tenants read their own subscription. There is **no** recurring Stripe Billing flow:
+`StripeBillingService`, checkout endpoints, billing webhooks, and the `Subscription` Stripe columns
+were removed. A one-off platform-account PaymentIntent purchase endpoint
+(`POST /payments/stripe/subscription`, see `## Payments`) creates a `PENDING` ledger row, and the
+`payment_intent.succeeded` webhook for a `kind === 'subscription'` intent assigns the plan on success
+(self-serve completion). `src/modules/payments/**` otherwise remains the separate customer Stripe
+Connect destination-charge flow.
 
 - Entities: `SubscriptionPlan`, `SubscriptionPlanLimit`, `SubscriptionPlanFeature`, `Subscription`
-  (one per tenant via unique `tenantId`), `TenantUsageCounter`. All public — never add them to
-  `TENANT_ENTITIES`.
+  (one per tenant via unique `tenantId`), `SubscriptionPayment` (`subscription_payments`, the public
+  plan-payment ledger; written as `PENDING` by `POST /payments/stripe/subscription`, then reconciled
+  by the subscription webhook handler — `PAID`/`CANCELED`/`FAILED`/`REFUNDED`/`PARTIALLY_REFUNDED`),
+  `TenantUsageCounter`. All public — never
+  add them to `TENANT_ENTITIES`.
 - Plan limits: `STORAGE_BYTES`, `DATABASE_BYTES`, `STORE_ADMINS`, `COUPONS_PER_MONTH`, `PRODUCTS`;
   features:
   `STRIPE_PAYMENTS`, `STORE_CUSTOMIZATION`, `COUPONS`, `STAFF_MANAGEMENT`,
   `PRODUCT_IMPORT_EXPORT`, `CUSTOM_DOMAIN`, `ADVANCED_ANALYTICS`, `ADVANCED_REPORTS`, `SEO_TOOLS`,
   `AUDIT_LOGS`, `PRIORITY_SUPPORT`. Unlimited = no limit row or `value IS NULL` (`getLimit` →
   `null`).
-- Seeded plans: `free` (500 MB storage / 50 MB DB / 1 admin / 5 coupons / 10 products), `starter`
-  (10 GB / 500 MB / 2 admins / 25 coupons / 100 products), `growth` (50 GB / 2 GB / 5 admins /
-  100 coupons / 1000 products), `pro` (200 GB / 10 GB / 15 admins / 500 coupons / 5000 products),
-  and `enterprise` (no limit rows = unlimited, all features).
+- Seeded plans: `free` (500 MB storage / 50 MB DB / 1 admin / 5 coupons / 10 products, $0), `starter`
+  (10 GB / 500 MB / 2 admins / 25 coupons / 100 products, $29/$290), `growth` (50 GB / 2 GB / 5
+  admins / 100 coupons / 1000 products, $99/$990), `pro` (200 GB / 10 GB / 15 admins / 500 coupons /
+  5000 products, $299/$2990), and `enterprise` (no limit rows = unlimited, all features,
+  $999/$9990). All seed prices are `usd` and are re-synced by the idempotent `subscription-plans`
+  seeder, so re-running the seed backfills prices on an existing database.
 - States: active = `ACTIVE`; usable = `TRIALING | ACTIVE | PAST_DUE`, plus `CANCELED` until
   `currentPeriodEnd`. Not usable → `SUBSCRIPTION_INACTIVE`.
 - Routes (Super Admin, `@Platform @Roles([SUPER_ADMIN])`): `GET|POST /platform/subscription-plans`,
   `GET|PATCH|DELETE /platform/subscription-plans/:id`,
   `GET /platform/tenants/:id/subscription` (current plan + subscription; falls back to `free`),
   `GET /platform/tenants/:id/subscription/usage` (`{ used, limit, remaining }` per limit key),
-  `PUT /platform/tenants/:id/subscription`, `PATCH /platform/tenants/:id/subscription/status`.
-  `DELETE` deactivates a plan still referenced by a subscription, otherwise hard-deletes it
-  (limits/features cascade).
-- Tenant routes (not `@Platform`, gated by `subscriptions:read`): `GET /subscription`,
-  `GET /subscription/plans` (active + public), `GET /subscription/usage`. Tenant identity always
-  comes from `requireTenantContext()` / `resolveTenantScope()`; a body `tenantId` is rejected by the
-  global pipe.
+  `PUT /platform/tenants/:id/subscription`, `PATCH /platform/tenants/:id/subscription/status`,
+  `POST /platform/tenants/:id/subscription/cancel` (cancel + refund the latest paid plan purchase,
+  then fall back to `free`; implemented in `PaymentsModule` — the refund needs Stripe and the free
+  fallback needs `SubscriptionService`, and `SubscriptionsModule` cannot import `PaymentsModule`
+  without a cycle). `DELETE` deactivates a plan still referenced by a subscription, otherwise
+  hard-deletes it (limits/features cascade).
+- Tenant routes (not `@Platform`): reads gated by `subscriptions:read` — `GET /subscription`,
+  `GET /subscription/plans` (active + public), `GET /subscription/usage`. `GET /subscription` is
+  additive: it merges a read-time refund snapshot (`refundEligible: boolean`,
+  `refundDeadline: string | null` — ISO, `null` when no subscription or no PAID purchase) computed
+  by `SubscriptionService.getRefundInfo` from the latest PAID `SubscriptionPayment` (the deadline is
+  `paidAt` + `SUBSCRIPTION_REFUND_WINDOW_DAYS`, fallback `createdAt`). The flag is **advisory**; the
+  cancel route re-checks authoritatively. A plan purchase starts a PaymentIntent via
+  `POST /payments/stripe/subscription`, and the plan is then assigned **only** when the Stripe
+  `payment_intent.succeeded` webhook reconciles it. Self-serve cancel + refund is the one tenant
+  mutation: `POST /payments/stripe/subscription/cancel` (`subscriptions:manage`, implemented in
+  `PaymentsModule` for the same cycle reason as the platform route). Resume/re-subscribe is still out
+  of scope; tenant identity always comes from `requireTenantContext()` / `resolveTenantScope()`; a
+  body `tenantId` is rejected by the global pipe.
 - Enforcement (`SubscriptionEntitlementsService`, the only reader other modules use):
   - **Storage** stays enforced by `TenantService.adjustStorageUsedBytes`; plan assignment mirrors
     `STORAGE_BYTES` into `Tenant.storageCapacityBytes` (unlimited → `Number.MAX_SAFE_INTEGER`).
@@ -339,9 +393,9 @@ untouched.
   `PLAN_LIMIT_REACHED`, `COUPON_MONTHLY_LIMIT_REACHED`, `STORE_ADMIN_LIMIT_REACHED`,
   `DATABASE_LIMIT_REACHED`, `PRODUCT_LIMIT_REACHED`, `SUBSCRIPTION_INACTIVE`). No global exception
   filter is added.
-- Permissions: `subscriptions:read` (STORE_OWNER + ADMIN) and `subscriptions:manage`
-  (STORE_OWNER; enforced by the platform `SUPER_ADMIN` role on platform routes). Registered in
-  `PermissionKey`, `SEED_PERMISSIONS`, and `SEED_ROLE_PERMISSIONS`.
+- Permissions: `subscriptions:read` (STORE_OWNER + ADMIN) gates the tenant reads. `subscriptions:manage`
+  gates the tenant purchase + cancel/refund routes (`POST /payments/stripe/subscription[/cancel]`;
+  STORE_OWNER only, ADMIN has read only, SUPER_ADMIN bypasses).
 - The DB gate runs only at checkout; product create is gated by the `PRODUCTS` count limit, and
   other writes are not gated (known limitation). Public-schema subscription tables are created by
   `synchronize`, not migrations.

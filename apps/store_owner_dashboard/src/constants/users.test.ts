@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   canCreateUsers,
+  canManageCatalog,
   canManageTarget,
   filterAssignableRoles,
   permissionAction,
@@ -82,6 +83,21 @@ describe("canCreateUsers", () => {
     expect(canCreateUsers("CUSTOM_ROLE")).toBe(false);
     expect(canCreateUsers(null)).toBe(false);
     expect(canCreateUsers(undefined)).toBe(false);
+  });
+});
+
+describe("canManageCatalog", () => {
+  it("allows administrators and above", () => {
+    expect(canManageCatalog("SUPER_ADMIN")).toBe(true);
+    expect(canManageCatalog("STORE_OWNER")).toBe(true);
+    expect(canManageCatalog("ADMIN")).toBe(true);
+  });
+
+  it("denies customers and missing roles", () => {
+    expect(canManageCatalog("CUSTOMER")).toBe(false);
+    expect(canManageCatalog("CUSTOM_ROLE")).toBe(false);
+    expect(canManageCatalog(null)).toBe(false);
+    expect(canManageCatalog(undefined)).toBe(false);
   });
 });
 

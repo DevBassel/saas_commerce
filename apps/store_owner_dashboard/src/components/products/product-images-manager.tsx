@@ -1,11 +1,19 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useInvalidate, useNotification } from "@refinedev/core";
 import { ArrowDown, ArrowUp, ImagePlus, Loader2, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { productsApi } from "@/api/products.api";
 import { toApiError } from "@/api/client";
@@ -36,22 +44,20 @@ export const ProductImagesManager = ({
   images: ProductImage[];
 }) => {
   const incomingSignature = useMemo(() => buildSignature(images), [images]);
-  const [sync, setSync] = useState(() => ({
-    signature: incomingSignature,
-    items: sortByPosition(images),
-  }));
+  const [items, setItems] = useState(() => sortByPosition(images));
+  const lastSignatureRef = useRef(incomingSignature);
 
-  // Re-sync only when the server-provided images actually change (render-phase
-  // adjustment), instead of overwriting optimistic state on every render.
-  // Optimistic updates keep `signature` unchanged so they are not clobbered.
-  if (sync.signature !== incomingSignature) {
-    setSync({ signature: incomingSignature, items: sortByPosition(images) });
-  }
-
-  const items = sync.items;
+  // Re-sync only when the server-provided images actually change. Optimistic
+  // updates keep the signature unchanged, so they are not clobbered.
+  useEffect(() => {
+    if (lastSignatureRef.current === incomingSignature) return;
+    lastSignatureRef.current = incomingSignature;
+    setItems(sortByPosition(images));
+  }, [incomingSignature, images]);
 
   const [uploading, setUploading] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [reordering, setReordering] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -66,8 +72,7 @@ export const ProductImagesManager = ({
     });
 
   const applyProduct = (product: Product) => {
-    const next = sortByPosition(product.images ?? []);
-    setSync((previous) => ({ ...previous, items: next }));
+    setItems(sortByPosition(product.images ?? []));
   };
 
   const handleSelectFiles = async (
@@ -149,6 +154,13 @@ export const ProductImagesManager = ({
     }
   };
 
+  const confirmDeleteImage = async () => {
+    const id = pendingDeleteId;
+    if (id == null) return;
+    await handleDelete(id);
+    setPendingDeleteId(null);
+  };
+
   const move = async (index: number, direction: -1 | 1) => {
     const target = index + direction;
     if (target < 0 || target >= items.length) return;
@@ -156,7 +168,7 @@ export const ProductImagesManager = ({
     const previous = items;
     const next = [...items];
     [next[index], next[target]] = [next[target], next[index]];
-    setSync((current) => ({ ...current, items: next }));
+    setItems(next);
     setReordering(true);
     try {
       const product = await productsApi.reorderImages(
@@ -166,7 +178,7 @@ export const ProductImagesManager = ({
       applyProduct(product);
       refreshProduct();
     } catch (error) {
-      setSync((current) => ({ ...current, items: previous }));
+      setItems(previous);
       open?.({
         type: "error",
         message: "Reorder failed",
@@ -180,10 +192,11 @@ export const ProductImagesManager = ({
   const isBusy = uploading || reordering;
 
   return (
-    <Card>
-      <CardHeader
-        className={cn("flex", "flex-row", "items-center", "justify-between")}
-      >
+    <>
+      <Card>
+        <CardHeader
+          className={cn("flex", "flex-row", "items-center", "justify-between")}
+        >
         <CardTitle>Images</CardTitle>
         <Button
           type="button"
@@ -300,7 +313,7 @@ export const ProductImagesManager = ({
                       variant="ghost"
                       size="icon"
                       disabled={isBusy || busyId === image.id}
-                      onClick={() => handleDelete(image.id)}
+                      onClick={() => setPendingDeleteId(image.id)}
                       aria-label="Delete image"
                     >
                       {busyId === image.id ? (
@@ -316,7 +329,45 @@ export const ProductImagesManager = ({
           </div>
         )}
       </CardContent>
-    </Card>
+      </Card>
+      <Dialog
+        open={pendingDeleteId !== null}
+        onOpenChange={(next) => {
+          if (!next && busyId == null) setPendingDeleteId(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete image?</DialogTitle>
+            <DialogDescription>
+              This image will be permanently removed from the product. This
+              action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busyId != null}
+              onClick={() => setPendingDeleteId(null)}
+            >
+              Keep image
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={busyId != null}
+              onClick={() => void confirmDeleteImage()}
+            >
+              {busyId === pendingDeleteId ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : null}
+              Delete image
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 

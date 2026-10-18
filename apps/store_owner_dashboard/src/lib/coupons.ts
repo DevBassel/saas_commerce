@@ -21,11 +21,16 @@ export const toIsoString = (value?: string | null): string | undefined => {
 
 export const buildCouponPayload = (values: CouponFormValues) => ({
   ...values,
-  description: values.description ? values.description : undefined,
-  startsAt: toIsoString(values.startsAt),
-  expiresAt: toIsoString(values.expiresAt),
+  description: values.description ? values.description : null,
+  minOrderAmount: values.minOrderAmount ?? null,
   maxDiscountAmount:
-    values.discountType === "PERCENTAGE" ? values.maxDiscountAmount : undefined,
+    values.discountType === "PERCENTAGE"
+      ? (values.maxDiscountAmount ?? null)
+      : null,
+  usageLimit: values.usageLimit ?? null,
+  perUserLimit: values.perUserLimit ?? null,
+  startsAt: toIsoString(values.startsAt) ?? null,
+  expiresAt: toIsoString(values.expiresAt) ?? null,
 });
 
 export const formatDiscount = (

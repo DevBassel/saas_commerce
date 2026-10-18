@@ -4,7 +4,8 @@ import { TenantModule } from '../tenants/tenant.module';
 import { SubscriptionPlan } from './entities/subscription-plan.entity';
 import { SubscriptionPlanLimit } from './entities/subscription-plan-limit.entity';
 import { SubscriptionPlanFeature } from './entities/subscription-plan-feature.entity';
-import { Subscription } from './entities/subscription.entity';
+import { Subscription } from '../payments/entities/subscription.entity';
+import { SubscriptionPayment } from '../payments/entities/subscription-payment.entity';
 import { TenantUsageCounter } from './entities/tenant-usage-counter.entity';
 import { SubscriptionPlansService } from './services/subscription-plans.service';
 import { SubscriptionService } from './services/subscription.service';
@@ -21,6 +22,7 @@ import { SubscriptionController } from './controllers/subscription.controller';
       SubscriptionPlanLimit,
       SubscriptionPlanFeature,
       Subscription,
+      SubscriptionPayment,
       TenantUsageCounter,
     ]),
     TenantModule,

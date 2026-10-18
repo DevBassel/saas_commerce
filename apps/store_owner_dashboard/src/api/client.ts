@@ -11,7 +11,8 @@ import {
   TOKEN_KEY,
   USER_EMAIL_KEY,
 } from "./constants";
-import { getTenantHeaderSlug } from "./tenant";
+import { getGuardTenantSlug, getTenantHeaderSlug, withTenantParam } from "./tenant";
+import { resetClientState } from "@/lib/client-reset";
 
 export type ApiError = {
   message: string;
@@ -53,7 +54,8 @@ const isAuthRequest = (url?: string): boolean =>
 
 const unauthenticatedRedirect = () => {
   tokenStorage.clear();
-  window.location.assign("/login");
+  // Keep the apex `?tenant=` slug so the login page resolves the same tenant.
+  resetClientState(withTenantParam("/login", getGuardTenantSlug()));
 };
 
 export const apiClient: AxiosInstance = axios.create({

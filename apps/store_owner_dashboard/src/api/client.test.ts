@@ -1,7 +1,38 @@
-import axios from "axios";
+import axios, {
+  AxiosError,
+  AxiosHeaders,
+  type AxiosAdapter,
+  type InternalAxiosRequestConfig,
+} from "axios";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { refreshSession, toApiError, tokenStorage } from "./client";
+import { apiClient, refreshSession, toApiError, tokenStorage } from "./client";
+import { resetClientState } from "@/lib/client-reset";
+
+vi.mock("@/lib/client-reset", () => ({
+  resetClientState: vi.fn(),
+}));
+
+const responseFor = (
+  config: InternalAxiosRequestConfig,
+  status = 200,
+  data: unknown = {},
+) => ({
+  data,
+  status,
+  statusText: status === 200 ? "OK" : "Error",
+  headers: new AxiosHeaders(),
+  config,
+});
+
+const unauthorizedError = (config: InternalAxiosRequestConfig): AxiosError =>
+  new AxiosError("Unauthorized", "ERR_BAD_RESPONSE", config, undefined, {
+    status: 401,
+    statusText: "Unauthorized",
+    headers: new AxiosHeaders(),
+    data: {},
+    config,
+  });
 
 describe("toApiError", () => {
   it("maps a plain Error to a message with statusCode 0", () => {
@@ -165,5 +196,110 @@ describe("refreshSession", () => {
 
     expect(tokenStorage.getAccessToken()).toBe("old-access");
     expect(tokenStorage.getRefreshToken()).toBe("refresh-1");
+  });
+});
+
+describe("apiClient 401 refresh-and-replay", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.mocked(resetClientState).mockClear();
+  });
+
+  it("refreshes once and replays the original request", async () => {
+    tokenStorage.setTokens("old-access", "refresh-1");
+    const post = vi.spyOn(axios, "post").mockResolvedValue({
+      data: { access_token: "new-access", refresh_token: "refresh-2" },
+    });
+
+    const seen: Array<string | undefined> = [];
+    const adapter: AxiosAdapter = async (config) => {
+      const auth = config.headers.get("Authorization");
+      seen.push(typeof auth === "string" ? auth : undefined);
+      if (auth === "Bearer new-access") return responseFor(config);
+      throw unauthorizedError(config);
+    };
+
+    const response = await apiClient.get("/products", { adapter });
+
+    expect(response.status).toBe(200);
+    expect(seen).toEqual(["Bearer old-access", "Bearer new-access"]);
+    expect(post).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not refresh or redirect for auth endpoints", async () => {
+    tokenStorage.setTokens("old-access", "refresh-1");
+    const post = vi.spyOn(axios, "post");
+    const adapter: AxiosAdapter = async (config) => {
+      throw unauthorizedError(config);
+    };
+
+    await expect(
+      apiClient.post("/auth/login", {}, { adapter }),
+    ).rejects.toBeDefined();
+
+    expect(post).not.toHaveBeenCalled();
+    expect(resetClientState).not.toHaveBeenCalled();
+    expect(tokenStorage.getAccessToken()).toBe("old-access");
+  });
+
+  it("clears tokens and redirects when the refresh cannot recover", async () => {
+    tokenStorage.setTokens("old-access", "");
+    const adapter: AxiosAdapter = async (config) => {
+      throw unauthorizedError(config);
+    };
+
+    await expect(
+      apiClient.get("/products", { adapter }),
+    ).rejects.toBeDefined();
+
+    expect(resetClientState).toHaveBeenCalledWith("/login");
+    expect(tokenStorage.getAccessToken()).toBeNull();
+    expect(tokenStorage.getRefreshToken()).toBeNull();
+  });
+});
+
+describe("apiClient request interceptor", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    localStorage.clear();
+    window.sessionStorage.clear();
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("attaches x-tenant-slug and Authorization when present", async () => {
+    vi.stubEnv("VITE_ALLOW_SUBDOMAIN", "false");
+    window.history.replaceState(null, "", "/?tenant=my-store");
+    tokenStorage.setTokens("access-1", "refresh-1");
+
+    let seen: InternalAxiosRequestConfig | undefined;
+    const adapter: AxiosAdapter = async (config) => {
+      seen = config;
+      return responseFor(config);
+    };
+    await apiClient.get("/products", { adapter });
+
+    expect(seen?.headers.get("x-tenant-slug")).toBe("my-store");
+    expect(seen?.headers.get("Authorization")).toBe("Bearer access-1");
+  });
+
+  it("omits both headers when there is no tenant or token", async () => {
+    vi.stubEnv("VITE_ALLOW_SUBDOMAIN", "false");
+    localStorage.clear();
+    window.sessionStorage.clear();
+    window.history.replaceState(null, "", "/");
+
+    let seen: InternalAxiosRequestConfig | undefined;
+    const adapter: AxiosAdapter = async (config) => {
+      seen = config;
+      return responseFor(config);
+    };
+    await apiClient.get("/products", { adapter });
+
+    expect(seen?.headers.get("x-tenant-slug")).toBeFalsy();
+    expect(seen?.headers.get("Authorization")).toBeFalsy();
   });
 });

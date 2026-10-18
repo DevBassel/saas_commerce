@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { DataTablePagination } from "@/components/refine-ui/data-table/data-table-pagination";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +39,7 @@ export function DataTable<TData extends BaseRecord>({
   const columns = getAllColumns();
   const leafColumns = table.reactTable.getAllLeafColumns();
   const isLoading = tableQuery.isLoading;
+  const isError = tableQuery.isError;
   const totalSize = leafColumns.reduce(
     (sum, column) => sum + column.getSize(),
     0,
@@ -153,6 +155,11 @@ export function DataTable<TData extends BaseRecord>({
                   ),
                 )}
               </>
+            ) : isError ? (
+              <DataTableError
+                columnsLength={columns.length}
+                onRetry={() => void tableQuery.refetch()}
+              />
             ) : getRowModel().rows?.length ? (
               getRowModel().rows.map((row) => {
                 return (
@@ -191,7 +198,7 @@ export function DataTable<TData extends BaseRecord>({
           </TableBody>
         </Table>
       </div>
-      {!isLoading && getRowModel().rows?.length > 0 && (
+      {!isLoading && !isError && getRowModel().rows?.length > 0 && (
         <DataTablePagination
           currentPage={currentPage}
           pageCount={pageCount}
@@ -233,6 +240,45 @@ function DataTableNoData({
           <div className={cn("text-sm", "text-muted-foreground")}>
             This table is empty for the time being.
           </div>
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+}
+
+function DataTableError({
+  columnsLength,
+  onRetry,
+}: {
+  columnsLength: number;
+  onRetry: () => void;
+}) {
+  return (
+    <TableRow className="hover:bg-transparent">
+      <TableCell
+        colSpan={columnsLength}
+        className={cn("relative", "text-center")}
+      >
+        <div
+          className={cn(
+            "flex",
+            "flex-col",
+            "items-center",
+            "justify-center",
+            "gap-3",
+            "h-64",
+            "bg-background",
+          )}
+        >
+          <div className={cn("text-lg", "font-semibold", "text-foreground")}>
+            Could not load data
+          </div>
+          <div className={cn("text-sm", "text-muted-foreground")}>
+            Something went wrong while fetching this list.
+          </div>
+          <Button variant="outline" size="sm" onClick={onRetry}>
+            Retry
+          </Button>
         </div>
       </TableCell>
     </TableRow>

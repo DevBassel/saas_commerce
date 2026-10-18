@@ -5,6 +5,7 @@ import { useShow } from "@refinedev/core";
 import { ShowView, ShowViewHeader } from "@/components/refine-ui/views/show-view";
 import { ActiveBadge } from "@/components/refine-ui/data-table/active-badge";
 import { DetailRow } from "@/components/refine-ui/views/detail-row";
+import { QueryErrorState } from "@/components/refine-ui/views/query-state";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -56,6 +57,8 @@ export const ProductsShow = () => {
             </CardContent>
           </Card>
         </div>
+      ) : query.isError ? (
+        <QueryErrorState onRetry={() => void query.refetch()} />
       ) : !record ? (
         <p className={cn("py-8", "text-center", "text-sm", "text-muted-foreground")}>
           Product not found.

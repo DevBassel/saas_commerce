@@ -115,9 +115,12 @@ export const CouponForm = ({
                 <FormLabel>Discount type</FormLabel>
                 <Select
                   value={field.value}
-                  onValueChange={(value) =>
-                    field.onChange(value as DiscountType)
-                  }
+                  onValueChange={(value) => {
+                    field.onChange(value as DiscountType);
+                    if (value === "FIXED_AMOUNT") {
+                      form.setValue("maxDiscountAmount", null);
+                    }
+                  }}
                 >
                   <FormControl>
                     <SelectTrigger className="w-full">

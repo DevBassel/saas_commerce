@@ -65,7 +65,7 @@ export class PlatformPaymentsService {
           tenant.stripeAccountId,
         );
     }
-
+    console.log({ balance });
     return {
       tenant: {
         id: tenant.id,

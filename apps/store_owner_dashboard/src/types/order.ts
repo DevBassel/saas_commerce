@@ -9,6 +9,8 @@ export type OrderStatus =
   | "CANCELLED";
 
 export type PaymentStatus =
+  | "PENDING"
+  | "CANCELED"
   | "UNPAID"
   | "PAID"
   | "PARTIALLY_REFUNDED"

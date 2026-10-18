@@ -19,7 +19,7 @@ export const CategorySelect = ({
   disabled,
 }: {
   value?: number | null;
-  onChange: (value: number | undefined) => void;
+  onChange: (value: number | null) => void;
   disabled?: boolean;
 }) => {
   const { query } = useList<Category>({
@@ -34,7 +34,7 @@ export const CategorySelect = ({
     <Select
       value={value != null ? String(value) : NONE_VALUE}
       onValueChange={(next) =>
-        onChange(next === NONE_VALUE ? undefined : Number(next))
+        onChange(next === NONE_VALUE ? null : Number(next))
       }
       disabled={disabled || query.isLoading}
     >

@@ -17,11 +17,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatMoney, useTenantCurrency } from "@/lib/currency";
 import { cn } from "@/lib/utils";
-import type { DashboardStats } from "@/types/dashboard";
+import type { Balance, DashboardStats } from "@/types/dashboard";
 import type { Order } from "@/types/order";
 
 const formatDate = (value?: string | null) =>
   value ? new Date(value).toLocaleString() : "—";
+
+const formatBalance = (
+  entries: Balance["available"],
+  fallbackCurrency: string,
+): string => {
+  if (!entries.length) return formatMoney(0, fallbackCurrency);
+  return entries
+    .map((entry) => formatMoney(entry.amount / 100, entry.currency))
+    .join(" · ");
+};
 
 const RECENT_ORDERS_LIMIT = 5;
 
@@ -58,9 +68,8 @@ const StatCard = ({
 export const Dashboard = () => {
   const ordersQuery = useList<Order>({
     resource: "orders",
-    pagination: { mode: "off" },
+    pagination: { currentPage: 1, pageSize: RECENT_ORDERS_LIMIT },
     sorters: [{ field: "createdAt", order: "desc" }],
-    meta: { omitListParams: true },
   });
   const statsQuery = useCustom<DashboardStats>({
     url: "dashboard/stats",
@@ -99,14 +108,14 @@ export const Dashboard = () => {
         />
         <StatCard
           title="Total Paid"
-          value={formatMoney(stats?.totalPaid ?? 0, currencyCode)}
+          value={formatBalance(stats?.balance?.available ?? [], currencyCode)}
           icon={CreditCardIcon}
           isLoading={statsQuery.query.isLoading}
           isError={statsQuery.query.isError}
         />
         <StatCard
           title="Waiting Money"
-          value={formatMoney(stats?.waitingAmount ?? 0, currencyCode)}
+          value={formatBalance(stats?.balance?.pending ?? [], currencyCode)}
           icon={HourglassIcon}
           isLoading={statsQuery.query.isLoading}
           isError={statsQuery.query.isError}

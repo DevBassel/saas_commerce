@@ -144,15 +144,31 @@ const buildMocks = (config = buildConfig()) => {
     ),
   } as unknown as TenantManagerService;
   const paymentService = {
-    successPayment: jest.fn(),
-    canceledPayment: jest.fn(),
-    failedPayment: jest.fn(),
-    refundedPayment: jest.fn(),
+    successOrderPayment: jest.fn(),
+    cancelOrderPayment: jest.fn(),
+    failedOrderPayment: jest.fn(),
+    refundedOrderPayment: jest.fn(),
+    successSubscriptionPayment: jest.fn(),
+    cancelSubscriptionPayment: jest.fn(),
+    failedSubscriptionPayment: jest.fn(),
+    refundedSubscriptionPayment: jest.fn(),
+    downgradeSubscriptionToFree: jest.fn(),
+  };
+  const plansRepo = { findOneBy: jest.fn() };
+  const subscriptionRepo = { findOneBy: jest.fn() };
+  const subscriptionPaymentRepo = {
+    findOne: jest.fn(),
+    update: jest.fn(),
+    create: jest.fn((data: unknown) => data),
+    save: jest.fn((data: unknown) => data),
   };
   const service = new StripePaymentService(
     config,
     tenantManager,
     paymentService as unknown as PaymentService,
+    plansRepo as never,
+    subscriptionRepo as never,
+    subscriptionPaymentRepo as never,
   );
   return {
     service,
@@ -160,6 +176,9 @@ const buildMocks = (config = buildConfig()) => {
     orderRepo,
     tenantManager,
     paymentService,
+    plansRepo,
+    subscriptionRepo,
+    subscriptionPaymentRepo,
     config,
   };
 };
@@ -175,13 +194,15 @@ describe('StripePaymentService', () => {
     jest.clearAllMocks();
   });
 
-  describe('createPayment', () => {
+  describe('createOrderPaymentIntent', () => {
     it('throws NotFound when the order does not exist', async () => {
       const { service, orderRepo } = buildMocks();
       orderRepo.findOne.mockResolvedValue(null);
 
       await expect(
-        withTenant(tenantEntity(), () => service.createPayment({ orderId: 1 })),
+        withTenant(tenantEntity(), () =>
+          service.createOrderPaymentIntent({ orderId: 1 }),
+        ),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
@@ -192,7 +213,9 @@ describe('StripePaymentService', () => {
       );
 
       await expect(
-        withTenant(tenantEntity(), () => service.createPayment({ orderId: 1 })),
+        withTenant(tenantEntity(), () =>
+          service.createOrderPaymentIntent({ orderId: 1 }),
+        ),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(stripe.paymentIntents.create).not.toHaveBeenCalled();
     });
@@ -203,7 +226,7 @@ describe('StripePaymentService', () => {
 
       await expect(
         withTenant(tenantEntity({ paymentsPaused: true }), () =>
-          service.createPayment({ orderId: 1 }),
+          service.createOrderPaymentIntent({ orderId: 1 }),
         ),
       ).rejects.toBeInstanceOf(ConflictException);
     });
@@ -214,7 +237,7 @@ describe('StripePaymentService', () => {
 
       await expect(
         withTenant(tenantEntity({ stripeAccountId: null }), () =>
-          service.createPayment({ orderId: 1 }),
+          service.createOrderPaymentIntent({ orderId: 1 }),
         ),
       ).rejects.toBeInstanceOf(ConflictException);
     });
@@ -229,7 +252,7 @@ describe('StripePaymentService', () => {
       });
 
       const result = await withTenant(tenantEntity(), () =>
-        service.createPayment({ orderId: 1 }),
+        service.createOrderPaymentIntent({ orderId: 1 }),
       );
 
       expect(result).toEqual({ clientSecret: 'cs_1' });
@@ -271,7 +294,7 @@ describe('StripePaymentService', () => {
       });
 
       await withTenant(tenantEntity(), () =>
-        service.createPayment({ orderId: 1 }),
+        service.createOrderPaymentIntent({ orderId: 1 }),
       );
 
       expect(firstCallArg(stripe.paymentIntents.create)).toMatchObject({
@@ -287,7 +310,9 @@ describe('StripePaymentService', () => {
       );
 
       await expect(
-        withTenant(tenantEntity(), () => service.createPayment({ orderId: 1 })),
+        withTenant(tenantEntity(), () =>
+          service.createOrderPaymentIntent({ orderId: 1 }),
+        ),
       ).rejects.toThrow('Store cannot accept payments right now');
     });
 
@@ -298,7 +323,9 @@ describe('StripePaymentService', () => {
       stripe.paymentIntents.create.mockRejectedValue(boom);
 
       await expect(
-        withTenant(tenantEntity(), () => service.createPayment({ orderId: 1 })),
+        withTenant(tenantEntity(), () =>
+          service.createOrderPaymentIntent({ orderId: 1 }),
+        ),
       ).rejects.toBe(boom);
     });
   });
@@ -330,6 +357,23 @@ describe('StripePaymentService', () => {
       });
     };
 
+    it('ignores subscription and invoice events', async () => {
+      const { service, paymentService } = buildMocks();
+
+      for (const type of [
+        'customer.subscription.created',
+        'customer.subscription.updated',
+        'customer.subscription.deleted',
+        'invoice.paid',
+        'invoice.payment_failed',
+      ]) {
+        dispatch(type, { id: 'sub_1' });
+        await service.webHook(webhookReq(Buffer.from('{}')), 'sig');
+      }
+
+      expect(paymentService.successOrderPayment).not.toHaveBeenCalled();
+    });
+
     it('dispatches payment_intent.succeeded to successPayment', async () => {
       const { service, paymentService } = buildMocks();
       const meta = { orderId: 1, userId: 7, tenant: TENANT_SCHEMA };
@@ -340,7 +384,10 @@ describe('StripePaymentService', () => {
 
       await service.webHook(webhookReq(Buffer.from('{}')), 'sig');
 
-      expect(paymentService.successPayment).toHaveBeenCalledWith(meta, 'pi_1');
+      expect(paymentService.successOrderPayment).toHaveBeenCalledWith(
+        meta,
+        'pi_1',
+      );
     });
 
     it('dispatches payment_intent.canceled to canceledPayment', async () => {
@@ -353,7 +400,10 @@ describe('StripePaymentService', () => {
 
       await service.webHook(webhookReq(Buffer.from('{}')), 'sig');
 
-      expect(paymentService.canceledPayment).toHaveBeenCalledWith(meta, 'pi_1');
+      expect(paymentService.cancelOrderPayment).toHaveBeenCalledWith(
+        meta,
+        'pi_1',
+      );
     });
 
     it('dispatches payment_intent.payment_failed to failedPayment', async () => {
@@ -366,7 +416,10 @@ describe('StripePaymentService', () => {
 
       await service.webHook(webhookReq(Buffer.from('{}')), 'sig');
 
-      expect(paymentService.failedPayment).toHaveBeenCalledWith(meta, 'pi_1');
+      expect(paymentService.failedOrderPayment).toHaveBeenCalledWith(
+        meta,
+        'pi_1',
+      );
     });
 
     it('ignores an intent event without metadata.data', async () => {
@@ -375,7 +428,7 @@ describe('StripePaymentService', () => {
 
       await service.webHook(webhookReq(Buffer.from('{}')), 'sig');
 
-      expect(paymentService.successPayment).not.toHaveBeenCalled();
+      expect(paymentService.successOrderPayment).not.toHaveBeenCalled();
     });
 
     it('handles charge.refunded with a string payment_intent', async () => {
@@ -386,6 +439,7 @@ describe('StripePaymentService', () => {
         refunds: { data: [{ id: 're_1' }] },
       });
       stripe.paymentIntents.retrieve.mockResolvedValue({
+        id: 'pi_1',
         metadata: {
           data: JSON.stringify({
             orderId: 1,
@@ -401,7 +455,7 @@ describe('StripePaymentService', () => {
       expect(stripe.paymentIntents.retrieve).toHaveBeenCalledWith('pi_1', {
         expand: ['latest_charge'],
       });
-      expect(paymentService.refundedPayment).toHaveBeenCalledWith(
+      expect(paymentService.refundedOrderPayment).toHaveBeenCalledWith(
         { orderId: 1, userId: 7, tenant: TENANT_SCHEMA },
         {
           paymentIntentId: 'pi_1',
@@ -434,7 +488,7 @@ describe('StripePaymentService', () => {
       expect(stripe.paymentIntents.retrieve).toHaveBeenCalledWith('pi_2', {
         expand: ['latest_charge'],
       });
-      expect(paymentService.refundedPayment).toHaveBeenCalledWith(
+      expect(paymentService.refundedOrderPayment).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({ refundReference: null }),
       );
@@ -447,7 +501,7 @@ describe('StripePaymentService', () => {
       await service.webHook(webhookReq(Buffer.from('{}')), 'sig');
 
       expect(stripe.paymentIntents.retrieve).not.toHaveBeenCalled();
-      expect(paymentService.refundedPayment).not.toHaveBeenCalled();
+      expect(paymentService.refundedOrderPayment).not.toHaveBeenCalled();
     });
 
     it.each(['pending', 'requires_action'])(
@@ -463,7 +517,7 @@ describe('StripePaymentService', () => {
         await service.webHook(webhookReq(Buffer.from('{}')), 'sig');
 
         expect(stripe.paymentIntents.retrieve).not.toHaveBeenCalled();
-        expect(paymentService.refundedPayment).not.toHaveBeenCalled();
+        expect(paymentService.refundedOrderPayment).not.toHaveBeenCalled();
       },
     );
 
@@ -487,7 +541,7 @@ describe('StripePaymentService', () => {
 
       await service.webHook(webhookReq(Buffer.from('{}')), 'sig');
 
-      expect(paymentService.refundedPayment).toHaveBeenCalledWith(
+      expect(paymentService.refundedOrderPayment).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({ refundReference: 're_9' }),
       );
@@ -514,7 +568,7 @@ describe('StripePaymentService', () => {
 
       await service.webHook(webhookReq(Buffer.from('{}')), 'sig');
 
-      expect(paymentService.refundedPayment).toHaveBeenCalledWith(
+      expect(paymentService.refundedOrderPayment).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({ refundReference: null }),
       );
@@ -526,7 +580,7 @@ describe('StripePaymentService', () => {
 
       await service.webHook(webhookReq(Buffer.from('{}')), 'sig');
 
-      expect(paymentService.refundedPayment).not.toHaveBeenCalled();
+      expect(paymentService.refundedOrderPayment).not.toHaveBeenCalled();
     });
 
     it('fetches a string latest_charge via charges.retrieve', async () => {
@@ -564,7 +618,7 @@ describe('StripePaymentService', () => {
 
       await service.webHook(webhookReq(Buffer.from('{}')), 'sig');
 
-      expect(paymentService.refundedPayment).not.toHaveBeenCalled();
+      expect(paymentService.refundedOrderPayment).not.toHaveBeenCalled();
     });
 
     it('ignores a refund when there is no charge', async () => {
@@ -587,7 +641,7 @@ describe('StripePaymentService', () => {
 
       await service.webHook(webhookReq(Buffer.from('{}')), 'sig');
 
-      expect(paymentService.refundedPayment).not.toHaveBeenCalled();
+      expect(paymentService.refundedOrderPayment).not.toHaveBeenCalled();
     });
 
     it('ignores payment_intent.created and unknown events', async () => {
@@ -597,8 +651,8 @@ describe('StripePaymentService', () => {
       dispatch('customer.created', { id: 'cus_1' });
       await service.webHook(webhookReq(Buffer.from('{}')), 'sig');
 
-      expect(paymentService.successPayment).not.toHaveBeenCalled();
-      expect(paymentService.refundedPayment).not.toHaveBeenCalled();
+      expect(paymentService.successOrderPayment).not.toHaveBeenCalled();
+      expect(paymentService.refundedOrderPayment).not.toHaveBeenCalled();
     });
   });
 
@@ -674,6 +728,137 @@ describe('StripePaymentService', () => {
       await expect(
         service.refundOrder(orderEntity(), { schemaName: TENANT_SCHEMA }),
       ).rejects.toBe(boom);
+    });
+  });
+
+  describe('cancelOwnSubscription', () => {
+    const paidPayment = (overrides: Record<string, unknown> = {}) => ({
+      id: 10,
+      subscriptionId: 1,
+      paymentRef: 'pi_sub_1',
+      amount: 29,
+      status: PaymentStatus.PAID,
+      paidAt: new Date(),
+      createdAt: new Date(),
+      ...overrides,
+    });
+
+    it('throws NotFound when the tenant has no subscription', async () => {
+      const { service, subscriptionRepo } = buildMocks();
+      subscriptionRepo.findOneBy.mockResolvedValue(null);
+
+      await expect(service.cancelOwnSubscription(7)).rejects.toMatchObject({
+        response: { code: 'SUBSCRIPTION_NOT_FOUND' },
+      });
+    });
+
+    it('rejects when there is no paid purchase', async () => {
+      const { service, subscriptionRepo, subscriptionPaymentRepo } =
+        buildMocks();
+      subscriptionRepo.findOneBy.mockResolvedValue({ id: 1, tenantId: 7 });
+      subscriptionPaymentRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.cancelOwnSubscription(7)).rejects.toMatchObject({
+        response: { code: 'SUBSCRIPTION_NOT_REFUNDABLE' },
+      });
+      expect(stripe.refunds.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects once the 7-day window has passed', async () => {
+      const { service, subscriptionRepo, subscriptionPaymentRepo } =
+        buildMocks();
+      subscriptionRepo.findOneBy.mockResolvedValue({ id: 1, tenantId: 7 });
+      subscriptionPaymentRepo.findOne.mockResolvedValue(
+        paidPayment({ paidAt: new Date(Date.now() - 8 * 86_400_000) }),
+      );
+
+      await expect(service.cancelOwnSubscription(7)).rejects.toMatchObject({
+        response: { code: 'REFUND_WINDOW_EXPIRED' },
+      });
+      expect(stripe.refunds.create).not.toHaveBeenCalled();
+    });
+
+    it('falls back to createdAt when paidAt is null', async () => {
+      const { service, subscriptionRepo, subscriptionPaymentRepo } =
+        buildMocks();
+      subscriptionRepo.findOneBy.mockResolvedValue({ id: 1, tenantId: 7 });
+      subscriptionPaymentRepo.findOne.mockResolvedValue(
+        paidPayment({
+          paidAt: null,
+          createdAt: new Date(Date.now() - 8 * 86_400_000),
+        }),
+      );
+
+      await expect(service.cancelOwnSubscription(7)).rejects.toMatchObject({
+        response: { code: 'REFUND_WINDOW_EXPIRED' },
+      });
+    });
+
+    it('refunds within the window, marks REFUNDED and downgrades', async () => {
+      const {
+        service,
+        subscriptionRepo,
+        subscriptionPaymentRepo,
+        paymentService,
+      } = buildMocks();
+      subscriptionRepo.findOneBy
+        .mockResolvedValueOnce({ id: 1, tenantId: 7 })
+        .mockResolvedValueOnce({ id: 1, tenantId: 7, planId: 2 });
+      subscriptionPaymentRepo.findOne.mockResolvedValue(paidPayment());
+      stripe.refunds.create.mockResolvedValue({ id: 're_sub_1' });
+
+      const result = await service.cancelOwnSubscription(7);
+
+      expect(stripe.refunds.create).toHaveBeenCalledWith(
+        { payment_intent: 'pi_sub_1' },
+        { idempotencyKey: 'refund-subscription-10' },
+      );
+      expect(subscriptionPaymentRepo.update).toHaveBeenCalledWith(
+        { id: 10 },
+        expect.objectContaining({
+          status: PaymentStatus.REFUNDED,
+          refundedAmount: 29,
+          refundReference: 're_sub_1',
+          refundedAt: expect.any(Date) as Date,
+        }),
+      );
+      expect(paymentService.downgradeSubscriptionToFree).toHaveBeenCalledWith(
+        1,
+      );
+      expect(result).toMatchObject({ id: 1, planId: 2 });
+    });
+
+    it('is idempotent when the purchase is already refunded', async () => {
+      const {
+        service,
+        subscriptionRepo,
+        subscriptionPaymentRepo,
+        paymentService,
+      } = buildMocks();
+      subscriptionRepo.findOneBy.mockResolvedValue({ id: 1, tenantId: 7 });
+      subscriptionPaymentRepo.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 10, status: PaymentStatus.REFUNDED });
+
+      await service.cancelOwnSubscription(7);
+
+      expect(stripe.refunds.create).not.toHaveBeenCalled();
+      expect(paymentService.downgradeSubscriptionToFree).toHaveBeenCalledWith(
+        1,
+      );
+    });
+
+    it('maps StripeInvalidRequestError to a 400', async () => {
+      const { service, subscriptionRepo, subscriptionPaymentRepo } =
+        buildMocks();
+      subscriptionRepo.findOneBy.mockResolvedValue({ id: 1, tenantId: 7 });
+      subscriptionPaymentRepo.findOne.mockResolvedValue(paidPayment());
+      stripe.refunds.create.mockRejectedValue(new InvalidRequest('nope'));
+
+      await expect(service.cancelOwnSubscription(7)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(subscriptionPaymentRepo.update).not.toHaveBeenCalled();
     });
   });
 

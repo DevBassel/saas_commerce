@@ -8,7 +8,9 @@ import { DataSource, EntityManager, Repository } from 'typeorm';
 import { TenantService } from 'src/modules/tenants/tenant.service';
 import { Tenant } from 'src/modules/tenants/entities/tenant.entity';
 import { TenantRef } from 'src/modules/tenants/utils/tenant.utils';
-import { Subscription } from '../entities/subscription.entity';
+import { Subscription } from '../../payments/entities/subscription.entity';
+import { SubscriptionPayment } from '../../payments/entities/subscription-payment.entity';
+import { PaymentStatus } from '../../payments/constants/payment-status.enum';
 import { SubscriptionPlan } from '../entities/subscription-plan.entity';
 import { BillingInterval } from '../constants/billing-interval.enum';
 import { SubscriptionStatus } from '../constants/subscription-status.enum';
@@ -17,6 +19,7 @@ import { SubscriptionFeatureKey } from '../constants/subscription-feature-key.en
 import { AssignSubscriptionDto } from '../dto/assign-subscription.dto';
 import {
   FREE_PLAN_SLUG,
+  SUBSCRIPTION_REFUND_WINDOW_DAYS,
   UNLIMITED_STORAGE_BYTES,
 } from '../constants/subscription.constants';
 
@@ -42,6 +45,8 @@ export class SubscriptionService {
     private readonly subscriptionRepo: Repository<Subscription>,
     @InjectRepository(SubscriptionPlan)
     private readonly planRepo: Repository<SubscriptionPlan>,
+    @InjectRepository(SubscriptionPayment)
+    private readonly subscriptionPaymentRepo: Repository<SubscriptionPayment>,
     @InjectDataSource()
     private readonly dataSource: DataSource,
     private readonly tenantService: TenantService,
@@ -58,6 +63,35 @@ export class SubscriptionService {
     const tenant = await this.tenantService.findBySchemaName(ref.schemaName);
     if (!tenant) return null;
     return this.getByTenantId(tenant.id);
+  }
+
+  /**
+   * Read-time refund eligibility for the tenant self-serve cancel action. The
+   * deadline is measured from the latest PAID `SubscriptionPayment` (`paidAt`,
+   * falling back to `createdAt`). Advisory only: `StripePaymentService`
+   * re-checks authoritatively on the cancel route, so a stale snapshot (or
+   * clock drift) can never refund outside the window.
+   */
+  async getRefundInfo(subscription: Subscription | null): Promise<{
+    refundEligible: boolean;
+    refundDeadline: string | null;
+  }> {
+    if (!subscription) return { refundEligible: false, refundDeadline: null };
+
+    const latestPaid = await this.subscriptionPaymentRepo.findOne({
+      where: { subscriptionId: subscription.id, status: PaymentStatus.PAID },
+      order: { id: 'DESC' },
+    });
+    if (!latestPaid) return { refundEligible: false, refundDeadline: null };
+
+    const paidAt = latestPaid.paidAt ?? latestPaid.createdAt;
+    const deadline = new Date(
+      paidAt.getTime() + SUBSCRIPTION_REFUND_WINDOW_DAYS * 86_400_000,
+    );
+    return {
+      refundEligible: Date.now() <= deadline.getTime(),
+      refundDeadline: deadline.toISOString(),
+    };
   }
 
   /**
@@ -179,8 +213,6 @@ export class SubscriptionService {
         billingInterval,
         currentPeriodStart: now,
         currentPeriodEnd: periodEnd,
-        cancelAtPeriodEnd: false,
-        canceledAt: null,
         trialStart,
         trialEnd,
       }),
@@ -201,9 +233,7 @@ export class SubscriptionService {
         message: 'Subscription not found',
       });
 
-    const patch: Partial<Subscription> = { status };
-    if (status === SubscriptionStatus.CANCELED) patch.canceledAt = new Date();
-    await this.subscriptionRepo.update({ tenantId }, patch);
+    await this.subscriptionRepo.update({ tenantId }, { status });
     return this.getByTenantId(tenantId);
   }
 
@@ -218,6 +248,24 @@ export class SubscriptionService {
     if (!free) return null;
 
     return this.assignPlan(tenant.id, { planId: free.id });
+  }
+
+  /**
+   * Full-refund fallback: moves the tenant's subscription back to the free
+   * plan. Idempotent — a subscription already on the free plan (or a missing
+   * plan row) is left untouched, so repeated/duplicate refund webhook events
+   * do not reset the period.
+   */
+  async downgradeToFree(subscriptionId: number): Promise<Subscription | null> {
+    const existing = await this.subscriptionRepo.findOneBy({
+      id: subscriptionId,
+    });
+    if (!existing) return null;
+
+    const free = await this.planRepo.findOneBy({ slug: FREE_PLAN_SLUG });
+    if (!free || existing.planId === free.id) return existing;
+
+    return this.assignPlan(existing.tenantId, { planId: free.id });
   }
 
   /** Mirrors the plan's STORAGE_BYTES limit into `Tenant.storageCapacityBytes`. */

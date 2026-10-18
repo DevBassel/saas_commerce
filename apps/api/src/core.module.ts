@@ -17,7 +17,8 @@ import { CurrencyChangeRequest } from './modules/currency-requests/entities/curr
 import { SubscriptionPlan } from './modules/subscriptions/entities/subscription-plan.entity';
 import { SubscriptionPlanLimit } from './modules/subscriptions/entities/subscription-plan-limit.entity';
 import { SubscriptionPlanFeature } from './modules/subscriptions/entities/subscription-plan-feature.entity';
-import { Subscription } from './modules/subscriptions/entities/subscription.entity';
+import { Subscription } from './modules/payments/entities/subscription.entity';
+import { SubscriptionPayment } from './modules/payments/entities/subscription-payment.entity';
 import { TenantUsageCounter } from './modules/subscriptions/entities/tenant-usage-counter.entity';
 import { seconds, ThrottlerModule } from '@nestjs/throttler';
 
@@ -33,6 +34,7 @@ const PUBLIC_ENTITIES = [
   SubscriptionPlanLimit,
   SubscriptionPlanFeature,
   Subscription,
+  SubscriptionPayment,
   TenantUsageCounter,
 ];
 

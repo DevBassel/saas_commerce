@@ -103,19 +103,12 @@ describe("canCancelOrder", () => {
     expect(canCancelOrder("CANCELLED", "ADMIN")).toBe(false);
   });
 
-  it("limits owners to PENDING and CONFIRMED", () => {
-    expect(canCancelOrder("PENDING", "CUSTOMER")).toBe(true);
-    expect(canCancelOrder("CONFIRMED", "CUSTOMER")).toBe(true);
-    expect(canCancelOrder("PROCESSING", "CUSTOMER")).toBe(false);
-    expect(canCancelOrder("SHIPPED", "CUSTOMER")).toBe(false);
-    expect(canCancelOrder("DELIVERED", "CUSTOMER")).toBe(false);
-    expect(canCancelOrder("RETURN_REQUESTED", "CUSTOMER")).toBe(false);
-    expect(canCancelOrder("RETURNED", "CUSTOMER")).toBe(false);
-    expect(canCancelOrder("CANCELLED", "CUSTOMER")).toBe(false);
-  });
-
-  it("denies cancellation without a recognized role", () => {
-    expect(canCancelOrder("PENDING", null)).toBe(true);
-    expect(canCancelOrder("PROCESSING", null)).toBe(false);
+  it("denies customers and unrecognized roles at every status", () => {
+    for (const status of ALL_STATUSES) {
+      expect(canCancelOrder(status, "CUSTOMER")).toBe(false);
+      expect(canCancelOrder(status, "CUSTOM_ROLE")).toBe(false);
+      expect(canCancelOrder(status, null)).toBe(false);
+      expect(canCancelOrder(status, undefined)).toBe(false);
+    }
   });
 });

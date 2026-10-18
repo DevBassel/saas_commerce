@@ -13,6 +13,8 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
 };
 
 export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
+  PENDING: "Pending",
+  CANCELED: "Canceled",
   UNPAID: "Unpaid",
   PAID: "Paid",
   PARTIALLY_REFUNDED: "Partially refunded",
@@ -48,6 +50,11 @@ export const TERMINAL_ORDER_STATUSES: OrderStatus[] = [
   "CANCELLED",
 ];
 
+/**
+ * Statuses the backend lets an *order owner* (the customer, through the
+ * storefront) cancel. This staff console cannot verify order ownership, so the
+ * set is mirrored for reference only and is never granted to a dashboard role.
+ */
 export const OWNER_CANCELLABLE_STATUSES: OrderStatus[] = [
   "PENDING",
   "CONFIRMED",
@@ -73,6 +80,4 @@ export const canCancelOrder = (
   status: OrderStatus,
   roleKey?: string | null,
 ): boolean =>
-  canManageOrders(roleKey)
-    ? MANAGER_CANCELLABLE_STATUSES.includes(status)
-    : OWNER_CANCELLABLE_STATUSES.includes(status);
+  canManageOrders(roleKey) && MANAGER_CANCELLABLE_STATUSES.includes(status);

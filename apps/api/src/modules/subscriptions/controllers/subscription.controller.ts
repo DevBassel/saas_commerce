@@ -16,8 +16,11 @@ export class SubscriptionController {
   ) {}
 
   @Get()
-  get() {
-    return this.subscriptions.getByTenantRef(resolveTenantScope());
+  async get() {
+    const subscription =
+      await this.subscriptions.getByTenantRef(resolveTenantScope());
+    const refund = await this.subscriptions.getRefundInfo(subscription);
+    return subscription ? { ...subscription, ...refund } : null;
   }
 
   @Get('plans')

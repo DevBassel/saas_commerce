@@ -1,13 +1,17 @@
 import { NotFoundException } from '@nestjs/common';
 import { SubscriptionService } from './subscription.service';
-import { Subscription } from '../entities/subscription.entity';
+import { Subscription } from '../../payments/entities/subscription.entity';
 import { SubscriptionPlan } from '../entities/subscription-plan.entity';
 import { SubscriptionLimitKey } from '../constants/subscription-limit-key.enum';
 import { SubscriptionFeatureKey } from '../constants/subscription-feature-key.enum';
 import { SubscriptionStatus } from '../constants/subscription-status.enum';
 import { BillingInterval } from '../constants/billing-interval.enum';
 import { LimitValueType } from '../constants/limit-value-type.enum';
-import { UNLIMITED_STORAGE_BYTES } from '../constants/subscription.constants';
+import {
+  SUBSCRIPTION_REFUND_WINDOW_DAYS,
+  UNLIMITED_STORAGE_BYTES,
+} from '../constants/subscription.constants';
+import { PaymentStatus } from '../../payments/constants/payment-status.enum';
 
 const NOW = new Date('2026-01-01T00:00:00.000Z');
 
@@ -52,6 +56,9 @@ const buildMocks = () => {
     findOne: jest.fn(),
     findOneBy: jest.fn(),
   };
+  const subscriptionPaymentRepo = {
+    findOne: jest.fn(),
+  };
   const manager = {
     findOne: jest.fn().mockResolvedValue(subscription()),
     query: jest.fn(),
@@ -68,6 +75,7 @@ const buildMocks = () => {
   const service = new SubscriptionService(
     subscriptionRepo as never,
     planRepo as never,
+    subscriptionPaymentRepo as never,
     dataSource as never,
     tenantService as never,
   );
@@ -76,6 +84,7 @@ const buildMocks = () => {
     service,
     subscriptionRepo,
     planRepo,
+    subscriptionPaymentRepo,
     dataSource,
     manager,
     tenantService,
@@ -175,6 +184,85 @@ describe('SubscriptionService', () => {
     });
   });
 
+  describe('getRefundInfo', () => {
+    it('is ineligible without a subscription and skips the ledger read', async () => {
+      const { service, subscriptionPaymentRepo } = buildMocks();
+
+      await expect(service.getRefundInfo(null)).resolves.toEqual({
+        refundEligible: false,
+        refundDeadline: null,
+      });
+      expect(subscriptionPaymentRepo.findOne).not.toHaveBeenCalled();
+    });
+
+    it('is ineligible when there is no paid payment', async () => {
+      const { service, subscriptionPaymentRepo } = buildMocks();
+      subscriptionPaymentRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.getRefundInfo(subscription())).resolves.toEqual({
+        refundEligible: false,
+        refundDeadline: null,
+      });
+    });
+
+    it('is eligible within the window and reports the deadline', async () => {
+      const { service, subscriptionPaymentRepo } = buildMocks();
+      const paidAt = new Date();
+      subscriptionPaymentRepo.findOne.mockResolvedValue({
+        paidAt,
+        createdAt: paidAt,
+      });
+
+      const result = await service.getRefundInfo(subscription());
+
+      expect(subscriptionPaymentRepo.findOne).toHaveBeenCalledWith({
+        where: {
+          subscriptionId: 1,
+          status: PaymentStatus.PAID,
+        },
+        order: { id: 'DESC' },
+      });
+      expect(result.refundEligible).toBe(true);
+      expect(result.refundDeadline).toBe(
+        new Date(
+          paidAt.getTime() + SUBSCRIPTION_REFUND_WINDOW_DAYS * 86_400_000,
+        ).toISOString(),
+      );
+    });
+
+    it('is ineligible past the window but still reports the deadline', async () => {
+      const { service, subscriptionPaymentRepo } = buildMocks();
+      const paidAt = new Date(Date.now() - 8 * 86_400_000);
+      subscriptionPaymentRepo.findOne.mockResolvedValue({
+        paidAt,
+        createdAt: paidAt,
+      });
+
+      const result = await service.getRefundInfo(subscription());
+
+      expect(result.refundEligible).toBe(false);
+      expect(result.refundDeadline).not.toBeNull();
+    });
+
+    it('falls back to createdAt when paidAt is null', async () => {
+      const { service, subscriptionPaymentRepo } = buildMocks();
+      const createdAt = new Date();
+      subscriptionPaymentRepo.findOne.mockResolvedValue({
+        paidAt: null,
+        createdAt,
+      });
+
+      const result = await service.getRefundInfo(subscription());
+
+      expect(result.refundEligible).toBe(true);
+      expect(result.refundDeadline).toBe(
+        new Date(
+          createdAt.getTime() + SUBSCRIPTION_REFUND_WINDOW_DAYS * 86_400_000,
+        ).toISOString(),
+      );
+    });
+  });
+
   describe('assignPlan', () => {
     it('rejects a missing plan', async () => {
       const { service, planRepo } = buildMocks();
@@ -269,7 +357,7 @@ describe('SubscriptionService', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('stamps canceledAt when cancelling', async () => {
+    it('updates the status', async () => {
       const { service, subscriptionRepo } = buildMocks();
       subscriptionRepo.findOneBy.mockResolvedValue(subscription());
       subscriptionRepo.findOne.mockResolvedValue(
@@ -279,12 +367,8 @@ describe('SubscriptionService', () => {
       await service.updateStatus(7, SubscriptionStatus.CANCELED);
 
       const updateArgs = subscriptionRepo.update.mock.calls as unknown[][];
-      const patch = updateArgs[0][1] as {
-        status: SubscriptionStatus;
-        canceledAt: Date;
-      };
-      expect(patch.status).toBe(SubscriptionStatus.CANCELED);
-      expect(patch.canceledAt).toBeInstanceOf(Date);
+      const patch = updateArgs[0][1] as { status: SubscriptionStatus };
+      expect(patch).toEqual({ status: SubscriptionStatus.CANCELED });
     });
   });
 

@@ -11,6 +11,7 @@ import {
   CreditCardIcon,
   StoreIcon,
   BadgePercentIcon,
+  CrownIcon,
 } from "lucide-react";
 
 export const Resources: ResourceProps[] = [
@@ -142,6 +143,15 @@ export const Resources: ResourceProps[] = [
     meta: {
       label: "Store",
       icon: <StoreIcon />,
+      parent: "settings",
+    },
+  },
+  {
+    name: "subscription-settings",
+    list: "/settings/subscription",
+    meta: {
+      label: "Subscription",
+      icon: <CrownIcon />,
       parent: "settings",
     },
   },

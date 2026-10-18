@@ -17,7 +17,7 @@ export class EmailOtpController {
   @Public()
   @Post('request')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 1, ttl: 60_000 } })
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   request(@Body() dto: RequestOtpDto) {
     return this.authService.requestEmailOtp(dto);
   }

@@ -8,6 +8,7 @@ import {
   tenantMatchesSlug,
   withTenantParam,
 } from "@/api/tenant";
+import { resetClientState } from "@/lib/client-reset";
 
 type JwtPayload = {
   type?: string;
@@ -105,9 +106,13 @@ export const authProvider: AuthProvider = {
 
   logout: async () => {
     tokenStorage.clear();
+    const redirectTo = withTenant("/login");
+    // A full navigation discards the React Query cache so no prior-session
+    // data can be served to the next user on this device.
+    resetClientState(redirectTo);
     return {
       success: true,
-      redirectTo: withTenant("/login"),
+      redirectTo,
     };
   },
 

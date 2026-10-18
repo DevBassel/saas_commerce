@@ -3,8 +3,8 @@
 import type { ColumnDef } from "@tanstack/react-table";
 
 import { ActiveBadge } from "@/components/refine-ui/data-table/active-badge";
+import { CouponRowActions } from "@/components/coupons/coupon-row-actions";
 import { DateCell } from "@/components/refine-ui/data-table/date-cell";
-import { RowActions } from "@/components/refine-ui/data-table/row-actions";
 import { sortableHeader } from "@/components/refine-ui/data-table/sortable-header";
 import {
   CouponDiscountCell,
@@ -58,16 +58,6 @@ export const couponColumns: ColumnDef<Coupon>[] = [
     header: "",
     enableSorting: false,
     size: 140,
-    cell: ({ row }) => (
-      <RowActions
-        resource="coupons"
-        recordItemId={row.original.id}
-        labels={{
-          show: "Show coupon",
-          edit: "Edit coupon",
-          delete: "Delete coupon",
-        }}
-      />
-    ),
+    cell: ({ row }) => <CouponRowActions id={row.original.id} />,
   },
 ];

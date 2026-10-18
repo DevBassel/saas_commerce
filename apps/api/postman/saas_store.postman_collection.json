@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Saas Store API",
-    "description": "Schema-per-tenant RBAC API. Orders: POST /orders (optional { addressId }; uses the given address when it belongs to the caller, else the caller's default delivery address, and 400 with no writes when neither is usable) atomically turns the caller's cart into an order (empty cart / missing or inactive product / insufficient stock -> 400; success snapshots lines, decrements stock and clears cart lines); GET /orders and GET /orders/:id scope to the owner unless the caller has orders:manage (non-owner Get -> 404 to avoid enumeration); PATCH /orders/:id/cancel restocks (owners may cancel PENDING/CONFIRMED, manage PENDING/CONFIRMED/PROCESSING/SHIPPED); PATCH /orders/:id/return (needs orders:return) lets the owner or a manager move a DELIVERED order to RETURN_REQUESTED; PATCH /orders/:id/status is manager-only and follows PENDING->CONFIRMED->PROCESSING->SHIPPED->DELIVERED, with CANCELLED reachable from any non-terminal state and RETURN_REQUESTED->RETURNED (restocks) or RETURN_REQUESTED->DELIVERED (rejected). Flow: run `Register Store` first (public self-serve signup, auto-sets tenant_slug + owner tokens), or `Login Platform` to get {{platform_token}} for the Platform folder. Set `tenant_slug` to target a tenant; Users/Roles/Permissions/Products/Categories folders auto-send `x-tenant-slug`. Login stores access_token/refresh_token; Refresh rotates them (old refresh token is revoked). POST /auth/logout clears the caller's stored jti (invalidating the refresh token) and /auth/logout/platform does the same for a platform session; GET /health is the public platform probe (db + r2). List Users/Roles/Permissions/Tenants/Products/Categories auto-set user_id/role_id/permission_id/tenant_id/product_id/category_id (list/upload also set image_id). The Addresses folder is own-scoped and its List/Create requests set address_id. Every folder inherits the collection-level Bearer {{access_token}} except Auth (no auth) and Platform (Bearer {{platform_token}}; tenant tokens are rejected on platform routes with 403). Custom role keys must match ^[a-z][a-z0-9_-]*$ ; uppercase keys are reserved system roles (create/rename to them -> 409, rename/delete of system roles -> 409). Create Permission key must be a valid permission key (409 if already seeded). Products: SKU must match ^[A-Za-z0-9][A-Za-z0-9_-]*$ (duplicate -> 400), optional categoryId must reference an existing category (unknown -> 400), images are jpeg/png/webp/gif multipart `file` field (quota + count limits -> 413/400). Categories: each tenant is seeded with 8 base categories on provision/re-seed; slug is auto-derived from name when omitted and must be unique (duplicate -> 400), deleting a category nulls products.categoryId. Cart: each authenticated tenant user has one owner-scoped cart; GET /cart returns the enriched cart (empty synthetic cart when none, no row written). POST /cart/items merges by incrementing (needs a product_id from List Products); PATCH /cart/items/:productId sets an absolute quantity (0 is not a remove, use DELETE); DELETE /cart/items/:productId removes a line; DELETE /cart clears lines but keeps the cart. Requires cart:read/create/update/delete (seeded for CUSTOMER/ADMIN/STORE_OWNER/SUPER_ADMIN and backfilled on boot). Add/update validate isActive + stock (1..99 per line, 100 distinct lines max; over -> 400), and reads flag stale lines with isAvailable/availableStock without deleting them. Dashboard: GET /dashboard/stats (needs orders:manage) returns the store-owner cards in one tenant-scoped payload - totalOrders, fulfilledOrders (DELIVERED), pendingOrders (PENDING), totalPaid (sum of total where paymentStatus=PAID), waitingAmount (sum of total where paymentStatus=UNPAID) and customers (users whose role is CUSTOMER).",
+    "description": "Schema-per-tenant RBAC API. Orders: POST /orders (optional { addressId, couponCode }; uses the given address when it belongs to the caller, else the caller's default delivery address, and 400 with no writes when neither is usable; an optional couponCode is validated and consumed in the same transaction) atomically turns the caller's cart into an order (empty cart / missing or inactive product / insufficient stock -> 400; success snapshots lines, decrements stock and clears cart lines); GET /orders and GET /orders/:id scope to the owner unless the caller has orders:manage (non-owner Get -> 404 to avoid enumeration); PATCH /orders/:id/cancel restocks (owners may cancel PENDING/CONFIRMED, manage PENDING/CONFIRMED/PROCESSING/SHIPPED); PATCH /orders/:id/return (needs orders:return) lets the owner or a manager move a DELIVERED order to RETURN_REQUESTED; PATCH /orders/:id/status is manager-only and follows PENDING->CONFIRMED->PROCESSING->SHIPPED->DELIVERED, with CANCELLED reachable from any non-terminal state and RETURN_REQUESTED->RETURNED (restocks) or RETURN_REQUESTED->DELIVERED (rejected). Flow: run `Register Store` first (public self-serve signup, auto-sets tenant_slug + owner tokens), or `Login Platform` to get {{platform_token}} for the Platform folder. Set `tenant_slug` to target a tenant; Users/Roles/Permissions/Products/Categories folders auto-send `x-tenant-slug`. Login stores access_token/refresh_token; Refresh rotates them (old refresh token is revoked). POST /auth/logout clears the caller's stored jti (invalidating the refresh token) and /auth/logout/platform does the same for a platform session; GET /health is the public platform probe (db + r2). List Users/Roles/Permissions/Tenants/Products/Categories auto-set user_id/role_id/permission_id/tenant_id/product_id/category_id (list/upload also set image_id). The Addresses folder is own-scoped and its List/Create requests set address_id. Every folder inherits the collection-level Bearer {{access_token}} except Auth (no auth) and Platform (Bearer {{platform_token}}; tenant tokens are rejected on platform routes with 403). Custom role keys must match ^[a-z][a-z0-9_-]*$ ; uppercase keys are reserved system roles (create/rename to them -> 409, rename/delete of system roles -> 409). Create Permission key must be a valid permission key (409 if already seeded). Products: SKU must match ^[A-Za-z0-9][A-Za-z0-9_-]*$ (duplicate -> 400), optional categoryId must reference an existing category (unknown -> 400), images are jpeg/png/webp multipart `files` field (up to 5 per request; quota + count limits -> 413/400). Categories: each tenant is seeded with 8 base categories on provision/re-seed; slug is auto-derived from name when omitted and must be unique (duplicate -> 400), deleting a category nulls products.categoryId. Cart: each authenticated tenant user has one owner-scoped cart; GET /cart returns the enriched cart (empty synthetic cart when none, no row written). POST /cart/items merges by incrementing (needs a product_id from List Products); PATCH /cart/items/:productId sets an absolute quantity (0 is not a remove, use DELETE); DELETE /cart/items/:productId removes a line; DELETE /cart clears lines but keeps the cart. Requires cart:read/create/update/delete (seeded for CUSTOMER/ADMIN/STORE_OWNER/SUPER_ADMIN and backfilled on boot). Add/update validate isActive + stock (1..99 per line, 100 distinct lines max; over -> 400), and reads flag stale lines with isAvailable/availableStock without deleting them. Dashboard: GET /dashboard/stats (needs orders:manage) returns the store-owner cards in one tenant-scoped payload - totalOrders, fulfilledOrders (DELIVERED), pendingOrders (PENDING), totalPaid (sum of total where paymentStatus=PAID), waitingAmount (sum of total where paymentStatus=UNPAID) and customers (users whose role is CUSTOMER). Subscriptions folders cover the tenant reads (GET /subscription, /subscription/plans, /subscription/usage), the Super Admin plan CRUD (/platform/subscription-plans) and tenant subscription management (/platform/tenants/:id/subscription, /usage, PUT, PATCH /status, POST /cancel). Auth includes the tenant-scoped email-OTP request/verify and password-reset confirm routes. Payments: POST /payments/stripe (order destination charge, any authenticated tenant user) and POST /payments/stripe/subscription (platform-account plan purchase, subscriptions:manage) both return a clientSecret; POST /payments/stripe/subscription/cancel (subscriptions:manage) is the tenant self-serve cancel + refund of the latest PAID plan purchase within SUBSCRIPTION_REFUND_WINDOW_DAYS (7) days, falling back to the free plan (GET /subscription reports refundEligible/refundDeadline, advisory); the single /payments/stripe/webhook routes payment_intent.* and the refund family by metadata kind to the order vs subscription handlers, assigning the plan on subscription success and falling back to the free plan on a full refund.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -84,6 +84,11 @@
       "key": "currency_request_id",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "plan_id",
+      "value": "",
+      "type": "string"
     }
   ],
   "auth": {
@@ -147,6 +152,152 @@
             }
           ],
           "response": []
+        },
+        {
+          "name": "OTP & Password Reset",
+          "item": [
+            {
+              "name": "Request Email OTP",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "x-tenant-slug",
+                    "value": "{{tenant_slug}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/auth/email-otp/request",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "email-otp",
+                    "request"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"john@example.com\",\n  \"purpose\": \"EMAIL_VERIFICATION\"\n}"
+                },
+                "description": "Public tenant-scoped route (send x-tenant-slug). purpose: EMAIL_VERIFICATION | PASSWORD_RESET | LOGIN_MFA | SENSITIVE_ACTION. Always returns 200 even for unknown emails. Throttled 1/min."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"request otp ok\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Verify Email OTP",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "x-tenant-slug",
+                    "value": "{{tenant_slug}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/auth/email-otp/verify",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "email-otp",
+                    "verify"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"john@example.com\",\n  \"purpose\": \"EMAIL_VERIFICATION\",\n  \"code\": \"123456\"\n}"
+                },
+                "description": "Public tenant-scoped route. Atomically consumes the latest challenge. Errors { code, message }: OTP_INVALID | OTP_EXPIRED | OTP_ALREADY_USED | OTP_TOO_MANY_ATTEMPTS | OTP_PURPOSE_REQUIRES_CONFIRM. Throttled 5/min."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"verify otp ok\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Confirm Password Reset",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "x-tenant-slug",
+                    "value": "{{tenant_slug}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/auth/password-reset/confirm",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "password-reset",
+                    "confirm"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"john@example.com\",\n  \"code\": \"123456\",\n  \"newPassword\": \"newPassword123\"\n}"
+                },
+                "description": "Public tenant-scoped route. Consumes a PASSWORD_RESET OTP and sets newPassword (8-16 chars). Throttled 10/min."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"confirm password reset ok\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            }
+          ]
         },
         {
           "name": "Login Platform",
@@ -1090,7 +1241,7 @@
               "mode": "formdata",
               "formdata": [
                 {
-                  "key": "file",
+                  "key": "files",
                   "type": "file",
                   "src": []
                 }
@@ -1106,7 +1257,8 @@
                 "{{product_id}}",
                 "images"
               ]
-            }
+            },
+            "description": "Multipart upload: send 1-5 files under the `files` field (image/jpeg, image/png or image/webp only; no GIF). MAX_FILE_SIZE per file and MAX_PRODUCT_IMAGES per product are enforced. Requires products:update. Returns the stored image rows."
           },
           "event": [
             {
@@ -1771,7 +1923,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"addressId\": {{address_id}}\n}"
+              "raw": "{\n  \"addressId\": {{address_id}},\n  \"couponCode\": \"SAVE10\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/orders",
@@ -1782,7 +1934,7 @@
                 "orders"
               ]
             },
-            "description": "Optional body { addressId }: uses the given address (must belong to the caller) or, when omitted, the caller's default address. With no usable delivery address the request fails with 400 and nothing is written. Builds the order from the caller's cart in one atomic transaction; empty cart / missing or inactive product / insufficient stock -> 400. Requires orders:create."
+            "description": "Optional body { addressId, couponCode }: addressId must belong to the caller, or the caller's default address is used (no usable address -> 400 with no writes). couponCode is validated and consumed inside the order transaction (unknown/inactive/expired/limit reached -> 400); omit it for a normal checkout. Builds the order from the caller's cart atomically; empty cart / missing or inactive product / insufficient stock -> 400. Requires orders:create."
           },
           "event": [
             {
@@ -2302,6 +2454,129 @@
       ]
     },
     {
+      "name": "Subscriptions",
+      "item": [
+        {
+          "name": "Get My Subscription",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-tenant-slug",
+                "value": "{{tenant_slug}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/subscription",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "subscription"
+              ]
+            },
+            "description": "Current plan + subscription for the calling tenant. Requires subscriptions:read. Tenant identity comes from the resolved tenant (no tenantId in body). Includes a read-time refund snapshot: refundEligible (boolean) and refundDeadline (ISO string, null when there is no subscription or no PAID purchase). Advisory only - POST /payments/stripe/subscription/cancel re-checks the window authoritatively."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"get subscription ok\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "List Subscription Plans",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-tenant-slug",
+                "value": "{{tenant_slug}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/subscription/plans",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "subscription",
+                "plans"
+              ]
+            },
+            "description": "Active + public plans only (array). Requires subscriptions:read."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"list plans ok\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "const plans = pm.response.json();",
+                  "if (Array.isArray(plans) && plans.length) {",
+                  "    pm.collectionVariables.set(\"plan_id\", plans[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get Subscription Usage",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-tenant-slug",
+                "value": "{{tenant_slug}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/subscription/usage",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "subscription",
+                "usage"
+              ]
+            },
+            "description": "{ used, limit, remaining } per limit key for the calling tenant. Requires subscriptions:read."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"get usage ok\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ],
+      "event": []
+    },
+    {
       "name": "Payments",
       "item": [
         {
@@ -2346,6 +2621,87 @@
           "response": []
         },
         {
+          "name": "Create Subscription Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": {{plan_id}},\n  \"billingInterval\": \"MONTHLY\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/payments/stripe/subscription",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payments",
+                "stripe",
+                "subscription"
+              ]
+            },
+            "description": "Creates a platform-account Stripe PaymentIntent to purchase a plan (no Connect account / transfer_data / application_fee). Requires subscriptions:manage (STORE_OWNER only; ADMIN has subscriptions:read). Needs an active/public plan with a price for the interval (MONTHLY | YEARLY); set plan_id from List Subscription Plans. Persists a PENDING SubscriptionPayment and returns the client secret. The plan is assigned only when the stripe webhook reconciles payment_intent.succeeded (kind = subscription); a full refund falls back to the free plan."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"create subscription payment ok\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Cancel My Subscription",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/payments/stripe/subscription/cancel",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payments",
+                "stripe",
+                "subscription",
+                "cancel"
+              ]
+            },
+            "description": "Tenant self-serve cancel + full refund of the latest PAID plan purchase on the platform Stripe account, then falls back to the free plan. Requires subscriptions:manage (STORE_OWNER only; ADMIN has subscriptions:read). Allowed only within SUBSCRIPTION_REFUND_WINDOW_DAYS (7) days of the payment's paidAt (fallback createdAt). No body. Errors use { code, message }: 404 SUBSCRIPTION_NOT_FOUND, 409 SUBSCRIPTION_NOT_REFUNDABLE (no paid purchase), 409 REFUND_WINDOW_EXPIRED. Idempotent: repeating after REFUNDED is a no-op success."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"cancel my subscription ok\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
           "name": "Stripe Webhook",
           "request": {
             "method": "POST",
@@ -2361,7 +2717,7 @@
                 "webhook"
               ]
             },
-            "description": "Platform-only Stripe webhook. Verifies the stripe-signature header against the raw request body; do not send a JSON body from here. Handles payment_intent.*, charge.refunded and refund.* events."
+            "description": "Platform-only Stripe webhook. Verifies the stripe-signature header against the raw request body; do not send a JSON body from here. Handles payment_intent.succeeded/canceled/payment_failed, charge.refunded and refund.* events. Classifies each event by metadata.data.kind: order intents update the tenant Payment/Order; subscription intents (kind = subscription) reconcile the public SubscriptionPayment ledger and assign the plan on succeeded, with a full refund falling back to the free plan."
           },
           "auth": {
             "type": "noauth"
@@ -2741,6 +3097,398 @@
                 },
                 "description": "Marks the request REJECTED; reviewNote is required (400 when blank). 409 when already reviewed. SUPER_ADMIN only."
               },
+              "response": []
+            }
+          ],
+          "event": []
+        },
+        {
+          "name": "Subscription Plans",
+          "item": [
+            {
+              "name": "List Subscription Plans",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/platform/subscription-plans",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "platform",
+                    "subscription-plans"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "disabled": true
+                    },
+                    {
+                      "key": "limit",
+                      "value": "50",
+                      "disabled": true
+                    },
+                    {
+                      "key": "active",
+                      "value": "true",
+                      "disabled": true
+                    },
+                    {
+                      "key": "isPublic",
+                      "value": "true",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Public (no auth required) but still platform-scoped. Returns an array ordered by sortOrder then name. Optional filters: active, isPublic."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"list platform plans ok\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "const plans = pm.response.json();",
+                      "if (Array.isArray(plans) && plans.length) {",
+                      "    pm.collectionVariables.set(\"plan_id\", plans[0].id);",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Get Subscription Plan By Id",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/platform/subscription-plans/{{plan_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "platform",
+                    "subscription-plans",
+                    "{{plan_id}}"
+                  ]
+                },
+                "description": "Plan with limits + features. 404 PLAN_NOT_FOUND when missing. SUPER_ADMIN only."
+              },
+              "response": []
+            },
+            {
+              "name": "Create Subscription Plan",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/platform/subscription-plans",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "platform",
+                    "subscription-plans"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Starter\",\n  \"slug\": \"starter\",\n  \"description\": \"For small stores\",\n  \"monthlyPrice\": 29,\n  \"yearlyPrice\": 290,\n  \"currency\": \"usd\",\n  \"active\": true,\n  \"isPublic\": true,\n  \"sortOrder\": 1,\n  \"trialDays\": 14,\n  \"limits\": [\n    {\n      \"key\": \"STORAGE_BYTES\",\n      \"type\": \"BYTES\",\n      \"value\": 10737418240\n    },\n    {\n      \"key\": \"DATABASE_BYTES\",\n      \"type\": \"BYTES\",\n      \"value\": 524288000\n    },\n    {\n      \"key\": \"STORE_ADMINS\",\n      \"type\": \"COUNT\",\n      \"value\": 2\n    },\n    {\n      \"key\": \"COUPONS_PER_MONTH\",\n      \"type\": \"COUNT\",\n      \"value\": 25\n    },\n    {\n      \"key\": \"PRODUCTS\",\n      \"type\": \"COUNT\",\n      \"value\": 100\n    }\n  ],\n  \"features\": [\n    {\n      \"key\": \"STRIPE_PAYMENTS\",\n      \"enabled\": true\n    },\n    {\n      \"key\": \"COUPONS\",\n      \"enabled\": true\n    }\n  ]\n}"
+                },
+                "description": "limit types: BYTES | COUNT; limit keys: STORAGE_BYTES | DATABASE_BYTES | STORE_ADMINS | COUPONS_PER_MONTH | PRODUCTS. Omit a limit or set value null for unlimited. 400 PLAN_SLUG_TAKEN. SUPER_ADMIN only."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"create plan ok\", function () {",
+                      "    pm.response.to.have.status(201);",
+                      "});",
+                      "if (pm.response.code === 201) {",
+                      "    pm.collectionVariables.set(\"plan_id\", pm.response.json().id);",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Update Subscription Plan",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/platform/subscription-plans/{{plan_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "platform",
+                    "subscription-plans",
+                    "{{plan_id}}"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"monthlyPrice\": 39,\n  \"active\": true\n}"
+                },
+                "description": "Partial update. Sending limits/features replaces the full set. 404 PLAN_NOT_FOUND. SUPER_ADMIN only."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"update plan ok\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Delete Subscription Plan",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/platform/subscription-plans/{{plan_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "platform",
+                    "subscription-plans",
+                    "{{plan_id}}"
+                  ]
+                },
+                "description": "Deactivates a plan still referenced by a subscription ({ deactivated: true }), otherwise hard-deletes ({ deleted: true }). 404 PLAN_NOT_FOUND. SUPER_ADMIN only."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"delete plan ok\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            }
+          ],
+          "event": []
+        },
+        {
+          "name": "Tenant Subscriptions",
+          "item": [
+            {
+              "name": "Get Tenant Subscription",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/platform/tenants/{{tenant_id}}/subscription",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "platform",
+                    "tenants",
+                    "{{tenant_id}}",
+                    "subscription"
+                  ]
+                },
+                "description": "Current plan + subscription for a tenant (falls back to free when unassigned). SUPER_ADMIN only."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"get tenant subscription ok\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Get Tenant Subscription Usage",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/platform/tenants/{{tenant_id}}/subscription/usage",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "platform",
+                    "tenants",
+                    "{{tenant_id}}",
+                    "subscription",
+                    "usage"
+                  ]
+                },
+                "description": "{ used, limit, remaining } per limit key for a tenant. SUPER_ADMIN only."
+              },
+              "response": []
+            },
+            {
+              "name": "Assign Subscription To Tenant",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/platform/tenants/{{tenant_id}}/subscription",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "platform",
+                    "tenants",
+                    "{{tenant_id}}",
+                    "subscription"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"planId\": {{plan_id}},\n  \"billingInterval\": \"MONTHLY\"\n}"
+                },
+                "description": "Manual assignment. billingInterval: MONTHLY | YEARLY. Mirrors the plan STORAGE_BYTES limit into Tenant.storageCapacityBytes. SUPER_ADMIN only."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"assign subscription ok\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Update Tenant Subscription Status",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/platform/tenants/{{tenant_id}}/subscription/status",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "platform",
+                    "tenants",
+                    "{{tenant_id}}",
+                    "subscription",
+                    "status"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"ACTIVE\"\n}"
+                },
+                "description": "status: TRIALING | ACTIVE | PAST_DUE | CANCELED | UNPAID | INCOMPLETE | INCOMPLETE_EXPIRED | PAUSED. SUPER_ADMIN only."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"update subscription status ok\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "response": []
+            },
+            {
+              "name": "Cancel Subscription And Refund",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/platform/tenants/{{tenant_id}}/subscription/cancel",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "platform",
+                    "tenants",
+                    "{{tenant_id}}",
+                    "subscription",
+                    "cancel"
+                  ]
+                },
+                "description": "Cancels the tenant subscription and refunds its latest PAID plan purchase on the platform Stripe account, then falls back to the free plan. Idempotent. SUPER_ADMIN only."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"cancel subscription ok\", function () {",
+                      "    pm.response.to.have.status(201);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
               "response": []
             }
           ],

@@ -11,6 +11,10 @@ import {
   type ProductFormValues,
 } from "@/components/products/product-schema";
 import { ProductImagesManager } from "@/components/products/product-images-manager";
+import { QueryErrorState } from "@/components/refine-ui/views/query-state";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import type { Product } from "@/types/product";
 
 export const ProductsEdit = () => {
@@ -23,25 +27,46 @@ export const ProductsEdit = () => {
     },
   });
 
-  const record = form.refineCore.query?.data?.data;
+  const query = form.refineCore.query;
+  const record = query?.data?.data;
 
   return (
     <EditView>
       <EditViewHeader />
-      <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
-        <ProductForm
-          form={form}
-          onSubmit={form.refineCore.onFinish}
-          isSubmitting={form.refineCore.formLoading}
-          submitLabel="Save changes"
-        />
-        {record?.id ? (
-          <ProductImagesManager
-            productId={record.id}
-            images={record.images ?? []}
+      {query?.isLoading ? (
+        <div className={cn("grid", "gap-6", "lg:grid-cols-[2fr_1fr]")}>
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-6 w-48" />
+            </CardHeader>
+            <CardContent className={cn("flex", "flex-col", "gap-4")}>
+              {Array.from({ length: 6 }).map((_, index) => (
+                <Skeleton
+                  key={`skeleton-field-${index}`}
+                  className="h-10 w-full"
+                />
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      ) : query?.isError ? (
+        <QueryErrorState onRetry={() => void query.refetch()} />
+      ) : (
+        <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
+          <ProductForm
+            form={form}
+            onSubmit={form.refineCore.onFinish}
+            isSubmitting={form.refineCore.formLoading}
+            submitLabel="Save changes"
           />
-        ) : null}
-      </div>
+          {record?.id ? (
+            <ProductImagesManager
+              productId={record.id}
+              images={record.images ?? []}
+            />
+          ) : null}
+        </div>
+      )}
     </EditView>
   );
 };
