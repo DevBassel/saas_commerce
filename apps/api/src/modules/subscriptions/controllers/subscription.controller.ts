@@ -5,6 +5,7 @@ import { SubscriptionPermissionKey } from '../constants/subscription-permissions
 import { SubscriptionService } from '../services/subscription.service';
 import { SubscriptionPlansService } from '../services/subscription-plans.service';
 import { SubscriptionUsageService } from '../services/subscription-usage.service';
+import { CacheResponse } from '../../../common/cache/cache-response.decorator';
 
 @Controller('subscription')
 @Permissions([SubscriptionPermissionKey.READ])
@@ -24,6 +25,7 @@ export class SubscriptionController {
   }
 
   @Get('plans')
+  @CacheResponse({ policy: 'plans', scope: 'platform' })
   listPlans() {
     return this.plans.findAll({ active: true, isPublic: true });
   }

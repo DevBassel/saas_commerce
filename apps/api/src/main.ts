@@ -7,6 +7,8 @@ import { buildCorsOrigin } from './common/config/cors.util';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import compression from 'compression';
+import { ResponseCacheInterceptor } from './common/cache/response-cache.interceptor';
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
 
@@ -52,7 +54,11 @@ async function bootstrap() {
     }),
   );
 
-  app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
+  // The cache stores the already-serialized result; keep the serializer inner.
+  app.useGlobalInterceptors(
+    app.get(ResponseCacheInterceptor),
+    new ClassSerializerInterceptor(app.get(Reflector)),
+  );
   app.setGlobalPrefix(`${apiPrefix}/${apiVersion}`);
   app.enableShutdownHooks();
 

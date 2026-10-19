@@ -16,6 +16,7 @@ import type { RequestWithUser } from '../auth/interfaces/RequestWithUser.interfa
 import { Public } from '../auth/decorators/isPublic.decorator';
 import { Platform } from '../auth/decorators/isPlatform.decorator';
 import { Permissions } from '../auth/decorators/permissions.decorator';
+import { Throttle } from '@nestjs/throttler';
 import { PaymentPermissionKey } from './constants/payments-permissions.enum';
 import { SubscriptionPermissionKey } from '../subscriptions/constants/subscription-permissions.enum';
 
@@ -46,6 +47,7 @@ export default class PaymentsController {
   @Platform()
   @Public()
   @Post('/stripe/webhook')
+  @Throttle({ default: { limit: 1000, ttl: 60_000 } })
   handleWebhook(
     @Req() req: RawBodyRequest<Request>,
     @Headers('stripe-signature') sig: string,

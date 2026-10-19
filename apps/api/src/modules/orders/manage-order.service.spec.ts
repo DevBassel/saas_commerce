@@ -6,7 +6,7 @@ import { NOW, TENANT, buildMocks, orderEntity } from './orders.spec-helpers';
 describe('ManageOrderService', () => {
   describe('updateStatus', () => {
     it('rejects an invalid transition', async () => {
-      const { manageService, orderRepo } = buildMocks();
+      const { manageService, orderRepo, cacheMocks } = buildMocks();
       orderRepo.findOne.mockResolvedValue(
         orderEntity({ status: OrderStatus.PENDING }),
       );
@@ -15,6 +15,7 @@ describe('ManageOrderService', () => {
         manageService.updateStatus(1, { status: OrderStatus.SHIPPED }, TENANT),
       ).rejects.toThrow('Cannot change order status from PENDING to SHIPPED');
       expect(orderRepo.update).not.toHaveBeenCalled();
+      expect(cacheMocks.invalidateProducts).not.toHaveBeenCalled();
     });
 
     it('applies a valid forward transition', async () => {
@@ -37,7 +38,8 @@ describe('ManageOrderService', () => {
     });
 
     it('restocks when transitioning to cancelled', async () => {
-      const { manageService, orderRepo, productRepo } = buildMocks();
+      const { manageService, orderRepo, productRepo, cacheMocks } =
+        buildMocks();
       orderRepo.findOne.mockResolvedValue(
         orderEntity({
           status: OrderStatus.CONFIRMED,
@@ -53,6 +55,7 @@ describe('ManageOrderService', () => {
 
       expect(productRepo.increment).toHaveBeenCalledWith({ id: 5 }, 'stock', 2);
       expect(result.status).toBe(OrderStatus.CANCELLED);
+      expect(cacheMocks.invalidateProducts).toHaveBeenCalledWith(TENANT);
     });
 
     it('restores coupon usage when a manager cancels a coupon order', async () => {

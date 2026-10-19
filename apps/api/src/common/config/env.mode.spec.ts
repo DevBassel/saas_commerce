@@ -144,4 +144,63 @@ describe('buildEnv', () => {
     populate({ STRIPE_APPLICATION_FEE_BPS: undefined });
     expect(buildEnv().stripe.applicationFeeBps).toBe(0);
   });
+
+  it('defaults the statement timeout and cache groups', () => {
+    populate({
+      DB_STATEMENT_TIMEOUT_MS: undefined,
+      CACHE_ENABLED: undefined,
+      CACHE_MAX_ENTRY_BYTES: undefined,
+      REDIS_URL: undefined,
+    });
+    const env = buildEnv();
+
+    expect(env.db.statementTimeoutMs).toBe(30000);
+    expect(env.cache).toMatchObject({
+      enabled: true,
+      maxEntryBytes: 262144,
+      productsTtlSeconds: 30,
+      categoriesTtlSeconds: 300,
+      plansTtlSeconds: 300,
+    });
+    expect(env.cache.redis).toEqual({
+      url: undefined,
+      tls: false,
+      connectTimeoutMs: 1000,
+      commandTimeoutMs: 50,
+      safetyTtlSeconds: 600,
+    });
+  });
+
+  it('parses explicit cache values and a zero statement timeout', () => {
+    populate({
+      DB_STATEMENT_TIMEOUT_MS: '0',
+      CACHE_ENABLED: 'false',
+      CACHE_MAX_ENTRY_BYTES: '12',
+    });
+    const env = buildEnv();
+
+    expect(env.db.statementTimeoutMs).toBe(0);
+    expect(env.cache.enabled).toBe(false);
+    expect(env.cache.maxEntryBytes).toBe(12);
+  });
+
+  it('parses Redis cache settings', () => {
+    populate({
+      REDIS_URL: 'rediss://cache.internal:6379',
+      CACHE_REDIS_TLS: 'TRUE',
+      CACHE_REDIS_CONNECT_TIMEOUT_MS: '250',
+      CACHE_REDIS_COMMAND_TIMEOUT_MS: '25',
+      CACHE_REDIS_SAFETY_TTL_SECONDS: '900',
+    });
+
+    const { cache } = buildEnv();
+
+    expect(cache.redis).toEqual({
+      url: 'rediss://cache.internal:6379',
+      tls: true,
+      connectTimeoutMs: 250,
+      commandTimeoutMs: 25,
+      safetyTtlSeconds: 900,
+    });
+  });
 });

@@ -5,16 +5,72 @@ Most dynamic file in the bank — keep it short and current.
 
 ## Current focus
 
-**Store-owner self-serve subscription cancel + refund** (`apps/api` + `apps/store_owner_dashboard`,
-uncommitted). Implemented per `.kilo/plans/1791582083889-tenant-cancel-refund-7-days.md`: a new
-tenant-scoped `POST /payments/stripe/subscription/cancel` (`subscriptions:manage`) refunds the
-tenant's latest **PAID** `SubscriptionPayment` on the platform account and downgrades to free, but
-only within a **7-day** window (`SUBSCRIPTION_REFUND_WINDOW_DAYS`) from that payment's `paidAt`
-(fallback `createdAt`). `GET /subscription` gains additive `refundEligible`/`refundDeadline`, and
-`tenant_dash` `/settings/subscription` shows a destructive Cancel/Refund button + confirm dialog when
-eligible. The platform (Super Admin) cancel route is unchanged (no window).
+**API caching** (`apps/api`, uncommitted). A Redis-only response cache for six approved
+catalog/plan reads (products 30s, categories 300s, plans 300s) with post-write invalidation and
+cross-instance coherence. Cache is server-side only; every API response still sends
+`Cache-Control: no-store`. The endpoint-priority/admission-control experiment was removed.
 
 ## Recent changes
+
+- 2026-10-18 — Redis-only cache (uncommitted):
+  - Deleted `memory-cache.store.ts` and its spec; `CacheModule` always constructs
+    `RedisCacheStore`.
+  - Removed `CACHE_DRIVER`, `CACHE_MAX_ENTRIES`, `CACHE_MAX_TOTAL_BYTES`, and the `driver` field
+    from `ICache`; `REDIS_URL` is now Joi-required (redis/rediss scheme).
+  - `TenantCacheService.driver` and `CacheStats.driver` are the literal `'redis'`.
+  - Specs use local `CacheStore` test doubles (production ships Redis only); env/health/cache
+    specs, `.env.example`, `compose.yaml`, `RAILWAY.md`, both `AGENTS.md` files, and the k6 README
+    updated.
+  - **Verified:** typecheck clean; cache/env/health suites 68 passed (live-Redis spec skipped
+    without `REDIS_URL`).
+
+- 2026-10-18 — Removed endpoint priority, kept the cache (uncommitted):
+  - Deleted `src/common/priority/` and every `@EndpointPriority`/`PriorityLevel` use.
+  - Restored the stock `ThrottlerGuard` in `app.module.ts`; `main.ts` now registers only
+    `ResponseCacheInterceptor` → `ClassSerializerInterceptor`.
+  - Removed `EndpointPolicyService` from `ResponseCacheInterceptor`; the cache still enforces the
+    route allowlist and scope from `@CacheResponse`.
+  - Removed the `priority` env group (`PRIORITY_*`) from schema/interface/mode, `.env.example`, and
+    `RAILWAY.md`; deleted the priority service/interceptor/guard/matrix specs.
+  - Kept `DB_STATEMENT_TIMEOUT_MS`, the cache/Redis configuration, and the k6 `X-Cache` metrics.
+  - **Verified:** typecheck clean; Jest suites green (live-Redis spec skipped without `REDIS_URL`).
+
+- 2026-10-18 — Optional Redis cache driver (uncommitted):
+  - `src/common/cache/redis-cache.store.ts` — ioredis `CacheStore` implementation. Full logical
+    keys are stored verbatim; each namespace has a `ns:<namespace>` set index and an
+    `nsv:<namespace>` integer version. Writes run a Lua script that checks the expected version
+    (captured before the loader) and returns false on a stale write; invalidation increments the
+    version first, deletes the indexed keys, then publishes `cache:invalidate`.
+  - `TenantCacheService` — captures a namespace version per in-flight load, retries once when the
+    store rejects a stale write, subscribes to cross-instance invalidations and marks local
+    in-flight records stale, and closes the store on module destroy.
+  - `CacheStore` — `set` now returns a write-success boolean, plus `getVersion`,
+    `subscribeInvalidations?`, and `close?`.
+  - Config: Redis-only, `REDIS_URL` required,
+    `CACHE_REDIS_TLS`, `CACHE_REDIS_CONNECT_TIMEOUT_MS`, `CACHE_REDIS_COMMAND_TIMEOUT_MS`,
+    `CACHE_REDIS_SAFETY_TTL_SECONDS`; Joi/dotenv/env.mode/`.env.example`/`RAILWAY.md` updated.
+    `compose.yaml` gains a `redis:7-alpine` service (`saas_store_redis`) and the API reaches it as
+    `redis://redis:6379`.
+  - Dependency: `ioredis@^6` added to `saas_store_api`.
+  - Tests: `redis-cache.store.spec.ts` (fake-client wiring, version guard, publish, INFO parsing,
+    subscription dispatch) and a `REDIS_URL`-gated live-Redis integration spec.
+
+- 2026-10-18 — API caching (uncommitted):
+  - `src/common/cache/` — `CacheStore` + the Redis store (namespace key index, namespace versions,
+    cross-instance invalidation), `TenantCacheService` (SHA-256 canonical keys, single-flight with
+    identity tokens, invalidation-race retry, fail-open, stats), `CacheModule` (`@Global`),
+    `@CacheResponse`, and `ResponseCacheInterceptor` (allowlist, forced `no-store`, `X-Cache`,
+    tenant `Vary`, debug logs).
+  - `src/common/http/route-template.ts` — metadata-based route keys used by the cache allowlist and
+    tests.
+  - Invalidation: product writes/images, category writes (categories + products), checkout, order
+    cancel, manager cancel/return, and plan writes; `requestReturn` does not invalidate.
+  - `DB_STATEMENT_TIMEOUT_MS` added to the `db` group; both DataSources get
+    `extra.statement_timeout` when > 0.
+  - `GET /health` reports cache stats without changing top-level status.
+  - Tests: cache store, tenant cache, response interceptor, and a mini-Nest integration test
+    proving guard → cache → serializer ordering and `@Exclude` safety. k6 `browse` records
+    `X-Cache` and the README documents the baseline/after run.
 
 - 2026-10-09 — Tenant self-serve subscription cancel + refund (uncommitted):
   - `subscriptions/constants/subscription.constants.ts` — added `SUBSCRIPTION_REFUND_WINDOW_DAYS = 7`.
@@ -175,8 +231,8 @@ eligible. The platform (Super Admin) cancel route is unchanged (no window).
 
 ## Working tree state (check before relying on HEAD)
 
-HEAD is `7a1f055`. Large uncommitted work spans `apps/api`, `apps/store_owner_dashboard`, the memory
-bank, and the subscription feature. Verify with `git status --short` before relying on HEAD.
+HEAD is `8a93350` (the subscription checkout/cancel commit). The cache and Redis work described
+above is uncommitted on top of it. Verify with `git status --short` before relying on HEAD.
 
 ## Known tooling issues
 

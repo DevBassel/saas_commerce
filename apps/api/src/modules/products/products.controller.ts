@@ -31,6 +31,7 @@ import {
   FALLBACK_MAX_FILE_SIZE,
   MAX_FILES_PER_REQUEST,
 } from './constants/upload.constants';
+import { CacheResponse } from '../../common/cache/cache-response.decorator';
 
 @Controller('products')
 export class ProductsController {
@@ -39,6 +40,7 @@ export class ProductsController {
   @Get()
   @Public()
   @Permissions([ProductPermissionKey.READ])
+  @CacheResponse({ policy: 'products', scope: 'tenant' })
   findAll(@Query() query: ListProductsQueryDto) {
     return this.productsService.findAll(query);
   }
@@ -46,6 +48,7 @@ export class ProductsController {
   @Get(':id')
   @Public()
   @Permissions([ProductPermissionKey.READ])
+  @CacheResponse({ policy: 'products', scope: 'tenant' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.productsService.findOne(id);
   }

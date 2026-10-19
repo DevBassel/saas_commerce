@@ -28,8 +28,14 @@ describe('OrdersService', () => {
 
   describe('checkout', () => {
     it('rejects an empty cart without writing anything', async () => {
-      const { service, cartRepo, orderRepo, productRepo, cartItemRepo } =
-        buildMocks();
+      const {
+        service,
+        cartRepo,
+        orderRepo,
+        productRepo,
+        cartItemRepo,
+        cacheMocks,
+      } = buildMocks();
       cartRepo.findOne.mockResolvedValue(null);
 
       await expect(service.checkout(7, {}, TENANT)).rejects.toThrow(
@@ -39,6 +45,7 @@ describe('OrdersService', () => {
       expect(productRepo.createQueryBuilder).not.toHaveBeenCalled();
       expect(orderRepo.save).not.toHaveBeenCalled();
       expect(cartItemRepo.delete).not.toHaveBeenCalled();
+      expect(cacheMocks.invalidateProducts).not.toHaveBeenCalled();
     });
 
     it('rejects a cart whose items list is empty', async () => {
@@ -114,6 +121,7 @@ describe('OrdersService', () => {
         cartItemRepo,
         addressRepo,
         r2Mocks,
+        cacheMocks,
       } = buildMocks();
       cartRepo.findOne.mockResolvedValue(
         customerCart([
@@ -135,6 +143,7 @@ describe('OrdersService', () => {
 
       const result = await service.checkout(7, {}, TENANT);
 
+      expect(cacheMocks.invalidateProducts).toHaveBeenCalledWith(TENANT);
       expect(productQb.setLock).toHaveBeenCalledWith(
         'pessimistic_write',
         undefined,
@@ -574,7 +583,7 @@ describe('OrdersService', () => {
 
   describe('cancel', () => {
     it('cancels a pending owner order and restocks its lines', async () => {
-      const { service, orderRepo, productRepo } = buildMocks();
+      const { service, orderRepo, productRepo, cacheMocks } = buildMocks();
       orderRepo.findOne
         .mockResolvedValueOnce(
           orderEntity({
@@ -596,6 +605,7 @@ describe('OrdersService', () => {
       expect(productRepo.increment).toHaveBeenCalledTimes(1);
       expect(productRepo.increment).toHaveBeenCalledWith({ id: 5 }, 'stock', 2);
       expect(result.status).toBe(OrderStatus.CANCELLED);
+      expect(cacheMocks.invalidateProducts).toHaveBeenCalledWith(TENANT);
     });
 
     it('rejects cancelling a delivered order', async () => {
@@ -670,7 +680,8 @@ describe('OrdersService', () => {
     });
 
     it('refunds a paid order, restocks it and mirrors the refund', async () => {
-      const { service, orderRepo, productRepo, paymentsMocks } = buildMocks();
+      const { service, orderRepo, productRepo, paymentsMocks, cacheMocks } =
+        buildMocks();
       orderRepo.findOne
         .mockResolvedValueOnce(
           orderEntity({
@@ -701,6 +712,7 @@ describe('OrdersService', () => {
       );
       expect(productRepo.increment).toHaveBeenCalledWith({ id: 5 }, 'stock', 2);
       expect(result.status).toBe(OrderStatus.CANCELLED);
+      expect(cacheMocks.invalidateProducts).toHaveBeenCalledWith(TENANT);
     });
 
     it('aborts the cancel when the refund fails', async () => {

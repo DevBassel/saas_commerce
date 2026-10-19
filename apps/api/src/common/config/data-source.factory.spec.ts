@@ -25,6 +25,7 @@ const db: IDB = {
   tenantPoolSize: 5,
   tenantStorageCapacityBytes: 1_000_000,
   tenantDbCapacityBytes: 2_000_000,
+  statementTimeoutMs: 30000,
 };
 
 let getOrThrowMock: jest.Mock;
@@ -120,5 +121,31 @@ describe('buildDataSourceOptions', () => {
 
     expect(options.ssl).toBe(true);
     expect(options.logging).toBe(false);
+  });
+
+  it('passes statement_timeout to the pg pool when greater than zero', () => {
+    const options = build({}, makeConfig({ statementTimeoutMs: 1500 }));
+
+    expect(options.extra).toEqual({ statement_timeout: 1500 });
+  });
+
+  it('omits statement_timeout when zero', () => {
+    const options = build({}, makeConfig({ statementTimeoutMs: 0 }));
+
+    expect(options).not.toHaveProperty('extra');
+  });
+
+  it('applies statement_timeout to tenant overrides too', () => {
+    const options = build(
+      { schema: 'tenant_acme', entities, poolSize: 3 },
+      makeConfig({ statementTimeoutMs: 250 }),
+    );
+
+    expect(options).toMatchObject({
+      schema: 'tenant_acme',
+      entities,
+      poolSize: 3,
+      extra: { statement_timeout: 250 },
+    });
   });
 });

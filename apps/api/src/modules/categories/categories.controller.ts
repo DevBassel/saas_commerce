@@ -13,6 +13,7 @@ import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { Permissions } from '../auth/decorators/permissions.decorator';
 import { CategoryPermissionKey } from './constants/category-permissions.enum';
+import { CacheResponse } from '../../common/cache/cache-response.decorator';
 
 @Controller('categories')
 export class CategoriesController {
@@ -20,12 +21,14 @@ export class CategoriesController {
 
   @Get()
   @Permissions([CategoryPermissionKey.READ])
+  @CacheResponse({ policy: 'categories', scope: 'tenant' })
   findAll() {
     return this.categoriesService.findAll();
   }
 
   @Get(':id')
   @Permissions([CategoryPermissionKey.READ])
+  @CacheResponse({ policy: 'categories', scope: 'tenant' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.categoriesService.findOne(id);
   }

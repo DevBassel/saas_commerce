@@ -14,6 +14,26 @@ export interface IENV {
   seeding: ISeeding;
   otp: IOtp;
   email: IEmail;
+  cache: ICache;
+}
+
+export interface IRedisCache {
+  url?: string;
+  tls: boolean;
+  connectTimeoutMs: number;
+  commandTimeoutMs: number;
+  safetyTtlSeconds: number;
+}
+
+export interface ICache {
+  enabled: boolean;
+  maxEntryBytes: number;
+  maxInflight: number;
+  operationTimeoutMs: number;
+  productsTtlSeconds: number;
+  categoriesTtlSeconds: number;
+  plansTtlSeconds: number;
+  redis: IRedisCache;
 }
 
 export interface IOtp {
@@ -71,6 +91,7 @@ export interface IDB {
   tenantPoolSize?: number;
   tenantStorageCapacityBytes: number;
   tenantDbCapacityBytes: number;
+  statementTimeoutMs: number;
 }
 
 export interface IJWT {

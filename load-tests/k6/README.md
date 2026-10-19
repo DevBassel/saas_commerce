@@ -49,7 +49,7 @@ apps/api/test/seed-load-test.ts
    ```bash
    pnpm --filter saas_store_api dev
    ```
-4. Install k6 (`https://grafana.com/docs/k6/latest/set-up/install-k6/`).
+5. Install k6 (`https://grafana.com/docs/k6/latest/set-up/install-k6/`).
 
 ## Configure
 
@@ -141,6 +141,13 @@ k6 run isolation.js     # tenant-isolation scenario only
 | `checkout_flow` | Authenticated add to cart and `POST /orders` |
 | `tenant_isolation` | Non-destructive cross-tenant token rejection |
 
+`browse` is the catalog scenario: `/products` and `/products/:id` are the two
+cacheable tenant routes, and `/store/info` is intentionally uncached. Every API
+response carries `X-Cache`, which the harness aggregates into `cache_hits`,
+`cache_misses`, and `cache_bypasses`. A run with `CACHE_ENABLED=true` should show
+a rising hit ratio after the first iteration per tenant; `/store/info` and
+private routes contribute `BYPASS`.
+
 Sizing uses `K6_LOAD_VUS` (default 1000) and `K6_LOAD_DURATION` (default `2m`).
 The cart and checkout scenarios use a fraction of `K6_LOAD_VUS`, so the total
 virtual-user count is higher than `K6_LOAD_VUS`. Do **not** use `K6_VUS` /
@@ -171,13 +178,34 @@ Every tenant keeps a weight of at least 1, so no tenant is starved.
 
 ```
 Overall:
-  p50, p95, p99, error rate, RPS
+  p50, p95, p99, error rate, RPS, cache hit/miss/bypass and hit ratio
 
 Per tenant (requests, errors, isolation failures, p95, p99, RPS)
 ```
 
 Per-tenant data comes from the `tenant` metric tag, so a hot or slow tenant
 cannot hide behind the global aggregate.
+
+## Cache benchmark
+
+Run the same dataset, VU distribution, duration, and endpoint mix twice:
+
+```env
+# Baseline
+CACHE_ENABLED=false
+
+# After
+CACHE_ENABLED=true
+```
+
+Keep `THROTTLE_*` identical across both runs so only cache behavior differs.
+Compare `p50/p95/p99`, RPS, error rate, `429`/`503` counts, the cache hit ratio,
+and PostgreSQL query count/duration (`pg_stat_statements` or `DB_LOGGING`). With
+more than one API replica, point every replica at the same Redis with `REDIS_URL`
+for the cache run: entries and invalidations are shared through Redis. A mixed
+run that also exercises dashboard and
+analytics traffic can show whether caching relieves pressure on the primary
+workload; do not claim an improvement without completed runs.
 
 ## Thresholds
 

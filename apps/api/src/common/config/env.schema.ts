@@ -79,6 +79,8 @@ export const EnvSchema = joi.object({
   TENANT_POOL_SIZE: joi.number().required(),
   TENANT_STORAGE_CAPACITY_BYTES: joi.number().integer().min(0).required(),
   TENANT_DB_CAPACITY_BYTES: joi.number().integer().min(0).required(),
+  // Per-statement PostgreSQL timeout in milliseconds; 0 disables it.
+  DB_STATEMENT_TIMEOUT_MS: joi.number().integer().min(0).default(30000),
   // R2 Object Storage
   R2_ACCOUNT_ID: joi.string().required(),
   R2_ACCESS_KEY_ID: joi.string().required(),
@@ -124,6 +126,24 @@ export const EnvSchema = joi.object({
   // Throttling
   THROTTLE_TTL: joi.number().required(),
   THROTTLE_LIMIT: joi.number().required(),
+
+  // Response cache (Redis only)
+  CACHE_ENABLED: joi.boolean().default(true),
+  CACHE_MAX_ENTRY_BYTES: joi.number().integer().min(1).default(262144),
+  CACHE_MAX_INFLIGHT: joi.number().integer().min(1).default(100),
+  CACHE_OPERATION_TIMEOUT_MS: joi.number().integer().min(1).default(50),
+  CACHE_PRODUCTS_TTL_SECONDS: joi.number().integer().min(1).default(30),
+  CACHE_CATEGORIES_TTL_SECONDS: joi.number().integer().min(1).default(300),
+  CACHE_PLANS_TTL_SECONDS: joi.number().integer().min(1).default(300),
+  // Redis-backed cache. Required: Redis is the only cache store.
+  REDIS_URL: joi
+    .string()
+    .uri({ scheme: ['redis', 'rediss'] })
+    .required(),
+  CACHE_REDIS_TLS: joi.boolean().default(false),
+  CACHE_REDIS_CONNECT_TIMEOUT_MS: joi.number().integer().min(1).default(1000),
+  CACHE_REDIS_COMMAND_TIMEOUT_MS: joi.number().integer().min(1).default(50),
+  CACHE_REDIS_SAFETY_TTL_SECONDS: joi.number().integer().min(1).default(600),
 
   // CORS
   CORS_ORIGIN: joi.string().required(),

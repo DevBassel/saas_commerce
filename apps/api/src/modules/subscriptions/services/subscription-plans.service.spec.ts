@@ -63,20 +63,33 @@ const buildMocks = () => {
     count: jest.fn().mockResolvedValue(0),
   };
 
+  const cacheMocks = {
+    invalidatePlans: jest.fn().mockResolvedValue(undefined),
+  };
+
   const service = new SubscriptionPlansService(
     planRepo as never,
     limitRepo as never,
     featureRepo as never,
     subscriptionRepo as never,
+    cacheMocks as never,
   );
 
-  return { service, planRepo, limitRepo, featureRepo, subscriptionRepo };
+  return {
+    service,
+    planRepo,
+    limitRepo,
+    featureRepo,
+    subscriptionRepo,
+    cacheMocks,
+  };
 };
 
 describe('SubscriptionPlansService', () => {
   describe('create', () => {
     it('creates a plan and its limits/features', async () => {
-      const { service, planRepo, limitRepo, featureRepo } = buildMocks();
+      const { service, planRepo, limitRepo, featureRepo, cacheMocks } =
+        buildMocks();
       planRepo.findOne.mockResolvedValue(plan());
 
       const result = await service.create({
@@ -97,6 +110,7 @@ describe('SubscriptionPlansService', () => {
       expect(limitRepo.insert).toHaveBeenCalledTimes(1);
       expect(featureRepo.insert).toHaveBeenCalledTimes(1);
       expect(result).toBeDefined();
+      expect(cacheMocks.invalidatePlans).toHaveBeenCalledTimes(1);
     });
 
     it('rejects a duplicate slug', async () => {

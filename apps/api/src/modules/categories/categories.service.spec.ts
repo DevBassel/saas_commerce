@@ -22,8 +22,13 @@ const buildMocks = () => {
     getRepository: jest.fn(() => Promise.resolve(categoryRepo)),
   } as unknown as TenantManagerService;
 
-  const service = new CategoriesService(tenantManager);
-  return { service, categoryRepo };
+  const cacheMocks = {
+    invalidateCategories: jest.fn().mockResolvedValue(undefined),
+    invalidateProducts: jest.fn().mockResolvedValue(undefined),
+  };
+
+  const service = new CategoriesService(tenantManager, cacheMocks as never);
+  return { service, categoryRepo, cacheMocks };
 };
 
 describe('CategoriesService', () => {
@@ -33,7 +38,7 @@ describe('CategoriesService', () => {
   });
 
   it('creates a category deriving the slug from the name', async () => {
-    const { service, categoryRepo } = buildMocks();
+    const { service, categoryRepo, cacheMocks } = buildMocks();
     categoryRepo.findOneBy.mockResolvedValue(null);
     categoryRepo.create.mockImplementation(
       (data: Record<string, unknown>) => data,
@@ -54,6 +59,8 @@ describe('CategoriesService', () => {
     expect(categoryRepo.findOneBy).toHaveBeenCalledWith({
       slug: 'home-kitchen',
     });
+    expect(cacheMocks.invalidateCategories).toHaveBeenCalledWith(TENANT);
+    expect(cacheMocks.invalidateProducts).toHaveBeenCalledWith(TENANT);
   });
 
   it('honors a provided slug and rejects duplicates', async () => {

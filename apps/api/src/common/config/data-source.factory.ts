@@ -21,8 +21,17 @@ export const buildDataSourceOptions = (
   config: ConfigService<IENV>,
   overrides: DataSourceOverrides = {},
 ): PostgresConnectionOptions => {
-  const { name, host, port, username, password, synchronize, logging, ssl } =
-    config.getOrThrow<IDB>('db');
+  const {
+    name,
+    host,
+    port,
+    username,
+    password,
+    synchronize,
+    logging,
+    ssl,
+    statementTimeoutMs,
+  } = config.getOrThrow<IDB>('db');
 
   return {
     type: 'postgres',
@@ -35,6 +44,9 @@ export const buildDataSourceOptions = (
     logging,
     logger: getSharedLogger(),
     synchronize: synchronize,
+    ...(statementTimeoutMs > 0
+      ? { extra: { statement_timeout: statementTimeoutMs } }
+      : {}),
     ...(overrides.schema ? { schema: overrides.schema } : {}),
     ...(overrides.entities ? { entities: overrides.entities } : {}),
     ...(overrides.poolSize ? { poolSize: overrides.poolSize } : {}),

@@ -8,7 +8,8 @@ per-app `AGENTS.md` files.
 - **Runtime/PM:** Node `>=20` (root `engines`), pnpm workspace + Turborepo. Single root
   `pnpm-lock.yaml` and `.npmrc` (`legacy-peer-deps=true`).
 - **API:** NestJS 10, TypeORM 0.3, PostgreSQL 16, Joi-validated env, pino logging, helmet,
-  Swagger at `/api/v1`, `@aws-sdk/client-s3` for R2, Stripe SDK.
+  Swagger at `/api/v1`, `@aws-sdk/client-s3` for R2, Stripe SDK, ioredis for the Redis-only
+  response cache (`REDIS_URL` required at boot).
 - **Dashboards:** Refine v5, Vite 6, React 19, React Router 7, axios, Tailwind v4 (CSS-first),
   shadcn/ui, react-hook-form + zod. Store owner adds Vitest; super admin has none.
 - **Storefront:** Next.js 16 App Router, React 19, NextAuth v4 (JWT), Tailwind v4, Base UI
@@ -23,7 +24,7 @@ apps/super_admin_dashboard   super_admin_dash    5173
 apps/tenant_store            tenant_store        3000
 packages/*                   intentionally empty
 load-tests/k6                k6 load tests (need >=10 seeded tenants)
-compose.yaml                 Postgres (project name saas_store)
+compose.yaml                 Postgres + Redis (project name saas_store)
 ```
 
 ## Commands (from repo root)

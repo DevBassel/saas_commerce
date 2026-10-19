@@ -19,6 +19,7 @@ import {
 import { CreateSubscriptionPlanDto } from '../dto/create-subscription-plan.dto';
 import { UpdateSubscriptionPlanDto } from '../dto/update-subscription-plan.dto';
 import { ListSubscriptionPlansQueryDto } from '../dto/list-subscription-plans.query.dto';
+import { TenantCacheService } from '../../../common/cache/tenant-cache.service';
 
 const PLAN_RELATIONS = { limits: true, features: true } as const;
 
@@ -33,6 +34,7 @@ export class SubscriptionPlansService {
     private readonly featureRepo: Repository<SubscriptionPlanFeature>,
     @InjectRepository(Subscription)
     private readonly subscriptionRepo: Repository<Subscription>,
+    private readonly cache: TenantCacheService,
   ) {}
 
   async create(dto: CreateSubscriptionPlanDto): Promise<SubscriptionPlan> {
@@ -73,6 +75,7 @@ export class SubscriptionPlansService {
 
     await this.replaceLimits(plan.id, dto.limits ?? []);
     await this.replaceFeatures(plan.id, dto.features ?? []);
+    await this.cache.invalidatePlans();
     return this.findOne(plan.id);
   }
 
@@ -160,6 +163,7 @@ export class SubscriptionPlansService {
     if (dto.features !== undefined)
       await this.replaceFeatures(id, dto.features);
 
+    await this.cache.invalidatePlans();
     return this.findOne(id);
   }
 
@@ -181,10 +185,12 @@ export class SubscriptionPlansService {
     });
     if (references > 0) {
       await this.planRepo.update({ id }, { active: false });
+      await this.cache.invalidatePlans();
       return { deactivated: true };
     }
 
     await this.planRepo.delete({ id });
+    await this.cache.invalidatePlans();
     return { deleted: true };
   }
 

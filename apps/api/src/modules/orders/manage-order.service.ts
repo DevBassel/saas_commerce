@@ -20,6 +20,7 @@ import {
   restockOrderItems,
   serializeOrder,
 } from './orders.helpers';
+import { TenantCacheService } from '../../common/cache/tenant-cache.service';
 
 const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   [OrderStatus.PENDING]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
@@ -39,6 +40,7 @@ export class ManageOrderService {
     private readonly r2: R2Service,
     private readonly payments: StripePaymentService,
     private readonly coupons: CouponsService,
+    private readonly cache: TenantCacheService,
   ) {}
 
   private async repos(tenant?: TenantRef): Promise<{
@@ -93,6 +95,8 @@ export class ManageOrderService {
         await this.coupons.restoreUsage(manager, found);
       }
     });
+
+    if (restockable) await this.cache.invalidateProducts(target);
 
     return serializeOrder(
       {

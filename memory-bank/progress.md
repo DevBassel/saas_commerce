@@ -34,6 +34,14 @@ What works, what is left, and known issues. Update when work completes or debt i
   by `OTP_REQUIRE_EMAIL_VERIFIED`. Platform OTP and login MFA are deferred. Global
   `EmailVerifiedGuard` requires a verified email on all authenticated tenant routes (`403
   EMAIL_NOT_VERIFIED`); `@AllowUnverifiedEmail()` opts out (logout).
+- **API caching** (`apps/api/src/common/cache`): a Redis-backed cache on six reads
+  (`GET /products`, `/products/:id`, `/categories`, `/categories/:id`, `/subscription/plans`,
+  `/platform/subscription-plans`) with post-write invalidation, forced `Cache-Control: no-store`,
+  `X-Cache`, and a single-flight namespace store. Redis is the only driver (`REDIS_URL` required):
+  namespace key sets, namespace versions, and cross-instance invalidation via pub/sub.
+  `DB_STATEMENT_TIMEOUT_MS` bounds each PostgreSQL statement, and `GET /health` reports cache stats.
+  The endpoint-priority admission-control experiment was removed; the stock `ThrottlerGuard` is
+  back.
 - **Seeding module** (`apps/api/src/modules/seeding/`): registry-driven platform + tenant seeders
   (permissions, roles, super-admin, subscription-plans, subscription-backfill; opt-in categories),
   a single `SeedingBootstrapService` boot owner, and the `test/seed.ts` CLI

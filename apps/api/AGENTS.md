@@ -11,7 +11,8 @@ cross-app contracts; the frontends' own `AGENTS.md` files describe their clients
 Run from the repository root with a filter, or from `apps/api` directly.
 
 - `pnpm --filter saas_store_api dev` — watch mode (`nest start --watch`; alias `start:dev`).
-  Needs Postgres from the root `compose.yaml` and a real `apps/api/.env`.
+  Needs Postgres and Redis from the root `compose.yaml`
+  (`docker compose up -d postgres redis`) and a real `apps/api/.env`.
 - `pnpm --filter saas_store_api build` — `nest build`.
 - `pnpm --filter saas_store_api start:prod` — `node dist/main`.
 - `pnpm --filter saas_store_api lint` — `eslint "{src,apps,libs,test}/**/*.ts" --fix`.
@@ -41,21 +42,23 @@ npx ts-node -r tsconfig-paths/register test/seed-load-test.ts  # seeds >=10 tena
 - `src/main.ts` — bootstrap. `NestFactory.create(AppModule, { rawBody: true })`; `helmet` with
   `contentSecurityPolicy: false` so Swagger UI works; CORS via `buildCorsOrigin`; Swagger UI and
   global prefix both at `/api/v1` (`app.setGlobalPrefix`, no Nest URI versioning); global
-  `ValidationPipe({ whitelist, forbidNonWhitelisted, transform })`; global
-  `ClassSerializerInterceptor` (strips `@Exclude`); `listen(APP_PORT)`. There is no global exception
-  filter.
+  `ValidationPipe({ whitelist, forbidNonWhitelisted, transform })`; global interceptors in this
+  exact order: **`ResponseCacheInterceptor` → `ClassSerializerInterceptor`** (strips `@Exclude`);
+  `listen(APP_PORT)`. There is no global exception filter.
 - `src/app.module.ts` — imports all feature modules and registers six global guards in this exact
   order: **TenantGuard → JwtGuard → EmailVerifiedGuard → PermissionGuard → SubscriptionGuard →
   ThrottlerGuard**. `TenantMiddleware` is applied to `*`.
 - `src/core.module.ts` — global `ConfigModule` (Joi `EnvSchema`, typed env load), global
-  `JwtModule` (access secret/expiry), `ThrottlerModule`, pino logger, R2 module, and the
-  public-schema TypeORM DataSource. `PUBLIC_ENTITIES = [Tenant, User, Role, Permission,
-  CurrencyChangeRequest, SubscriptionPlan, SubscriptionPlanLimit, SubscriptionPlanFeature,
-  Subscription, TenantUsageCounter]`.
+  `JwtModule` (access secret/expiry), `ThrottlerModule`, `CacheModule`, pino logger, R2 module,
+  and the public-schema TypeORM DataSource.
+  `PUBLIC_ENTITIES = [Tenant, User, Role, Permission, CurrencyChangeRequest, SubscriptionPlan,
+  SubscriptionPlanLimit, SubscriptionPlanFeature, Subscription, SubscriptionPayment,
+  TenantUsageCounter]`.
 - `src/common/` — `config/` (env schema, typed groups, `cors.util.ts`, `data-source.factory.ts`),
   `logger/` (pino to rotating file, TypeORM daily logger), `storage/` (`R2Service` on
-  `@aws-sdk/client-s3`), `health/` (`GET health`), `db/` (`money-column`, `unique-retry`),
-  `constants/` (`RoleKey` + `ROLE_RANK`, `PermissionKey` union, `currency.enum`).
+  `@aws-sdk/client-s3`), `health/` (`GET health`), `cache/`, `http/` (route templates),
+  `db/` (`money-column`, `unique-retry`), `constants/` (`RoleKey` + `ROLE_RANK`, `PermissionKey`
+  union, `currency.enum`).
 - `src/modules/` — `auth`, `users`, `rbac`, `tenants`, `platform`, `products`, `categories`, `cart`,
   `orders`, `coupons`, `payments`, `addresses`, `dashboard`, `currency-requests`, `storefront`,
   `subscriptions`.
@@ -409,6 +412,44 @@ Connect destination-charge flow.
 - Other public routes: `POST /auth/register`, `POST /auth/login`, `POST /auth/login/platform`,
   `POST /auth/refresh`, `GET /health` (`@Public @Platform`, reports DB + R2).
 
+## Caching
+
+Server-side, opt-in caching backed by Redis (the only cache store); no browser cache, queue, or
+background worker. `REDIS_URL` is required at boot. The existing global `ThrottlerGuard` remains
+unchanged and applies to every request, including cache hits.
+
+- `src/common/cache/` — `redis-cache.store.ts` implements `CacheStore` over ioredis with a namespace
+  key set (`ns:<namespace>`), a namespace version (`nsv:<namespace>`), and a Lua write guard.
+  `TenantCacheService` builds keys
+  (`api:v1:cache:tenant:<schema>:<namespace>:<sha256>` / `…:platform:…`), single-flights loads,
+  handles invalidation races with identity tokens, and fails open on store errors. `CacheModule` is
+  `@Global`, always constructs `RedisCacheStore`, and lives in `CoreModule`.
+- Redis invalidation is cross-instance: `invalidateNamespace` increments the namespace version,
+  deletes the keys in the namespace index, and publishes `cache:invalidate`; every replica marks
+  its local in-flight loads stale. A write whose captured version no longer matches is rejected and
+  retried once. Invalidation never uses `KEYS`/`SCAN`.
+- `CACHE_MAX_ENTRY_BYTES` is enforced by the store. Bound Redis with `maxmemory` +
+  `maxmemory-policy allkeys-lru`. Redis `entries`/`bytes`/`evictions` in health come from
+  `DBSIZE`/`INFO` and are Redis-wide, not cache-only. Under memory pressure, eviction of a namespace
+  index or version key weakens invalidation to the entry TTL, so size `maxmemory` above the working
+  set.
+- The only cacheable routes are `GET /products`, `GET /products/:id`, `GET /categories`,
+  `GET /categories/:id`, `GET /subscription/plans`, and `GET /platform/subscription-plans`.
+  `@CacheResponse({ policy, scope })` on any other route is ignored with a warning. Plans use the
+  shared `platform:subscription-plans` namespace so both read routes clear together.
+- Invalidation is post-write only: product writes/images, category writes (categories + products),
+  checkout, order cancel, `ManageOrderService.updateStatus` for `CANCELLED`/`RETURNED`, and plan
+  writes. `requestReturn` does not touch stock and does not invalidate. Invalidation errors are
+  logged and never fail the mutation.
+- `ResponseCacheInterceptor` forces `Cache-Control: private, no-store` on tenant/private responses,
+  `public, no-store` on the public plan catalog, and `private, no-store` on errors/non-cacheable
+  routes; it also emits `X-Cache: HIT|MISS|BYPASS` and tenant `Vary`. The cache stores the
+  post-serialization handler result, so `@Exclude` fields are never cached.
+- `DB_STATEMENT_TIMEOUT_MS` (default 30000, `0` disables) is passed to both DataSources as
+  `extra.statement_timeout`. It is a per-statement PostgreSQL timeout, not a request deadline.
+- `GET /health` adds `cache: { driver, status, entries, bytes, hits, misses, errors }`; cache
+  status does not change the top-level `status` (still DB + R2).
+
 ## Environment
 
 `.env.example` is the source of truth; `src/common/config/env.schema.ts` (Joi) validates at boot.
@@ -417,18 +458,21 @@ Secret rules (≥32 chars, no placeholders) and required `JWT_ISSUER`/`JWT_AUDIE
 Stripe values fails to boot.
 
 Groups in `IENV` (`env.interface.ts`): `app` (`APP_*`, `BOOTSTRAP_SUPER_ADMIN_*`,
-`APP_ROOT_DOMAIN`), `db` (`DB_*`, `DB_SYNCHRONIZE_TENANTS`, `TENANT_POOL_SIZE`,
-`TENANT_STORAGE_CAPACITY_BYTES`, `TENANT_DB_CAPACITY_BYTES`), `jwt`, `bcrypt`, `log`,
-`throttling` (`THROTTLE_TTL`,
-`THROTTLE_LIMIT`), `cors`, `r2`, `files` (`MAX_FILE_SIZE`, `MAX_PRODUCT_IMAGES`), `stripe`
-(`STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`,
-`STRIPE_APPLICATION_FEE_BPS`, optional `STRIPE_ONBOARDING_RETURN_URL`,
-`STRIPE_ONBOARDING_REFRESH_URL`), `seeding` (`SEED_ALLOW_PRODUCTION`), `otp` (`OTP_LENGTH`,
-`OTP_EXPIRATION_SECONDS`, `OTP_MAX_ATTEMPTS`, `OTP_RESEND_COOLDOWN_SECONDS`, `OTP_MAX_REQUESTS`,
-`OTP_REQUEST_WINDOW_SECONDS`, `OTP_HASH_SECRET`, `OTP_REQUIRE_EMAIL_VERIFIED`), and `email`
-(`EMAIL_PROVIDER` = `smtp|log|memory`, `EMAIL_FROM_ADDRESS`, `EMAIL_FROM_NAME`, `SMTP_HOST`,
-`SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_SECURE`). There is **no** `payments`
-group, `PAYMENT_PROVIDER`, `STRIPE_CURRENCY`, or `STRIPE_CONNECT_COUNTRY`.
+`APP_ROOT_DOMAIN`), `db` (`DB_*`, `DB_SYNCHRONIZE_TENANTS`, `DB_STATEMENT_TIMEOUT_MS`,
+`TENANT_POOL_SIZE`, `TENANT_STORAGE_CAPACITY_BYTES`, `TENANT_DB_CAPACITY_BYTES`), `jwt`, `bcrypt`,
+`log`, `throttling` (`THROTTLE_TTL`, `THROTTLE_LIMIT`), `cors`, `r2`, `files` (`MAX_FILE_SIZE`,
+`MAX_PRODUCT_IMAGES`), `stripe` (`STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`,
+`STRIPE_WEBHOOK_SECRET`, `STRIPE_APPLICATION_FEE_BPS`, optional
+`STRIPE_ONBOARDING_RETURN_URL`, `STRIPE_ONBOARDING_REFRESH_URL`), `seeding`
+(`SEED_ALLOW_PRODUCTION`), `otp` (`OTP_LENGTH`, `OTP_EXPIRATION_SECONDS`, `OTP_MAX_ATTEMPTS`,
+`OTP_RESEND_COOLDOWN_SECONDS`, `OTP_MAX_REQUESTS`, `OTP_REQUEST_WINDOW_SECONDS`, `OTP_HASH_SECRET`,
+`OTP_REQUIRE_EMAIL_VERIFIED`), `email` (`EMAIL_PROVIDER` = `smtp|log|memory`, `EMAIL_FROM_ADDRESS`,
+`EMAIL_FROM_NAME`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_SECURE`), `cache`
+(`CACHE_ENABLED`, `CACHE_MAX_ENTRY_BYTES`, `CACHE_MAX_INFLIGHT`, `CACHE_OPERATION_TIMEOUT_MS`,
+`CACHE_*_TTL_SECONDS`, required `REDIS_URL`, `CACHE_REDIS_TLS`, `CACHE_REDIS_CONNECT_TIMEOUT_MS`,
+`CACHE_REDIS_COMMAND_TIMEOUT_MS`, `CACHE_REDIS_SAFETY_TTL_SECONDS`).
+There is **no** `payments` group, `PAYMENT_PROVIDER`, `STRIPE_CURRENCY`, or
+`STRIPE_CONNECT_COUNTRY`.
 
 `OTP_HASH_SECRET` and `EMAIL_FROM_ADDRESS` are required (like the JWT/R2 secrets), so an `.env`
 copied before the OTP feature fails to boot until they are added (see `.env.example`); with

@@ -2,10 +2,12 @@ import { Controller, Get } from '@nestjs/common';
 import { Public } from '../../modules/auth/decorators/isPublic.decorator';
 import { Platform } from '../../modules/auth/decorators/isPlatform.decorator';
 import { R2Service } from './r2.service';
+import { SkipThrottle } from '@nestjs/throttler';
 
 @Controller('health/storage')
 @Public()
 @Platform()
+@SkipThrottle()
 export class R2HealthController {
   constructor(private readonly r2: R2Service) {}
 

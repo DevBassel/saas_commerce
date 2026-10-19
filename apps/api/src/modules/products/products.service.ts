@@ -33,6 +33,7 @@ import {
 } from '../../common/pagination/pagination';
 import { ListProductsQueryDto } from './dto/list-products.query.dto';
 import { SubscriptionEntitlementsService } from '../subscriptions/services/subscription-entitlements.service';
+import { TenantCacheService } from '../../common/cache/tenant-cache.service';
 
 const PRODUCT_SORTABLE_FIELDS: readonly (keyof Product)[] = [
   'name',
@@ -55,6 +56,7 @@ export class ProductsService {
     private readonly r2: R2Service,
     private readonly config: ConfigService<IENV>,
     private readonly entitlements: SubscriptionEntitlementsService,
+    private readonly cache: TenantCacheService,
   ) {}
 
   private async repos(tenant?: TenantRef): Promise<{
@@ -114,6 +116,7 @@ export class ProductsService {
         categoryId: dto.categoryId ?? null,
       }),
     );
+    await this.cache.invalidateProducts(target);
     return this.serialize(product);
   }
 
@@ -192,6 +195,7 @@ export class ProductsService {
     }
 
     await productRepo.update({ id }, patch);
+    await this.cache.invalidateProducts(target);
     return this.findOne(id, tenant);
   }
 
@@ -218,6 +222,7 @@ export class ProductsService {
       );
     }
     await productRepo.delete({ id });
+    await this.cache.invalidateProducts(resolveTenantScope(tenant));
     return { deleted: true };
   }
 
@@ -328,6 +333,7 @@ export class ProductsService {
       throw error;
     }
 
+    await this.cache.invalidateProducts(target);
     return this.findOne(productId, target);
   }
 
@@ -346,6 +352,7 @@ export class ProductsService {
       -image.sizeBytes,
     );
 
+    await this.cache.invalidateProducts(target);
     return this.findOne(productId, target);
   }
 
@@ -376,6 +383,7 @@ export class ProductsService {
       await imageRepo.update({ id: imageIds[position] }, { position });
     }
 
+    await this.cache.invalidateProducts(resolveTenantScope(tenant));
     return this.findOne(productId, tenant);
   }
 

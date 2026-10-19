@@ -21,6 +21,7 @@ import { Subscription } from './modules/payments/entities/subscription.entity';
 import { SubscriptionPayment } from './modules/payments/entities/subscription-payment.entity';
 import { TenantUsageCounter } from './modules/subscriptions/entities/tenant-usage-counter.entity';
 import { seconds, ThrottlerModule } from '@nestjs/throttler';
+import { CacheModule } from './common/cache/cache.module';
 
 // Public schema entities only. Tenant-scoped entities live in
 // tenant-entities.ts and must never be registered here.
@@ -61,6 +62,7 @@ const PUBLIC_ENTITIES = [
     }),
     AppLoggerModule,
     R2Module,
+    CacheModule,
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService<IENV>) => {

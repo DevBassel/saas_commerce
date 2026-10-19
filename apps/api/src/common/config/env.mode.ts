@@ -34,6 +34,9 @@ export const buildEnv = (): IENV => ({
       process.env.TENANT_STORAGE_CAPACITY_BYTES,
     ),
     tenantDbCapacityBytes: Number(process.env.TENANT_DB_CAPACITY_BYTES),
+    statementTimeoutMs: process.env.DB_STATEMENT_TIMEOUT_MS
+      ? Number(process.env.DB_STATEMENT_TIMEOUT_MS)
+      : 30000,
   },
   jwt: {
     accessSecret: process.env.JWT_ACCESS_SECRET!,
@@ -117,6 +120,44 @@ export const buildEnv = (): IENV => ({
       secure:
         String(process.env.SMTP_SECURE || 'true').toLocaleLowerCase() ===
         'true',
+    },
+  },
+  cache: {
+    enabled:
+      String(process.env.CACHE_ENABLED ?? 'true').toLocaleLowerCase() ===
+      'true',
+    maxEntryBytes: process.env.CACHE_MAX_ENTRY_BYTES
+      ? Number(process.env.CACHE_MAX_ENTRY_BYTES)
+      : 262144,
+    maxInflight: process.env.CACHE_MAX_INFLIGHT
+      ? Number(process.env.CACHE_MAX_INFLIGHT)
+      : 100,
+    operationTimeoutMs: process.env.CACHE_OPERATION_TIMEOUT_MS
+      ? Number(process.env.CACHE_OPERATION_TIMEOUT_MS)
+      : 50,
+    productsTtlSeconds: process.env.CACHE_PRODUCTS_TTL_SECONDS
+      ? Number(process.env.CACHE_PRODUCTS_TTL_SECONDS)
+      : 30,
+    categoriesTtlSeconds: process.env.CACHE_CATEGORIES_TTL_SECONDS
+      ? Number(process.env.CACHE_CATEGORIES_TTL_SECONDS)
+      : 300,
+    plansTtlSeconds: process.env.CACHE_PLANS_TTL_SECONDS
+      ? Number(process.env.CACHE_PLANS_TTL_SECONDS)
+      : 300,
+    redis: {
+      url: process.env.REDIS_URL || undefined,
+      tls:
+        String(process.env.CACHE_REDIS_TLS || 'false').toLocaleLowerCase() ===
+        'true',
+      connectTimeoutMs: process.env.CACHE_REDIS_CONNECT_TIMEOUT_MS
+        ? Number(process.env.CACHE_REDIS_CONNECT_TIMEOUT_MS)
+        : 1000,
+      commandTimeoutMs: process.env.CACHE_REDIS_COMMAND_TIMEOUT_MS
+        ? Number(process.env.CACHE_REDIS_COMMAND_TIMEOUT_MS)
+        : 50,
+      safetyTtlSeconds: process.env.CACHE_REDIS_SAFETY_TTL_SECONDS
+        ? Number(process.env.CACHE_REDIS_SAFETY_TTL_SECONDS)
+        : 600,
     },
   },
 });

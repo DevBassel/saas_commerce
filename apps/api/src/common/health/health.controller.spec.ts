@@ -1,16 +1,41 @@
 import { DataSource } from 'typeorm';
 import { HealthController } from './health.controller';
 import { R2Service } from '../storage/r2.service';
+import { TenantCacheService } from '../cache/tenant-cache.service';
+
+const CACHE = {
+  driver: 'redis',
+  status: 'enabled',
+  entries: 3,
+  bytes: 100,
+  hits: 1,
+  misses: 2,
+  errors: 0,
+};
 
 const buildController = () => {
   const query = jest.fn();
   const healthy = jest.fn();
+  const cacheStats = jest.fn().mockResolvedValue({
+    enabled: true,
+    driver: 'redis',
+    hits: 1,
+    misses: 2,
+    bypasses: 0,
+    errors: 0,
+    invalidations: 0,
+    entries: 3,
+    bytes: 100,
+    evictions: 0,
+    inflight: 0,
+  });
   const dataSource = { query } as unknown as DataSource;
   const r2 = { healthy } as unknown as R2Service;
+  const cache = { stats: cacheStats } as unknown as TenantCacheService;
 
-  const controller = new HealthController(dataSource, r2);
+  const controller = new HealthController(dataSource, r2, cache);
 
-  return { controller, query, healthy };
+  return { controller, query, healthy, cacheStats };
 };
 
 describe('HealthController', () => {
@@ -27,6 +52,7 @@ describe('HealthController', () => {
       status: 'ok',
       db: true,
       r2: true,
+      cache: CACHE,
     });
     expect(query).toHaveBeenCalledWith('SELECT 1');
   });
@@ -40,6 +66,7 @@ describe('HealthController', () => {
       status: 'degraded',
       db: true,
       r2: false,
+      cache: CACHE,
     });
   });
 
@@ -52,6 +79,7 @@ describe('HealthController', () => {
       status: 'degraded',
       db: false,
       r2: true,
+      cache: CACHE,
     });
   });
 
@@ -64,6 +92,7 @@ describe('HealthController', () => {
       status: 'degraded',
       db: false,
       r2: false,
+      cache: CACHE,
     });
   });
 

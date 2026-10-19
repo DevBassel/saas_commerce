@@ -17,6 +17,7 @@ import { CreateSubscriptionPlanDto } from '../dto/create-subscription-plan.dto';
 import { UpdateSubscriptionPlanDto } from '../dto/update-subscription-plan.dto';
 import { ListSubscriptionPlansQueryDto } from '../dto/list-subscription-plans.query.dto';
 import { Public } from 'src/modules/auth/decorators/isPublic.decorator';
+import { CacheResponse } from '../../../common/cache/cache-response.decorator';
 
 @Platform()
 @Roles([RoleKey.SUPER_ADMIN])
@@ -26,6 +27,7 @@ export class PlatformSubscriptionPlansController {
 
   @Public()
   @Get()
+  @CacheResponse({ policy: 'plans', scope: 'platform' })
   findAll(@Query() query: ListSubscriptionPlansQueryDto) {
     return this.plans.findAll(query);
   }

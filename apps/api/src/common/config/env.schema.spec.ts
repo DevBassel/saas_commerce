@@ -40,6 +40,7 @@ const baseEnv = (): Record<string, unknown> => ({
   STRIPE_SECRET_KEY: `sk_test_${SECRET}`,
   STRIPE_PUBLISHABLE_KEY: 'pk_test_123',
   STRIPE_WEBHOOK_SECRET: `whsec_${SECRET}`,
+  REDIS_URL: 'redis://127.0.0.1:6379',
   OTP_HASH_SECRET: `otp_${SECRET}`,
   EMAIL_PROVIDER: 'log',
   EMAIL_FROM_ADDRESS: 'no-reply@example.com',
@@ -69,6 +70,47 @@ describe('EnvSchema', () => {
   it('defaults STRIPE_APPLICATION_FEE_BPS to 0', () => {
     const result = validate() as unknown as { value: Record<string, unknown> };
     expect(result.value.STRIPE_APPLICATION_FEE_BPS).toBe(0);
+  });
+
+  it('defaults DB_STATEMENT_TIMEOUT_MS to 30000', () => {
+    const result = validate() as unknown as { value: Record<string, unknown> };
+    expect(result.value.DB_STATEMENT_TIMEOUT_MS).toBe(30000);
+  });
+
+  it('accepts a zero statement timeout and rejects a negative one', () => {
+    const result = validate({ DB_STATEMENT_TIMEOUT_MS: 0 }) as unknown as {
+      value: Record<string, unknown>;
+    };
+    expect(result.value.DB_STATEMENT_TIMEOUT_MS).toBe(0);
+    expect(errorKeys(validate({ DB_STATEMENT_TIMEOUT_MS: -1 }))).toContain(
+      'DB_STATEMENT_TIMEOUT_MS',
+    );
+  });
+
+  it('requires REDIS_URL', () => {
+    expect(errorKeys(validate({ REDIS_URL: undefined }))).toContain(
+      'REDIS_URL',
+    );
+  });
+
+  it('accepts redis:// and rediss:// URLs', () => {
+    expect(
+      validate({ REDIS_URL: 'redis://127.0.0.1:6379' }).error,
+    ).toBeUndefined();
+    expect(
+      validate({ REDIS_URL: 'rediss://cache.internal:6379' }).error,
+    ).toBeUndefined();
+  });
+
+  it('rejects a non-redis URL scheme', () => {
+    expect(
+      errorKeys(validate({ REDIS_URL: 'http://127.0.0.1:6379' })),
+    ).toContain('REDIS_URL');
+  });
+
+  it('defaults the cache switch on', () => {
+    const result = validate() as unknown as { value: Record<string, unknown> };
+    expect(result.value.CACHE_ENABLED).toBe(true);
   });
 
   it('rejects an invalid NODE_ENV', () => {

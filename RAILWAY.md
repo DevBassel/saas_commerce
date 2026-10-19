@@ -1,6 +1,7 @@
 # Deploying to Railway
 
-Four Railway services built from this repository root, plus a Railway Postgres plugin:
+Four Railway services built from this repository root, plus required Railway Postgres and
+Redis plugins:
 
 | Railway service | Package | Dockerfile | Healthcheck |
 | --- | --- | --- | --- |
@@ -50,6 +51,15 @@ time.
 - `APP_ROOT_DOMAIN`, `CORS_ORIGIN`, plus the remaining non-secret groups (`APP_NAME`, `API_PREFIX`,
   `API_VERSION`, `BCRYPT_ROUNDS`, `LOG_LEVEL`, `THROTTLE_TTL`, `THROTTLE_LIMIT`, `CORS_CREDENTIALS`,
   `TENANT_POOL_SIZE`, `TENANT_STORAGE_CAPACITY_BYTES`, `MAX_FILE_SIZE`, `MAX_PRODUCT_IMAGES`).
+- `DB_STATEMENT_TIMEOUT_MS` (default `30000`; `0` disables the per-statement timeout).
+- Cache: `CACHE_ENABLED` (default `true`), `CACHE_MAX_ENTRY_BYTES`, `CACHE_MAX_INFLIGHT`,
+  `CACHE_OPERATION_TIMEOUT_MS`, `CACHE_PRODUCTS_TTL_SECONDS`, `CACHE_CATEGORIES_TTL_SECONDS`,
+  `CACHE_PLANS_TTL_SECONDS`.
+- Redis (required): add the Railway Redis plugin and set
+  `REDIS_URL=${{Redis.REDIS_URL}}`, plus optional `CACHE_REDIS_TLS`,
+  `CACHE_REDIS_CONNECT_TIMEOUT_MS`, `CACHE_REDIS_COMMAND_TIMEOUT_MS`, and
+  `CACHE_REDIS_SAFETY_TTL_SECONDS`. Redis is the only cache store; it handles cross-instance cache
+  invalidation and namespace versions.
 - R2: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` (≥32 chars), `R2_BUCKET`,
   `R2_PUBLIC_URL`.
 - Stripe: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (≥32 chars), `STRIPE_PUBLISHABLE_KEY`

@@ -165,6 +165,12 @@ export const buildMocks = () => {
     restoreUsage: jest.fn(),
   };
 
+  const cacheMocks = {
+    invalidateProducts: jest.fn().mockResolvedValue(undefined),
+    invalidateCategories: jest.fn().mockResolvedValue(undefined),
+    invalidatePlans: jest.fn().mockResolvedValue(undefined),
+  };
+
   const service = new OrdersService(
     tenantManager,
     r2,
@@ -173,12 +179,14 @@ export const buildMocks = () => {
     {
       assertCanUseDatabase: jest.fn().mockResolvedValue(undefined),
     } as never,
+    cacheMocks as never,
   );
   const manageService = new ManageOrderService(
     tenantManager,
     r2,
     paymentsMocks as unknown as StripePaymentService,
     couponsMocks as unknown as CouponsService,
+    cacheMocks as never,
   );
 
   return {
@@ -196,6 +204,7 @@ export const buildMocks = () => {
     r2Mocks,
     paymentsMocks,
     couponsMocks,
+    cacheMocks,
   };
 };
 

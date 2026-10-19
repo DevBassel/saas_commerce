@@ -14,6 +14,8 @@ services:
       # Container networking: reach Postgres by service name, not the host loopback.
       DB_HOST: postgres
       DB_PORT: 5432
+      # Reach Redis by service name. Redis is the only API cache store.
+      REDIS_URL: redis://redis:6379
       NODE_ENV: ${NODE_ENV:-development}
       # Bind-mounted source on Windows/macOS does not emit inotify events reliably,
       # so tell the TypeScript watcher to poll instead.
@@ -33,7 +35,25 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     command: pnpm --filter saas_store_api dev
+
+  redis:
+    image: redis:7-alpine
+    container_name: saas_store_redis
+    restart: unless-stopped
+    # Cache-only Redis: no persistence, LRU eviction under memory pressure.
+    command:
+      ['redis-server', '--save', '', '--appendonly', 'no', '--maxmemory-policy', 'allkeys-lru']
+    ports:
+      - '${REDIS_HOST_PORT:-6379}:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
   postgres:
     image: postgres:16-alpine

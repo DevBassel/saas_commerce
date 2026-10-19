@@ -49,6 +49,7 @@ import {
   serializeOrder,
 } from './orders.helpers';
 import { SubscriptionEntitlementsService } from '../subscriptions/services/subscription-entitlements.service';
+import { TenantCacheService } from '../../common/cache/tenant-cache.service';
 
 type Requester = RequestWithUser['user'];
 
@@ -86,6 +87,7 @@ export class OrdersService {
     private readonly payments: StripePaymentService,
     private readonly coupons: CouponsService,
     private readonly entitlements: SubscriptionEntitlementsService,
+    private readonly cache: TenantCacheService,
   ) {}
 
   private async repos(tenant?: TenantRef): Promise<{
@@ -264,6 +266,7 @@ export class OrdersService {
       ),
     );
 
+    await this.cache.invalidateProducts(target);
     return serializeOrder(order, this.r2);
   }
 
@@ -379,6 +382,7 @@ export class OrdersService {
       await this.coupons.restoreUsage(manager, order);
     });
 
+    await this.cache.invalidateProducts(target);
     return this.findOne(id, requester, target);
   }
 

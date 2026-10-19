@@ -33,6 +33,7 @@ const dbConfig: IDB = {
   ssl: false,
   tenantStorageCapacityBytes: 1000,
   tenantDbCapacityBytes: 1000,
+  statementTimeoutMs: 30000,
 };
 
 const buildMocks = () => {
@@ -87,6 +88,12 @@ const buildMocks = () => {
     }),
   } as unknown as ConfigService<IENV>;
 
+  const cacheMocks = {
+    invalidateProducts: jest.fn().mockResolvedValue(undefined),
+    invalidateCategories: jest.fn().mockResolvedValue(undefined),
+    invalidatePlans: jest.fn().mockResolvedValue(undefined),
+  };
+
   const service = new ProductsService(
     tenantManager,
     tenantService as unknown as TenantService,
@@ -96,6 +103,7 @@ const buildMocks = () => {
     {
       assertCanCreateProduct: jest.fn().mockResolvedValue(undefined),
     } as never,
+    cacheMocks as never,
   );
 
   return {
@@ -106,6 +114,7 @@ const buildMocks = () => {
     categoriesService,
     r2Mocks,
     r2,
+    cacheMocks,
   };
 };
 
@@ -143,7 +152,7 @@ describe('ProductsService', () => {
   });
 
   it('creates a product and serializes empty images', async () => {
-    const { service, productRepo } = buildMocks();
+    const { service, productRepo, cacheMocks } = buildMocks();
     productRepo.findOneBy.mockResolvedValue(null);
     productRepo.create.mockImplementation(
       (data: Record<string, unknown>) => data,
@@ -163,15 +172,17 @@ describe('ProductsService', () => {
       sku: 'SHIRT-1',
       images: [],
     });
+    expect(cacheMocks.invalidateProducts).toHaveBeenCalledWith(TENANT);
   });
 
   it('rejects a duplicate sku on create', async () => {
-    const { service, productRepo } = buildMocks();
+    const { service, productRepo, cacheMocks } = buildMocks();
     productRepo.findOneBy.mockResolvedValue({ id: 1, sku: 'SHIRT-1' });
 
     await expect(
       service.create({ name: 'Shirt', sku: 'SHIRT-1', price: 9.99 }, TENANT),
     ).rejects.toThrow(BadRequestException);
+    expect(cacheMocks.invalidateProducts).not.toHaveBeenCalled();
   });
 
   it('rejects an unknown category on create', async () => {

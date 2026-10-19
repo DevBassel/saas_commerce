@@ -111,8 +111,11 @@ rebuild of that app.
 existing tenant schemas survive.
 
 ```bash
-docker compose up -d postgres
+docker compose up -d postgres redis
 ```
+
+Redis is the only API cache store, so start it with Postgres; the API reaches it as
+`redis://redis:6379` inside Compose (see `RAILWAY.md` for production).
 
 Use the `postgres` service name as `DB_HOST` from inside a container; from the host it is
 `127.0.0.1`. Per-tenant schema details are in `apps/api/AGENTS.md`.

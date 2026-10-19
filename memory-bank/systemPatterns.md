@@ -12,7 +12,7 @@ Browser (store subdomain)                 Browser (admin subdomains)
         +--------------------+------------------+
                              v
                  NestJS API (/api/v1, port 4000)
-        TenantMiddleware -> TenantGuard -> JwtGuard -> EmailVerifiedGuard -> PermissionGuard -> ThrottlerGuard
+        TenantMiddleware -> TenantGuard -> JwtGuard -> EmailVerifiedGuard -> PermissionGuard -> SubscriptionGuard -> ThrottlerGuard
                              |
              +---------------+----------------+
              v                                v
@@ -32,8 +32,12 @@ Browser (store subdomain)                 Browser (admin subdomains)
   explicit `TenantRef` — it does not read AsyncLocalStorage. Context enforcement lives in
   `tenant-scope.ts` (`requireTenantContext` → 403).
 - **Guard order is load-bearing:** `TenantGuard → JwtGuard → EmailVerifiedGuard → PermissionGuard →
-  ThrottlerGuard`. Tenant must resolve before the JWT can be matched against
-  `tenantId`/`tenantSchema`.
+   SubscriptionGuard → ThrottlerGuard`. Tenant must resolve before the JWT can be matched
+  against `tenantId`/`tenantSchema`.
+- **Server-side cache is Redis-only and shared.** A Redis-backed store caches six catalog/plan
+  reads; `@CacheResponse` metadata is ignored outside that allowlist. Writes invalidate namespaces
+  after the transaction/write resolves. Every replica shares entries and cross-instance
+  invalidations through Redis (`REDIS_URL` is required); there is no process-local driver.
 - **Auth is stateless JWT with rotation.** Access + refresh use separate secrets; refresh rotates
   `jti` and rejects a stored `user.jti` mismatch. Refresh is single-flight in every client.
 - **Entity placement rule:** tenant entities go in `src/modules/tenants/utils/tenant-entities.ts`;

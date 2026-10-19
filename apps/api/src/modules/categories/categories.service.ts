@@ -12,6 +12,7 @@ import { TenantRef } from '../tenants/utils/tenant.utils';
 import { resolveTenantScope } from '../tenants/utils/tenant-scope';
 import { slugify } from '../../common/utils/slug';
 import { SerializedCategory } from './constants/categories.interface';
+import { TenantCacheService } from '../../common/cache/tenant-cache.service';
 
 export const serializeCategory = (category: Category): SerializedCategory => ({
   id: category.id,
@@ -25,7 +26,10 @@ export const serializeCategory = (category: Category): SerializedCategory => ({
 
 @Injectable()
 export class CategoriesService {
-  constructor(private readonly tenantManager: TenantManagerService) {}
+  constructor(
+    private readonly tenantManager: TenantManagerService,
+    private readonly cache: TenantCacheService,
+  ) {}
 
   private repo(tenant?: TenantRef): Promise<Repository<Category>> {
     return this.tenantManager.getRepository(
@@ -35,7 +39,8 @@ export class CategoriesService {
   }
 
   async create(dto: CreateCategoryDto, tenant?: TenantRef) {
-    const categoryRepo = await this.repo(tenant);
+    const target = resolveTenantScope(tenant);
+    const categoryRepo = await this.repo(target);
 
     const slug = dto.slug ?? slugify(dto.name, 255);
     if (!slug) {
@@ -55,6 +60,7 @@ export class CategoriesService {
         isActive: dto.isActive ?? true,
       }),
     );
+    await this.invalidate(target);
     return serializeCategory(category);
   }
 
@@ -76,7 +82,8 @@ export class CategoriesService {
   }
 
   async update(id: number, dto: UpdateCategoryDto, tenant?: TenantRef) {
-    const categoryRepo = await this.repo(tenant);
+    const target = resolveTenantScope(tenant);
+    const categoryRepo = await this.repo(target);
     const category = await categoryRepo.findOneBy({ id });
     if (!category) throw new NotFoundException('Category not found');
 
@@ -86,15 +93,23 @@ export class CategoriesService {
     }
 
     await categoryRepo.update({ id }, { ...dto });
-    return this.findOne(id, tenant);
+    await this.invalidate(target);
+    return this.findOne(id, target);
   }
 
   async remove(id: number, tenant?: TenantRef) {
-    const categoryRepo = await this.repo(tenant);
+    const target = resolveTenantScope(tenant);
+    const categoryRepo = await this.repo(target);
     const category = await categoryRepo.findOneBy({ id });
     if (!category) throw new NotFoundException('Category not found');
 
     await categoryRepo.delete({ id });
+    await this.invalidate(target);
     return { deleted: true };
+  }
+
+  private async invalidate(tenant: TenantRef): Promise<void> {
+    await this.cache.invalidateCategories(tenant);
+    await this.cache.invalidateProducts(tenant);
   }
 }
