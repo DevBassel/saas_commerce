@@ -72,7 +72,7 @@ export class ResponseCacheInterceptor implements NestInterceptor {
         { route: route.key, cachePolicy: metadata.policy },
         'cache.metadata_not_allowed',
       );
-      return this.bypass(next, res, true);
+      return this.bypass(next, res);
     }
 
     const schemaName =
@@ -86,7 +86,7 @@ export class ResponseCacheInterceptor implements NestInterceptor {
         { route: route.key },
         'cache.missing_tenant_context',
       );
-      return this.bypass(next, res, true);
+      return this.bypass(next, res);
     }
 
     const fingerprint = this.cache.fingerprint({
@@ -97,7 +97,7 @@ export class ResponseCacheInterceptor implements NestInterceptor {
     });
 
     if (!fingerprint) {
-      return this.bypass(next, res, true);
+      return this.bypass(next, res);
     }
 
     const startedAt = Date.now();
@@ -136,9 +136,7 @@ export class ResponseCacheInterceptor implements NestInterceptor {
   private bypass(
     next: CallHandler,
     res: Record<string, unknown>,
-    count = false,
   ): Observable<unknown> {
-    if (count) this.cache.recordBypass();
     return next.handle().pipe(
       tap({
         next: () => this.forceNoStore(res),

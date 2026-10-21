@@ -4,31 +4,14 @@ import { R2Service } from '../storage/r2.service';
 import { TenantCacheService } from '../cache/tenant-cache.service';
 
 const CACHE = {
+  enabled: true,
   driver: 'redis',
-  status: 'enabled',
-  entries: 3,
-  bytes: 100,
-  hits: 1,
-  misses: 2,
-  errors: 0,
 };
 
 const buildController = () => {
   const query = jest.fn();
   const healthy = jest.fn();
-  const cacheStats = jest.fn().mockResolvedValue({
-    enabled: true,
-    driver: 'redis',
-    hits: 1,
-    misses: 2,
-    bypasses: 0,
-    errors: 0,
-    invalidations: 0,
-    entries: 3,
-    bytes: 100,
-    evictions: 0,
-    inflight: 0,
-  });
+  const cacheStats = jest.fn().mockReturnValue(CACHE);
   const dataSource = { query } as unknown as DataSource;
   const r2 = { healthy } as unknown as R2Service;
   const cache = { stats: cacheStats } as unknown as TenantCacheService;

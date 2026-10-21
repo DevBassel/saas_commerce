@@ -12,10 +12,32 @@ development-only, and the API still serves the built dashboard from `apps/api/st
 auth, and Refine resources are unchanged. Plans:
 `.kilo/plans/1792427730268-super-admin-bundle-split.md` (bundle) and
 `.kilo/plans/1792425806785-serve-super-admin-dashboard-at-platform.md` (embedded hosting).
-Container deployment is now API-only Compose: API + Redis, with Postgres external.
+Container deployment is Compose under `apps/docker-compose.yml`: 3 API replicas behind an nginx
+proxy, plus Redis; Postgres is external.
 
 ## Recent changes
 
+- 2026-10-21 — Tenant cache simplified (uncommitted):
+  - `TenantCacheService` dropped the unused per-process hit/miss/bypass/error/invalidation
+    counters, the unused in-flight token, the `driver` getter, and `recordBypass()`.
+  - Removed the now-dead `CacheStore.stats()` (`RedisCacheStore` `DBSIZE`/`INFO` path),
+    `CacheStoreStats`, and `CacheStats`. The service `stats()` returns `{ enabled, driver }`.
+  - `ResponseCacheInterceptor` no longer counts bypasses; cache/health specs updated.
+  - `GET /api/v1/health` cache output is now `{ enabled, driver }` (no
+    `status`/`entries`/`bytes`/`hits`/`misses`/`errors`).
+- 2026-10-21 — nginx proxy + replica load balancing fixed (uncommitted):
+  - `apps/nginx/nginx.conf` now proxies to `api:4000` (the API listens on `APP_PORT`, not 3000),
+    sets `Host`/`X-Real-IP`/`X-Forwarded-*`, re-declares `client_max_body_size 32m` for product
+    uploads, and logs `$upstream_addr`/`$upstream_status`.
+  - `apps/docker-compose.yml` gained the `redis` service plus `REDIS_URL=redis://redis:6379`
+    (the `.env` value `redis://localhost:6379` points at the API container itself),
+    explicit `APP_PORT=4000`, `DB_HOST=host.docker.internal`, `extra_hosts: host-gateway`,
+    `restart: unless-stopped`, `proxy` -> `api` ordering, and an `8080:80` alias on the proxy.
+  - **Verified:** `docker compose up -d --build` brings up `api-1/2/3` + `proxy` + `redis`;
+    `nginx -t` passes; `/api/v1/health` returns 200 through the proxy with `db`, `r2` and
+    `cache.enabled = true`; the access log shows requests spread over multiple replica IPs.
+  - `GET /` remains a 404 by design (global prefix `/api/v1`); `/platform` is the only non-prefixed
+    route. Diagnosed, not changed.
 - 2026-10-19 — Docker surface reduced to API-only Compose (uncommitted):
   - Deleted `apps/store_owner_dashboard/Dockerfile`, `apps/super_admin_dashboard/Dockerfile`,
     `apps/tenant_store/Dockerfile`, `apps/api/Dockerfile.dev`, `apps/api/.dockerignore`, and the
@@ -84,13 +106,20 @@ Container deployment is now API-only Compose: API + Redis, with Postgres externa
 
 ## Working tree state (check before relying on HEAD)
 
-HEAD is `5248de9` (`feat: add redis caching layer`). The `/platform` hosting and bundle-split work
-is uncommitted, including `apps/api/static` (gitignored) and `apps/super_admin_dashboard/dist`
-(standalone build). Verify with `git status --short`; memory-bank entries older than the latest
-session may describe work already committed.
+HEAD is `6d2653f` (`refactor: fix api docker file`). The `/platform` hosting, bundle-split, Compose
+proxy, and cache-cleanup work is uncommitted, including `apps/api/static` (gitignored) and
+`apps/super_admin_dashboard/dist` (standalone build). Verify with `git status --short`; memory-bank
+entries older than the latest session may describe work already committed.
 
 ## Known tooling issues
 
+- **Port 80 on this machine is shadowed by WSL.** `wslrelay.exe` (PID 852) listens on
+  `127.0.0.1:80` and `[::1]:80` and forwards to a stock Ubuntu nginx (`nginx/1.24.0`, default
+  `sites-enabled/default`, `root /var/www/html`). `http://localhost/` therefore reaches that nginx,
+  not the Compose proxy, and Docker cannot take the bind. Use `http://127.0.0.1:8080` (works), or
+  stop the WSL service (`sudo systemctl disable --now nginx` inside Ubuntu) and drop the `8080:80`
+  alias. `wsl.exe` currently fails with `Wsl/Service/0x8007274c`, so this cannot be changed from
+  the agent shell.
 - Docker Desktop was not running on 2026-10-19, so the API image build and `docker compose up`
   were not verified. Host Postgres (5432) and Redis (6379) were reachable and the compiled API on
   port 4000 served `/platform`.
@@ -111,6 +140,7 @@ session may describe work already committed.
 - Rebuild both artifacts in either order (`pnpm --filter super_admin_dash build`,
   `pnpm --filter saas_store_api build`) whenever the dashboard changes; the API serves whatever is
   currently in `apps/api/static`.
-- When Docker is available, run `docker compose up -d --build` and check `/api/v1/health` plus
-  `/platform` in the API container.
+- Compose stack is up and verified as of 2026-10-21. Remaining: free port 80 from the WSL nginx
+  (then drop the `8080:80` alias and re-check `http://localhost/api/v1/health`), and a browser
+  smoke through the proxy (`/platform`, `/api/v1/health`, an authenticated API call).
 - Consider committing the `/platform` + bundle work; no commit was made in this session.

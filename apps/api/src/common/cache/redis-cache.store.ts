@@ -5,7 +5,6 @@ import type { ICache } from '../config/env.interface';
 import type {
   CacheEntry,
   CacheStore,
-  CacheStoreStats,
   InvalidationHandler,
 } from './cache.types';
 
@@ -133,19 +132,6 @@ export class RedisCacheStore implements CacheStore {
     return Number(removed) || 0;
   }
 
-  async stats(): Promise<CacheStoreStats> {
-    const [entries, info] = await Promise.all([
-      this.client.dbsize(),
-      this.client.info(),
-    ]);
-
-    return {
-      entries: Number(entries) || 0,
-      bytes: this.infoValue(info, 'used_memory'),
-      evictions: this.infoValue(info, 'evicted_keys'),
-    };
-  }
-
   getVersion(namespace: string): Promise<number> {
     return this.client.get(this.versionKey(namespace)).then((raw) => {
       if (!raw) return 0;
@@ -243,14 +229,5 @@ export class RedisCacheStore implements CacheStore {
 
   private indexKey(namespace: string): string {
     return `ns:${namespace}`;
-  }
-
-  private infoValue(info: string, field: string): number {
-    const line = info
-      .split('\n')
-      .find((entry) => entry.startsWith(`${field}:`));
-    if (!line) return 0;
-    const value = Number.parseInt(line.slice(field.length + 1).trim(), 10);
-    return Number.isFinite(value) ? value : 0;
   }
 }

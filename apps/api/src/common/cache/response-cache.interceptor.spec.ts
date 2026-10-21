@@ -77,7 +77,6 @@ const build = () => {
   const cache = {
     fingerprint: jest.fn().mockReturnValue('fp'),
     resolve: jest.fn(),
-    recordBypass: jest.fn(),
     hashTenant: jest.fn().mockReturnValue('hash'),
   };
   const logger = { debug: jest.fn(), warn: jest.fn() };
@@ -122,7 +121,6 @@ describe('ResponseCacheInterceptor', () => {
     expect(res.headers['cache-control']).toBe('private, no-store');
     expect(res.headers['x-cache']).toBe('BYPASS');
     expect(cache.resolve).not.toHaveBeenCalled();
-    expect(cache.recordBypass).toHaveBeenCalled();
     expect(logger.warn).toHaveBeenCalledWith(
       expect.objectContaining({ route: 'GET /admin/reports' }),
       'cache.metadata_not_allowed',

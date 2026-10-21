@@ -5,12 +5,6 @@ export interface CacheEntry<T = unknown> {
   namespace: string;
 }
 
-export interface CacheStoreStats {
-  entries: number;
-  bytes: number;
-  evictions: number;
-}
-
 export type InvalidationHandler = (namespace: string) => void;
 
 export interface CacheStore {
@@ -30,7 +24,6 @@ export interface CacheStore {
   ): Promise<boolean>;
   delete(key: string): Promise<void>;
   invalidateNamespace(namespace: string): Promise<number>;
-  stats(): Promise<CacheStoreStats>;
   getVersion(namespace: string): Promise<number>;
   /** Optional cross-instance invalidation subscription (Redis). */
   subscribeInvalidations?(handler: InvalidationHandler): Promise<void>;
@@ -48,18 +41,4 @@ export interface CacheResolveResult<T> {
   namespace: string | null;
   ttlMs: number;
   sizeBytes: number;
-}
-
-export interface CacheStats {
-  enabled: boolean;
-  driver: 'redis';
-  hits: number;
-  misses: number;
-  bypasses: number;
-  errors: number;
-  invalidations: number;
-  entries: number;
-  bytes: number;
-  evictions: number;
-  inflight: number;
 }

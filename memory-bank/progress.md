@@ -44,7 +44,8 @@ What works, what is left, and known issues. Update when work completes or debt i
   `/platform/subscription-plans`) with post-write invalidation, forced `Cache-Control: no-store`,
   `X-Cache`, and a single-flight namespace store. Redis is the only driver (`REDIS_URL` required):
   namespace key sets, namespace versions, and cross-instance invalidation via pub/sub.
-  `DB_STATEMENT_TIMEOUT_MS` bounds each PostgreSQL statement, and `GET /health` reports cache stats.
+  `DB_STATEMENT_TIMEOUT_MS` bounds each PostgreSQL statement, and `GET /health` reports
+  `cache: { enabled, driver }`.
   The endpoint-priority admission-control experiment was removed; the stock `ThrottlerGuard` is
   back.
 - **Seeding module** (`apps/api/src/modules/seeding/`): registry-driven platform + tenant seeders

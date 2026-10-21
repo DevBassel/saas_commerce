@@ -107,8 +107,6 @@ const createStore = (): CacheStore => {
       entries.clear();
       return Promise.resolve(removed);
     },
-    stats: () =>
-      Promise.resolve({ entries: entries.size, bytes: 0, evictions: 0 }),
     getVersion: (): Promise<number> => Promise.resolve(0),
   };
 };

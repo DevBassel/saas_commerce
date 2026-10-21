@@ -472,8 +472,8 @@ unchanged and applies to every request, including cache hits.
   post-serialization handler result, so `@Exclude` fields are never cached.
 - `DB_STATEMENT_TIMEOUT_MS` (default 30000, `0` disables) is passed to both DataSources as
   `extra.statement_timeout`. It is a per-statement PostgreSQL timeout, not a request deadline.
-- `GET /health` adds `cache: { driver, status, entries, bytes, hits, misses, errors }`; cache
-  status does not change the top-level `status` (still DB + R2).
+- `GET /health` adds `cache: { enabled, driver }`; cache status does not change the top-level
+  `status` (still DB + R2).
 
 ## Environment
 

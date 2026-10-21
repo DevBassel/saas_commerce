@@ -16,16 +16,9 @@ import {
   resolveCacheTtlMs,
 } from './cache-policy';
 import { CACHE_STORE } from './cache.types';
-import type {
-  CacheEntry,
-  CacheResolveResult,
-  CacheStats,
-  CacheStore,
-  CacheStoreStats,
-} from './cache.types';
+import type { CacheEntry, CacheResolveResult, CacheStore } from './cache.types';
 
 interface InFlightRecord {
-  token: number;
   namespace: string;
   invalidated: boolean;
   promise: Promise<unknown>;
@@ -64,12 +57,6 @@ const canonicalRecord = (record: Record<string, unknown> = {}): string =>
 @Injectable()
 export class TenantCacheService implements OnModuleInit, OnModuleDestroy {
   private readonly inflight = new Map<string, InFlightRecord>();
-  private tokenSequence = 0;
-  private hits = 0;
-  private misses = 0;
-  private bypasses = 0;
-  private errors = 0;
-  private invalidations = 0;
 
   constructor(
     @Inject(CACHE_STORE) private readonly store: CacheStore,
@@ -81,10 +68,6 @@ export class TenantCacheService implements OnModuleInit, OnModuleDestroy {
     return this.config.getOrThrow<IENV['cache']>('cache').enabled;
   }
 
-  get driver(): 'redis' {
-    return 'redis';
-  }
-
   async onModuleInit(): Promise<void> {
     if (!this.store.subscribeInvalidations) return;
     try {
@@ -92,7 +75,6 @@ export class TenantCacheService implements OnModuleInit, OnModuleDestroy {
         this.invalidateLocalFlights(namespace),
       );
     } catch (error) {
-      this.errors += 1;
       this.logger.warn(
         { error: this.errorMessage(error) },
         'cache.invalidation_subscribe_failed',
@@ -164,7 +146,6 @@ export class TenantCacheService implements OnModuleInit, OnModuleDestroy {
     const ttlMs = resolveCacheTtlMs(policy, cache);
 
     if (!cache.enabled || !key || !namespace) {
-      this.bypasses += 1;
       const value = await loader();
       return {
         value,
@@ -179,7 +160,6 @@ export class TenantCacheService implements OnModuleInit, OnModuleDestroy {
     try {
       entry = await this.withTimeout(this.store.get<T>(key), 'get');
     } catch (error) {
-      this.errors += 1;
       this.logger.warn(
         { error: this.errorMessage(error), namespace, key: this.hashKey(key) },
         'cache.store_read_failed',
@@ -187,7 +167,6 @@ export class TenantCacheService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (entry) {
-      this.hits += 1;
       return {
         value: entry.value,
         status: 'hit',
@@ -197,7 +176,6 @@ export class TenantCacheService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
-    this.misses += 1;
     const flight = await this.runFlight(
       key,
       namespace,
@@ -240,7 +218,6 @@ export class TenantCacheService implements OnModuleInit, OnModuleDestroy {
         'invalidate',
       );
     } catch (error) {
-      this.errors += 1;
       this.logger.warn(
         { error: this.errorMessage(error), namespace },
         'cache.invalidation_failed',
@@ -250,7 +227,6 @@ export class TenantCacheService implements OnModuleInit, OnModuleDestroy {
     // Mark every matching flight stale and remove it from the map so new
     // requests start a fresh flight instead of joining a pre-invalidation one.
     this.invalidateLocalFlights(namespace);
-    this.invalidations += 1;
   }
 
   /**
@@ -258,7 +234,7 @@ export class TenantCacheService implements OnModuleInit, OnModuleDestroy {
    * Redis invalidation subscription so every replica drops pre-invalidation
    * flights, including replicas that did not run the mutation.
    */
-  invalidateLocalFlights(namespace: string): void {
+  private invalidateLocalFlights(namespace: string): void {
     for (const [key, record] of this.inflight) {
       if (record.namespace !== namespace) continue;
       record.invalidated = true;
@@ -266,37 +242,10 @@ export class TenantCacheService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  recordBypass(): void {
-    this.bypasses += 1;
-  }
-
-  async stats(): Promise<CacheStats> {
-    let storeStats: CacheStoreStats = {
-      entries: 0,
-      bytes: 0,
-      evictions: 0,
-    };
-    try {
-      storeStats = await this.withTimeout(this.store.stats(), 'stats');
-    } catch (error) {
-      this.errors += 1;
-      this.logger.warn(
-        { error: this.errorMessage(error) },
-        'cache.store_stats_failed',
-      );
-    }
+  stats(): { enabled: boolean; driver: 'redis' } {
     return {
       enabled: this.enabled,
-      driver: this.driver,
-      hits: this.hits,
-      misses: this.misses,
-      bypasses: this.bypasses,
-      errors: this.errors,
-      invalidations: this.invalidations,
-      entries: storeStats.entries,
-      bytes: storeStats.bytes,
-      evictions: storeStats.evictions,
-      inflight: this.inflight.size,
+      driver: 'redis',
     };
   }
 
@@ -319,7 +268,6 @@ export class TenantCacheService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (!existing && this.inflight.size >= maxInflight) {
-      this.bypasses += 1;
       this.logger.warn(
         { namespace, key: this.hashKey(key) },
         'cache.inflight_saturated',
@@ -327,9 +275,7 @@ export class TenantCacheService implements OnModuleInit, OnModuleDestroy {
       return { value: await loader(), bypassed: true };
     }
 
-    const token = ++this.tokenSequence;
     const record: InFlightRecord = {
-      token,
       namespace,
       invalidated: false,
       promise: Promise.resolve(),
@@ -347,7 +293,6 @@ export class TenantCacheService implements OnModuleInit, OnModuleDestroy {
           'version',
         );
       } catch (error) {
-        this.errors += 1;
         this.logger.warn(
           {
             error: this.errorMessage(error),
@@ -425,7 +370,6 @@ export class TenantCacheService implements OnModuleInit, OnModuleDestroy {
           }
         }
       } catch (error) {
-        this.errors += 1;
         this.logger.warn(
           {
             error: this.errorMessage(error),

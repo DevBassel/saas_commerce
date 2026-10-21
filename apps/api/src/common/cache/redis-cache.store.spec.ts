@@ -31,8 +31,6 @@ const fakeClient = () => {
     eval: jest.fn(),
     del: jest.fn(),
     publish: jest.fn(),
-    dbsize: jest.fn(),
-    info: jest.fn(),
     subscribe: jest.fn().mockResolvedValue(1),
     quit: jest.fn().mockResolvedValue('OK'),
     disconnect: jest.fn(),
@@ -163,20 +161,6 @@ describe('RedisCacheStore', () => {
 
     await expect(store.getVersion('ns')).resolves.toBe(4);
     await expect(store.getVersion('ns')).resolves.toBe(0);
-  });
-
-  it('maps Redis INFO fields into store stats', async () => {
-    const { store, client } = build();
-    client.dbsize.mockResolvedValue(12);
-    client.info.mockResolvedValue(
-      '# Memory\r\nused_memory:2048\r\n# Stats\r\nevicted_keys:7\r\n',
-    );
-
-    await expect(store.stats()).resolves.toEqual({
-      entries: 12,
-      bytes: 2048,
-      evictions: 7,
-    });
   });
 
   it('subscribes once and dispatches invalidation messages', async () => {

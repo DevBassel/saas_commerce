@@ -72,18 +72,6 @@ class FakeCacheStore implements CacheStore {
     return Promise.resolve(removed);
   }
 
-  stats(): Promise<{
-    entries: number;
-    bytes: number;
-    evictions: number;
-  }> {
-    return Promise.resolve({
-      entries: this.entries.size,
-      bytes: 0,
-      evictions: 0,
-    });
-  }
-
   getVersion(namespace: string): Promise<number> {
     return Promise.resolve(this.versions.get(namespace) ?? 0);
   }
@@ -317,11 +305,6 @@ describe('TenantCacheService', () => {
         set: jest.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true),
         delete: jest.fn(),
         invalidateNamespace: jest.fn(),
-        stats: jest.fn().mockResolvedValue({
-          entries: 0,
-          bytes: 0,
-          evictions: 0,
-        }),
       } as unknown as CacheStore;
       const service = new TenantCacheService(
         store,
@@ -397,11 +380,6 @@ describe('TenantCacheService', () => {
         delete: jest.fn(),
         invalidateNamespace: jest.fn(),
         getVersion: jest.fn().mockResolvedValue(0),
-        stats: jest.fn().mockResolvedValue({
-          entries: 0,
-          bytes: 0,
-          evictions: 0,
-        }),
       } as unknown as CacheStore;
       const service = new TenantCacheService(
         store,
@@ -418,7 +396,6 @@ describe('TenantCacheService', () => {
           jest.fn().mockResolvedValue('value'),
         ),
       ).resolves.toMatchObject({ value: 'value' });
-      expect(await service.stats()).toMatchObject({ errors: 1 });
     });
 
     it('returns the loaded value when the store write fails', async () => {
@@ -428,11 +405,6 @@ describe('TenantCacheService', () => {
         delete: jest.fn(),
         invalidateNamespace: jest.fn(),
         getVersion: jest.fn().mockResolvedValue(0),
-        stats: jest.fn().mockResolvedValue({
-          entries: 0,
-          bytes: 0,
-          evictions: 0,
-        }),
       } as unknown as CacheStore;
       const service = new TenantCacheService(
         store,
@@ -458,11 +430,6 @@ describe('TenantCacheService', () => {
         delete: jest.fn(),
         invalidateNamespace: jest.fn().mockResolvedValue(0),
         getVersion: jest.fn().mockResolvedValue(0),
-        stats: jest.fn().mockResolvedValue({
-          entries: 0,
-          bytes: 0,
-          evictions: 0,
-        }),
       } as unknown as CacheStore;
       const service = new TenantCacheService(
         store,
@@ -488,7 +455,6 @@ describe('TenantCacheService', () => {
         delete: jest.fn(),
         invalidateNamespace: jest.fn().mockRejectedValue(new Error('down')),
         getVersion: jest.fn(),
-        stats: jest.fn(),
       } as unknown as CacheStore;
       const service = new TenantCacheService(
         store,
