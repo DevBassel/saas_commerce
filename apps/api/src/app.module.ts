@@ -1,4 +1,6 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 import CoreModule from './core.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
@@ -28,6 +30,29 @@ import { ThrottlerGuard } from '@nestjs/throttler';
 
 @Module({
   imports: [
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', 'static'),
+      serveRoot: '/platform',
+      renderPath: '/',
+      serveStaticOptions: {
+        index: 'index.html',
+        fallthrough: true,
+        redirect: false,
+        dotfiles: 'deny',
+      },
+    }),
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', 'static'),
+      serveRoot: '/platform',
+      renderPath: '/:path*',
+      exclude: ['/platform/:path(.*\\..*)'],
+      serveStaticOptions: {
+        index: 'index.html',
+        fallthrough: true,
+        redirect: false,
+        dotfiles: 'deny',
+      },
+    }),
     CoreModule,
     AuthModule,
     UsersModule,

@@ -5,239 +5,97 @@ Most dynamic file in the bank — keep it short and current.
 
 ## Current focus
 
-**API caching** (`apps/api`, uncommitted). A Redis-only response cache for six approved
-catalog/plan reads (products 30s, categories 300s, plans 300s) with post-write invalidation and
-cross-instance coherence. Cache is server-side only; every API response still sends
-`Cache-Control: no-store`. The endpoint-priority/admission-control experiment was removed.
+**Super Admin bundle optimization, on top of the embedded `/platform` dashboard** (all
+uncommitted). The Vite build is split by vendor chunk and route, Refine Devtools are
+development-only, and the API still serves the built dashboard from `apps/api/static` at
+`http://localhost:4000/platform`. API routes, guards, tenant resolution, Store Owner dashboard,
+auth, and Refine resources are unchanged. Plans:
+`.kilo/plans/1792427730268-super-admin-bundle-split.md` (bundle) and
+`.kilo/plans/1792425806785-serve-super-admin-dashboard-at-platform.md` (embedded hosting).
+Container deployment is now API-only Compose: API + Redis, with Postgres external.
 
 ## Recent changes
 
-- 2026-10-18 — Redis-only cache (uncommitted):
-  - Deleted `memory-cache.store.ts` and its spec; `CacheModule` always constructs
-    `RedisCacheStore`.
-  - Removed `CACHE_DRIVER`, `CACHE_MAX_ENTRIES`, `CACHE_MAX_TOTAL_BYTES`, and the `driver` field
-    from `ICache`; `REDIS_URL` is now Joi-required (redis/rediss scheme).
-  - `TenantCacheService.driver` and `CacheStats.driver` are the literal `'redis'`.
-  - Specs use local `CacheStore` test doubles (production ships Redis only); env/health/cache
-    specs, `.env.example`, `compose.yaml`, `RAILWAY.md`, both `AGENTS.md` files, and the k6 README
-    updated.
-  - **Verified:** typecheck clean; cache/env/health suites 68 passed (live-Redis spec skipped
-    without `REDIS_URL`).
-
-- 2026-10-18 — Removed endpoint priority, kept the cache (uncommitted):
-  - Deleted `src/common/priority/` and every `@EndpointPriority`/`PriorityLevel` use.
-  - Restored the stock `ThrottlerGuard` in `app.module.ts`; `main.ts` now registers only
-    `ResponseCacheInterceptor` → `ClassSerializerInterceptor`.
-  - Removed `EndpointPolicyService` from `ResponseCacheInterceptor`; the cache still enforces the
-    route allowlist and scope from `@CacheResponse`.
-  - Removed the `priority` env group (`PRIORITY_*`) from schema/interface/mode, `.env.example`, and
-    `RAILWAY.md`; deleted the priority service/interceptor/guard/matrix specs.
-  - Kept `DB_STATEMENT_TIMEOUT_MS`, the cache/Redis configuration, and the k6 `X-Cache` metrics.
-  - **Verified:** typecheck clean; Jest suites green (live-Redis spec skipped without `REDIS_URL`).
-
-- 2026-10-18 — Optional Redis cache driver (uncommitted):
-  - `src/common/cache/redis-cache.store.ts` — ioredis `CacheStore` implementation. Full logical
-    keys are stored verbatim; each namespace has a `ns:<namespace>` set index and an
-    `nsv:<namespace>` integer version. Writes run a Lua script that checks the expected version
-    (captured before the loader) and returns false on a stale write; invalidation increments the
-    version first, deletes the indexed keys, then publishes `cache:invalidate`.
-  - `TenantCacheService` — captures a namespace version per in-flight load, retries once when the
-    store rejects a stale write, subscribes to cross-instance invalidations and marks local
-    in-flight records stale, and closes the store on module destroy.
-  - `CacheStore` — `set` now returns a write-success boolean, plus `getVersion`,
-    `subscribeInvalidations?`, and `close?`.
-  - Config: Redis-only, `REDIS_URL` required,
-    `CACHE_REDIS_TLS`, `CACHE_REDIS_CONNECT_TIMEOUT_MS`, `CACHE_REDIS_COMMAND_TIMEOUT_MS`,
-    `CACHE_REDIS_SAFETY_TTL_SECONDS`; Joi/dotenv/env.mode/`.env.example`/`RAILWAY.md` updated.
-    `compose.yaml` gains a `redis:7-alpine` service (`saas_store_redis`) and the API reaches it as
-    `redis://redis:6379`.
-  - Dependency: `ioredis@^6` added to `saas_store_api`.
-  - Tests: `redis-cache.store.spec.ts` (fake-client wiring, version guard, publish, INFO parsing,
-    subscription dispatch) and a `REDIS_URL`-gated live-Redis integration spec.
-
-- 2026-10-18 — API caching (uncommitted):
-  - `src/common/cache/` — `CacheStore` + the Redis store (namespace key index, namespace versions,
-    cross-instance invalidation), `TenantCacheService` (SHA-256 canonical keys, single-flight with
-    identity tokens, invalidation-race retry, fail-open, stats), `CacheModule` (`@Global`),
-    `@CacheResponse`, and `ResponseCacheInterceptor` (allowlist, forced `no-store`, `X-Cache`,
-    tenant `Vary`, debug logs).
-  - `src/common/http/route-template.ts` — metadata-based route keys used by the cache allowlist and
-    tests.
-  - Invalidation: product writes/images, category writes (categories + products), checkout, order
-    cancel, manager cancel/return, and plan writes; `requestReturn` does not invalidate.
-  - `DB_STATEMENT_TIMEOUT_MS` added to the `db` group; both DataSources get
-    `extra.statement_timeout` when > 0.
-  - `GET /health` reports cache stats without changing top-level status.
-  - Tests: cache store, tenant cache, response interceptor, and a mini-Nest integration test
-    proving guard → cache → serializer ordering and `@Exclude` safety. k6 `browse` records
-    `X-Cache` and the README documents the baseline/after run.
-
-- 2026-10-09 — Tenant self-serve subscription cancel + refund (uncommitted):
-  - `subscriptions/constants/subscription.constants.ts` — added `SUBSCRIPTION_REFUND_WINDOW_DAYS = 7`.
-  - `stripe.payment.service.ts` — extracted the platform refund block into a private
-    `refundSubscriptionPayment(payment)` (idempotency key `refund-subscription-{paymentId}`); added
-    `cancelOwnSubscription(tenantId)` (PAID-only, 7-day guard, `409 SUBSCRIPTION_NOT_REFUNDABLE` /
-    `409 REFUND_WINDOW_EXPIRED`, idempotent when a REFUNDED row exists). `cancelSubscriptionWithRefund`
-    (platform) keeps its no-window behavior via the helper.
-  - `payments.controller.ts` — added `POST /payments/stripe/subscription/cancel`
-    (`@Permissions([subscriptions:manage])`, `403` when no tenant).
-  - `subscriptions.module.ts` — added the public `SubscriptionPayment` entity to `forFeature`
-    (entity import, not a module cycle) so `SubscriptionService` can read the ledger.
-  - `subscription.service.ts` — added `getRefundInfo(subscription)` (latest PAID → eligible + ISO
-    deadline); `subscription.controller.ts` `get()` is now async and merges the two fields.
-  - `tenant_dash` — `types/subscription.ts` (`refundEligible`/`refundDeadline`);
-    `subscriptions.api.ts` `cancelSubscription()`; new `CancelSubscriptionDialog.tsx`; the
-    current-plan card renders the destructive button + deadline line when `refundEligible`.
-  - Tests: reconciled the two stale payments specs (`createPayment`→`createOrderPaymentIntent`,
-    renamed webhook handlers, 6-arg `StripePaymentService` / 5-arg `SubscriptionService` /
-    3-arg `PaymentService` mocks) and added `cancelOwnSubscription` + `getRefundInfo` specs.
-  - Docs: `apps/api/AGENTS.md` (`## Payments`, `## Subscriptions`), `payments/workflow.md`,
-    `apps/store_owner_dashboard/AGENTS.md` (`## Subscription`).
-  - **Verified:** `pnpm --filter saas_store_api typecheck` clean (the prior stale-spec errors are
-    gone); `pnpm --filter saas_store_api exec jest --runInBand` = **79 suites / 1047 tests green**;
-    eslint on changed files clean; `pnpm --filter tenant_dash typecheck`/`build` pass, `lint` 0 errors,
-    `vitest run` 14 files / 169 tests green.
-
-- 2026-10-09 — Store-owner self-serve subscription checkout (uncommitted): the subscription page
-  re-adds an **Upgrade** button per non-current billable plan, opening a Stripe Elements
-  `PlanCheckoutDialog` that calls `POST payments/stripe/subscription` for a `clientSecret`, confirms
-  with `stripe.confirmPayment({ redirect: "if_required" })`, and polls `GET subscription` until the
-  `payment_intent.succeeded` webhook assigns the plan. See the 2026-10-09 entries below for detail.
-
-  - `package.json` — added `@stripe/stripe-js@^9.8.0` + `@stripe/react-stripe-js@^6.6.0`
-    (lockfile updated); `src/lib/stripe.ts` (new) exports `stripePromise` from the build-time
-    `VITE_STRIPE_PUBLISHABLE_KEY` (null when unset).
-  - `types/subscription.ts` — added `CreateSubscriptionPaymentResponse`; `subscriptions.api.ts` —
-    added `createPaymentIntent(planId, billingInterval)` with an in-flight `Map` dedupe per
-    `(planId, interval)` (mirrors the storefront `CreateStripePayment`, so StrictMode's double mount
-    creates one `PENDING` row).
-  - `pages/settings/subscription/PlanCheckoutDialog.tsx` (new) — mirrors the storefront
-    `StripePaymentStep` state machine (`creating`/`error`/`attempt`, "Preparing payment…", Retry,
-    `appearance: { theme: "night" }`), wrapped in a shadcn `Dialog`; creates the intent on open,
-    renders `Elements` + `PaymentElement`, `confirmPayment({ redirect: "if_required" })`, `return_url`
-    built with `withTenantParam`; surfaces API errors (`SUBSCRIPTION_NOT_FOUND`, `PLAN_*`, 403) with
-    Retry, and the `stripePromise === null` "not configured" path. `onPaid` closes the dialog.
-  - `pages/settings/subscription/index.tsx` — Upgrade button on non-current billable tabs, dialog
-    state, a poll effect (`GET subscription` every ~2s, 30s cap → toast + banner), and 3DS return
-    handling (`?stripe=return&plan=<id>`, `redirect_status`, params stripped via `replaceState`).
-  - `Dockerfile` — added the `VITE_STRIPE_PUBLISHABLE_KEY` build arg; `.env.example` documents it.
-  - Docs: `apps/store_owner_dashboard/AGENTS.md` (`## Subscription` rewritten).
-  - **Verified:** `pnpm --filter tenant_dash typecheck` / `lint` / `build` pass; `test` green
-    (14 files, 169 tests).
-- 2026-10-09 — Webhook split: order vs subscription handlers (uncommitted, `apps/api`). Implemented
-  per `.kilo/plans/1791574388584-webhook-order-subscription-handlers.md`: `StripePaymentService.webHook`
-  now classifies each event on `metadata.data.kind` and dispatches to `handleOrderPaymentEvents` or
-  `handleSubscriptionEvents`. Subscription `payment_intent.succeeded` completes the purchase — ledger
-  `PAID` + `SubscriptionService.assignPlan` (`ACTIVE`/`TRIALING`, period, storage sync); canceled/failed
-  update the ledger, and a **fully refunded** purchase falls back to the free plan
-  (`SubscriptionService.downgradeToFree`; partial refunds keep the plan). A Super Admin
-  `POST /platform/tenants/:id/subscription/cancel` now cancels + refunds a purchase synchronously. This
-  closes the prior "`PENDING` forever / no webhook reconciliation" limitation.
-- 2026-10-09 — Cancel + refund subscription (uncommitted):
-  - `stripe.payment.service.ts` — added `cancelSubscriptionWithRefund(tenantId)`: refunds the latest
-    `PAID` `SubscriptionPayment` on the **platform** account (no `reverse_transfer`/
-    `refund_application_fee`; idempotency key `refund-subscription-{paymentId}`), marks the ledger
-    `REFUNDED`, then calls the free fallback. No `PAID` row / missing `paymentRef` → cancel only.
-  - `payments.service.ts` — added `downgradeSubscriptionToFree(subscriptionId)` delegator (reuses
-    the injected `SubscriptionService`).
-  - `platform-subscription-payment.controller.ts` (new, PaymentsModule) —
-    `POST /platform/tenants/:id/subscription/cancel`, `@Platform @Roles([SUPER_ADMIN])`. It lives in
-    `PaymentsModule` because the refund needs `StripePaymentService` and the fallback needs
-    `SubscriptionService`, while `SubscriptionsModule` → `PaymentsModule` would be a cycle.
-  - Docs: `apps/api/AGENTS.md`, `payments/workflow.md`.
-  - **Verified:** typecheck clean of non-spec errors; eslint clean on changed files.
-- 2026-10-09 — Webhook order/subscription split (uncommitted):
-  - `constants/payment-metadata.ts` — added `isSubscriptionPaymentMetaData` type guard.
-  - `payments.service.ts` — constructor grew to 3 args (`TenantManagerService`,
-    `@InjectRepository(SubscriptionPayment)`, `SubscriptionService`); added
-    `successSubscriptionPayment` (idempotent when already `PAID`; calls `assignPlan` then marks
-    `PAID` + `paidAt`), `cancelSubscriptionPayment`, `failedSubscriptionPayment`,
-    `refundedSubscriptionPayment` (cumulative-amount → `PAID`/`REFUNDED`/`PARTIALLY_REFUNDED`; on a
-    full `REFUNDED` it calls `SubscriptionService.downgradeToFree`).
-  - `subscription.service.ts` — added idempotent `downgradeToFree(subscriptionId)`: assigns the free
-    plan (`FREE_PLAN_SLUG`) unless the subscription is already on it, so repeated refund events do
-    not reset the period.
-  - `payments.module.ts` — imports `SubscriptionsModule` (reverses the 2026-10-09 removal; no DI
-    cycle: `SubscriptionsModule` imports only `TenantModule`).
-  - `stripe.payment.service.ts` — `webHook` replaced by classify-and-delegate; deleted
-    `syncRefundState`; added `handleOrderPaymentEvents`, `handleSubscriptionEvents`,
-    `resolveRefundContext`, kept `latestCharge`. Order path unchanged (order metadata has no `kind`).
-  - Docs: `apps/api/AGENTS.md` (`## Payments`, `## Subscriptions`), `payments/workflow.md`.
-  - **Verified:** `pnpm --filter saas_store_api typecheck` shows only the two pre-existing stale-spec
-    files (`payments.service.spec.ts`, `stripe.payment.service.spec.ts`); eslint clean on the four
-    changed files (`NODE_OPTIONS=--max-old-space-size=4096`).
-  - **Accepted limitation:** a `PLAN_INACTIVE` (or missing ledger row) on `succeeded` throws a
-    non-2xx, so Stripe keeps retrying until resolved.
-- 2026-10-09 — Subscription PaymentIntent endpoint (uncommitted):
-  - `stripe.payment.service.ts` — replaced the plan-lookup-only stub of
-    `createSubscriptionPaymentIntent` with: tenant-context check (403) → plan 404 → `PLAN_INACTIVE` /
-    `PLAN_NOT_PUBLIC` (400) → interval price ≤ 0 → `PLAN_NOT_PURCHASABLE` (400) → tenant
-    `Subscription` lookup (404 `SUBSCRIPTION_NOT_FOUND`) → Stripe `paymentIntents.create` on the
-    **platform** account (no `transfer_data`/`application_fee_amount`, no `paymentsPaused` gate) →
-    save `SubscriptionPayment` (`status = PENDING`, `paymentRef = intent.id`, `amount` in major
-    units) → `{ clientSecret }`. Constructor grew to 6 args (added
-    `@InjectRepository(SubscriptionPayment)`).
-  - `payments.controller.ts` — `POST /payments/stripe/subscription`, gated by
-    `subscriptions:manage` (STORE_OWNER only; ADMIN has `subscriptions:read` only; SUPER_ADMIN
-    bypasses).
-  - `dto/create-sub.dto.ts` — added optional `billingInterval` (`BillingInterval`, default MONTHLY).
-  - `constants/payment-metadata.ts` — added `subscriptionPaymentMetaData` (`kind: 'subscription'`),
-    separate from `paymentMetaData`; not consumed by the webhook.
-  - Docs: `apps/api/AGENTS.md` (`## Payments`, `## Subscriptions`), `payments/workflow.md`.
-  - **Verified:** typecheck shows only the pre-existing stale-spec errors (`payments.service.spec.ts`,
-    `stripe.payment.service.spec.ts`); eslint clean on changed files (needs
-    `NODE_OPTIONS=--max-old-space-size=4096`).
-  - **Superseded:** the initially-shipped "no webhook path, rows stay `PENDING` forever" limitation
-    was closed the same day by the webhook order/subscription split above.
-- 2026-10-09 — New public `SubscriptionPayment` entity (`payments/entities/subscription-payment.entity.ts`):
-  `id`, `subscriptionId` FK → `Subscription` (`ON DELETE CASCADE`)+`@Index`, non-FK `planId`
-  snapshot (`@Index`), `billingInterval` (`BillingInterval`, default `MONTHLY`), `provider`
-  (`PaymentsProviders`), `status` (`PaymentStatus`, default `UNPAID`), `amount` (`moneyColumn`),
-  `currency`, `paymentRef`, `providerReference`, `refundReference`, `refundedAmount`
-  (`moneyColumnWithDefault(0)`), `failureReason`, `paidAt`, `refundedAt`, timestamps. Registered in
-  `core.module.ts` `PUBLIC_ENTITIES` (synchronize creates the table) and `payments.module.ts`
-  `forFeature`. `planId` is deliberately non-FK so history survives plan deletion.
-- 2026-10-09 — Removed self-serve subscription payment (uncommitted):
-  - **API.** Deleted `StripeBillingService` (+ spec) and the checkout DTOs; removed the tenant
-    `POST /subscription/checkout/{intent,complete}`, `/cancel`, `/resume` routes and their `billing`
-    injection; dropped `StripeBillingService` from `SubscriptionsModule`; `PaymentsModule` no longer
-    imports `SubscriptionsModule`. Removed the five `customer.subscription.*` / `invoice.*` cases
-    from the payments webhook (they now fall through to the default "unhandled" branch). Removed the
-    `Subscription` Stripe columns (`stripeCustomerId`, `stripeSubscriptionId`, `stripePriceId`,
-    `cancelAtPeriodEnd`, `canceledAt`) and the billing-only service methods (`applyStripePlan`,
-    `setStripeCustomerId`, `StripePlanPatch`); `assignPlan`/`updateStatus` no longer write those
-    fields. Removing the columns changes the DB schema under `synchronize`.
-  - **Dashboard.** Deleted `components/subscription/**` and `lib/stripe.ts`; `subscriptions.api.ts`
-    is reads-only; `/settings/subscription` is read-only (no upgrade CTA / cancel / resume /
-    auto-renewal card); removed the `stripe*` fields from `types/subscription.ts`,
-    `VITE_STRIPE_PUBLISHABLE_KEY` from `vite-env.d.ts`/`.env.example`/`Dockerfile`, and the
-    `@stripe/*` deps from `package.json` (lockfile refreshed).
-- 2026-10-09 — `tenant_dash` review-fix pass (uncommitted, dashboard only): session/tenant cache
-  reset, `canManageCatalog` gates, explicit-`null` clearing, error+retry states, `RouteErrorBoundary`,
-  `nextStatuses`-gated order status, confirmation dialogs, a11y labels, and devtools DEV-gating.
+- 2026-10-19 — Docker surface reduced to API-only Compose (uncommitted):
+  - Deleted `apps/store_owner_dashboard/Dockerfile`, `apps/super_admin_dashboard/Dockerfile`,
+    `apps/tenant_store/Dockerfile`, `apps/api/Dockerfile.dev`, `apps/api/.dockerignore`, and the
+    obsolete four-service `RAILWAY.md`.
+  - `apps/api/Dockerfile` is now a production multi-stage image that builds the embedded Super
+    Admin dashboard, then the NestJS API, and runs `node dist/main`.
+  - `compose.yaml` builds only the API and runs it with Redis; no bind mounts or watch mode.
+    Postgres is external, with `DB_HOST` defaulting to `host.docker.internal`. The frontends run
+    from source.
+- 2026-10-19 — Super Admin bundle split (uncommitted):
+  - `apps/super_admin_dashboard/vite.config.ts` — `manualChunks` (Windows path-normalized) for
+    `devtools` (dev-only), `react`, `refine` (core, devtools-internal/shared, react-router adapter,
+    kbar, `@tanstack/react-query`), `router`, `http`, `tables`, `forms`; `undefined` for everything
+    else. No broad Radix/lucide/sonner groups.
+  - `src/App.tsx` — Devtools wrapped in a `import.meta.env.DEV` gate (tenant_dash pattern); every
+    page except `Dashboard` and the `*` error route is `React.lazy()` with named-export mapping,
+    served through `Suspense` inside `Layout` (`/login` has its own full-screen fallback).
+  - New `src/components/refine-ui/layout/route-fallback.tsx` (centered `Loader2`, `role="status"`).
+  - **Measured** (standalone build): 1,073.62 kB raw / 330.16 kB gzip in one chunk → 782.05 kB raw
+    / 252.00 kB gzip initial (entry 250.71 + react 187.72 + router 38.81 + refine 252.43 + http
+    52.38). No >500 kB warning. `tables` (73.72 kB) and `forms` (92.65 kB) are route-only.
+  - **Verified:** typecheck, lint (pre-existing warnings only), standalone and embedded builds.
+    Served by the running API on port 4000: `/platform`, `/platform/login`,
+    `/platform/tenants/show/1` return HTML; entry/react/CSS assets return 200 under
+    `/platform/assets`; a missing hash returns 404; `/api/v1/health` is 200. No
+    `DevtoolsPanel`/`refine-devtools` strings in `apps/api/static/assets/*.js`, and all 36
+    dynamically referenced chunks exist. Browser sign-in/navigation and Ctrl+K were not manually
+    exercised.
+  - Docs updated: `apps/super_admin_dashboard/AGENTS.md` (dev-only Devtools, bundle-splitting
+    notes, measured sizes).
+- 2026-10-19 — Embedded `/platform` dashboard (uncommitted):
+  - `@nestjs/serve-static@^4.0.2` in `saas_store_api`; `apps/api/src/app.module.ts` registers two
+    `ServeStaticModule.forRoot` entries (`renderPath: '/'` and `renderPath: '/:path*'` with a
+    dotted-path `exclude`) so `/platform` and extensionless deep links serve the SPA while missing
+    assets 404.
+  - `vite.config.ts` uses `base: '/platform/'`, `outDir: ../api/static`, `emptyOutDir: false` for
+    embedded builds; `BUILD_STANDALONE=true` restores `dist`, base `/`, `emptyOutDir`.
+  - `src/App.tsx` derives `BrowserRouter basename` from `import.meta.env.BASE_URL`;
+    `src/api/client.ts` redirects to `${BASE_URL}login`.
+  - The dashboard `turbo.json` declares the embedded output and hashes `BUILD_STANDALONE`;
+    `apps/api/.gitignore` ignores `/static`.
+- 2026-10-18 — Redis-only API caching (committed as `5248de9`): six catalog/plan reads, namespace
+  versions and cross-instance invalidation, forced `Cache-Control: no-store`, `X-Cache`, and cache
+  stats in `GET /health`. `REDIS_URL` is required. Details in `progress.md` and
+  `apps/api/AGENTS.md` → Caching.
+- 2026-10-09 — Tenant and Super Admin subscription checkout/cancel/refund flows (committed as
+  `8a93350`); see `progress.md` and `apps/api/AGENTS.md` → Payments, Subscriptions.
 
 ## Decisions taken
 
-- The 2026-10-09 "remove anything about subscription payment" applied to the **Stripe Billing**
-  flow (recurring checkout + billing webhook + `Subscription` Stripe columns). The later
-  `POST /payments/stripe/subscription` **re-adds a one-off platform-account PaymentIntent purchase**
-  (plan → `clientSecret`), and the same day the webhook split added **self-serve completion**:
-  `handleSubscriptionEvents` assigns the plan on `payment_intent.succeeded`, and a **full** refund of
-  that purchase downgrades the tenant back to the free plan (partial refunds keep the paid plan).
-  Still out of scope: Stripe recurring Billing (BillingPortal/proration) and webhook event
-  dedupe. `subscriptions:manage` gates the purchase route (it had gated no route after the removal).
-- Subscription **plan/entitlement management** (Super Admin assignment, `SubscriptionGuard`,
-  `SubscriptionEntitlementsService`) remains unchanged and is not payment.
+- The dashboard is **embedded** in the API for `/platform` production serving. Only the API is
+  containerized (Compose); the dashboards and storefront run from source. `BUILD_STANDALONE=true`
+  remains a build-only option for a standalone `dist`.
+- `/platform` stays outside the global prefix; no API route or global guard changed.
+- The SPA fallback is extensionless-only; missing assets must 404 rather than receive
+  `index.html`.
+- Two `ServeStaticModule` registrations are deliberate (root + deep links + dotted-path exclude).
+  Do not "simplify" back to a single custom-regex `renderPath` while the API stays on Express 4.
+- `apps/api/static` is build output and is gitignored; no clean script or `nest build` may delete
+  it beyond the Vite build's own output.
+- Bundle splitting is conservative: only stable initial-runtime vendors get names. Route-only
+  libraries are left unassigned so Rollup keeps them with their lazy route; `Dashboard` stays
+  static (no post-auth waterfall); React, `scheduler`, and `react-dom` stay in one chunk and
+  `@tanstack/react-query` stays with `@refinedev/core`.
+- `manualChunks` must normalize `\` to `/`; on Windows the IDs are absolute `C:\...` paths.
 
 ## Working tree state (check before relying on HEAD)
 
-HEAD is `8a93350` (the subscription checkout/cancel commit). The cache and Redis work described
-above is uncommitted on top of it. Verify with `git status --short` before relying on HEAD.
+HEAD is `5248de9` (`feat: add redis caching layer`). The `/platform` hosting and bundle-split work
+is uncommitted, including `apps/api/static` (gitignored) and `apps/super_admin_dashboard/dist`
+(standalone build). Verify with `git status --short`; memory-bank entries older than the latest
+session may describe work already committed.
 
 ## Known tooling issues
 
+- Docker Desktop was not running on 2026-10-19, so the API image build and `docker compose up`
+  were not verified. Host Postgres (5432) and Redis (6379) were reachable and the compiled API on
+  port 4000 served `/platform`.
 - `pnpm install` can crash with a pnpm (Rust) allocator failure; retry with `pnpm install
-  --prefer-offline` completes the link + lockfile update.
+  --prefer-offline`.
 - Full-repo `pnpm --filter saas_store_api lint` can OOM; lint changed files with
   `NODE_OPTIONS=--max-old-space-size=4096 npx eslint <files> --fix`. `pnpm --filter saas_store_api
   test` may OOM; use `-- --runInBand`.
@@ -247,17 +105,12 @@ above is uncommitted on top of it. Verify with `git status --short` before relyi
 
 ## Next steps
 
-- Manual dashboard checkout check: with `apps/api/.env` Stripe test keys + `VITE_STRIPE_PUBLISHABLE_KEY`
-  set and `stripe listen --forward-to localhost:4000/api/v1/payments/stripe/webhook`, buy a billable
-  plan from `/settings/subscription` with test card `4242…`; confirm the poll flips the plan and an
-  ADMIN gets a surfaced 403. 3DS card `4000 0025 0000 3155` exercises the redirect-return poll.
-- Boot-check the API against a dev DB: confirm no DI cycle from `PaymentsModule → SubscriptionsModule`,
-  that `subscription_payments` is created, and that the endpoint returns a `clientSecret` for a paid
-  public plan as a STORE_OWNER (needs a live Stripe test key).
-- End-to-end check with `stripe listen --forward-to`: confirming a subscription intent flips the
-  ledger to `PAID`, the tenant `Subscription` becomes `ACTIVE`/`TRIALING` with a period, and an order
-  intent still completes through `handleOrderPaymentEvents` unchanged.
-- Consider catching-and-acking `assignPlan` failures (e.g. `PLAN_INACTIVE` between intent creation
-  and `succeeded`) so Stripe stops retrying indefinitely.
-- Triage the deferred Low backlog in Section 3 of the tenant-dashboard review-fix plan
-  (`.kilo/plans/1791552085658-tenant-dashboard-review-fix-plan.md`).
+- Manual browser smoke of `/platform`: unauthenticated redirect to `/platform/login`, sign in,
+  dashboard load, each list/detail/create/edit chunk on first navigation, deep-link refresh
+  (`/platform/tenants/show/1`), logout, Ctrl+K command bar, and no Devtools request in production.
+- Rebuild both artifacts in either order (`pnpm --filter super_admin_dash build`,
+  `pnpm --filter saas_store_api build`) whenever the dashboard changes; the API serves whatever is
+  currently in `apps/api/static`.
+- When Docker is available, run `docker compose up -d --build` and check `/api/v1/health` plus
+  `/platform` in the API container.
+- Consider committing the `/platform` + bundle work; no commit was made in this session.

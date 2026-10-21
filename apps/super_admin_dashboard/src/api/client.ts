@@ -45,7 +45,7 @@ const isAuthRequest = (url?: string): boolean =>
 
 const unauthenticatedRedirect = () => {
   tokenStorage.clear();
-  window.location.assign("/login");
+  window.location.assign(`${import.meta.env.BASE_URL}login`);
 };
 
 export const apiClient: AxiosInstance = axios.create({

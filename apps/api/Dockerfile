@@ -1,32 +1,26 @@
-# syntax=docker/dockerfile:1
+# ── Stage 1: Install ALL deps & build ────────────────────────────
+FROM node:22-alpine AS builder
 
-# Development image: runs the NestJS API in watch mode.
-# Alpine-based so the bcrypt prebuilt binaries resolve without a toolchain.
-# Build from the monorepo root: docker build -f apps/api/Dockerfile.dev .
-FROM node:26-alpine
+RUN corepack enable && corepack prepare pnpm --activate
 
-ENV NODE_ENV=development \
-    PNPM_HOME=/pnpm \
-    PATH=/pnpm:$PATH
+WORKDIR /app
 
-RUN npm install --global pnpm@12.4.1
+# Copy only the API package.json (no monorepo files)
+COPY package.json ./
+COPY static ./static
 
-WORKDIR /repo
+# Allow native build scripts (bcrypt, etc.) — mirrors root pnpm-workspace.yaml allowBuilds
+RUN printf 'allowBuilds:\n  "@nestjs/core": true\n  "@parcel/watcher": true\n  "@scarf/scarf": true\n  bcrypt: true\n  unrs-resolver: true\n' > pnpm-workspace.yaml
 
-# Dependency layer: root manifests plus every workspace manifest, so a change to
-# any workspace invalidates the install cache.
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
-COPY apps/api/package.json apps/api/package.json
-COPY apps/store_owner_dashboard/package.json apps/store_owner_dashboard/package.json
-COPY apps/super_admin_dashboard/package.json apps/super_admin_dashboard/package.json
+# Install all deps (including devDependencies for the build step).
+RUN pnpm install --no-frozen-lockfile
 
-RUN pnpm install --frozen-lockfile
+# Copy source & config files
+COPY tsconfig.json tsconfig.build.json nest-cli.json ./
+COPY src/ src/
 
-# Source is bind-mounted by compose at runtime; this keeps the image usable standalone.
-COPY . .
+# Build the NestJS project → dist/
+ENV NODE_OPTIONS="--max-old-space-size=1024"
+RUN pnpm run build
 
-WORKDIR /repo/apps/api
-
-EXPOSE 4000
-
-CMD ["pnpm", "dev"]
+CMD ["node", "dist/main"]

@@ -4,7 +4,7 @@ description: Bootstrap or refresh the Memory Bank by analyzing the repository
 Create or refresh the Memory Bank in `memory-bank/`.
 
 Read the root `AGENTS.md` and every app-level `AGENTS.md` first, then analyze `package.json`,
-`turbo.json`, `pnpm-workspace.yaml`, `compose.yaml`, `project-description.md`, `RAILWAY.md`, and
+`turbo.json`, `pnpm-workspace.yaml`, `compose.yaml`, `project-description.md`, and
 representative source files. Populate these six files from real evidence only:
 
 - `projectbrief.md` — purpose, apps, core features, scope boundaries, source-of-truth links

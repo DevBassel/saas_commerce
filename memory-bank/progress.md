@@ -4,6 +4,11 @@ What works, what is left, and known issues. Update when work completes or debt i
 
 ## What works
 
+- **Deployment surface:** only the API is containerized, via `docker compose up -d --build`
+  (compose project `saas_store`). `apps/api/Dockerfile` builds the embedded Super Admin dashboard
+  then the API; Compose runs `saas_store_api` with `saas_store_redis`. Postgres is external and the
+  API reaches the Docker host through `DB_HOST=host.docker.internal` by default. Frontends run from
+  source; there are no per-app Dockerfiles or `Dockerfile.dev`.
 - **API** (`saas_store_api`): schema-per-tenant isolation, tenant resolution + guards, JWT auth
   with rotation, RBAC (45 seeded permissions), products/categories/cart/orders/addresses/coupons,
   implemented Stripe payments (PaymentIntent, webhook, Connect), R2 storage with quotas, platform
@@ -85,7 +90,17 @@ What works, what is left, and known issues. Update when work completes or debt i
 - **Super admin dashboard** (`super_admin_dash`): tenant provisioning/lifecycle, platform payments
   oversight, currency request approve/reject, and subscription plan CRUD (list/create/edit/delete)
   plus a per-tenant subscription panel (current plan/status/period, live usage, change plan +
-  interval, cancel/reactivate) backed by the platform subscription reads.
+  interval, cancel/reactivate) backed by the platform subscription reads. A 2026-10-19 bundle pass
+  added `manualChunks` vendor groups, lazy-loaded every route except `Dashboard`/`*`, and gated
+  Refine Devtools behind `import.meta.env.DEV`: initial JS fell from 1,073.62 kB / 330.16 kB gzip
+  (one chunk) to 782.05 kB / 252.00 kB gzip, with no chunk over 500 kB.
+- **Embedded platform dashboard** (`/platform`): the API serves the production build of
+  `super_admin_dash` from `apps/api/static` via `@nestjs/serve-static@4` (NestJS 10 line). The
+  build uses `base: '/platform/'` and an `import.meta.env.BASE_URL`-derived `BrowserRouter`
+  basename, so `/platform` and deep links work while `/api/v1` remains unchanged. Two
+  `ServeStaticModule` registrations handle root vs. deep links, and an `exclude` pattern keeps
+  missing assets/dotfiles on the normal Nest 404. `BUILD_STANDALONE=true` preserves the separate
+  Docker image (`dist`, base `/`).
 - **Storefront** (`tenant_store`): host-decided platform vs tenant contexts (`classifyHost` in
   `src/lib/tenant/host.ts`), with an optional apex `?tenant=<slug>` fallback when the build-time
   `NEXT_PUBLIC_ALLOW_SUBDOMAIN=false` (proxy `resolveTenantSlug`; a trusted `x-tenant-slug` request
@@ -149,16 +164,19 @@ What works, what is left, and known issues. Update when work completes or debt i
 - Storefront `src/app/page.tsx` debug button and the login/401 `console.log`s were removed, and the
   swallowed `catch {}` blocks in register/cart/checkout now surface errors (2026-10-08 review).
 - Storefront `.gitignore` now covers `.env*.local` (including `.env.production.local`).
-- Dashboards import Refine Devtools: `tenant_dash` now gates them behind `import.meta.env.DEV`
-  (2026-10-09) so they are tree-shaken from its production bundle; `super_admin_dash` still imports
-  them unconditionally. Both bind port 5001 in dev (set `REFINE_DEVTOOLS_PORT` to separate).
+- Dashboards import Refine Devtools only in development: both `tenant_dash` and `super_admin_dash`
+  gate them behind `import.meta.env.DEV` (tree-shaken from production since 2026-10-09 / 2026-10-19).
+  Both bind port 5001 in dev (set `REFINE_DEVTOOLS_PORT` to separate).
 
 ## Verification commands
 
 - `pnpm --filter saas_store_api test` — API unit specs.
 - `pnpm --filter saas_store_api typecheck` / `pnpm --filter tenant_dash build` — build gates.
 - `pnpm --filter tenant_dash test` — store owner Vitest.
-- `docker compose up -d postgres` then `pnpm --filter saas_store_api dev` for manual API checks.
+- `pnpm --filter super_admin_dash build` then `pnpm --filter saas_store_api build` — embeds the
+  platform dashboard in `apps/api/static`; run the API and check `/platform` plus `/api/v1/health`.
+- `docker compose up -d redis` (Postgres is external) then `pnpm --filter saas_store_api dev` for
+  manual API checks.
 
 ## Manual integration scripts (need live Postgres + `.env`)
 

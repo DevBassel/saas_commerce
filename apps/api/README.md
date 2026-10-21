@@ -13,7 +13,8 @@ cp .env.example .env   # edit DB creds + secrets
 pnpm start:dev
 ```
 
-Postgres runs from `compose.yaml`. On boot the platform schema is seeded and a bootstrap
+Postgres is external (local or remote); Redis runs from the repository root with
+`docker compose up -d redis`. On boot the platform schema is seeded and a bootstrap
 `SUPER_ADMIN` is created from `BOOTSTRAP_SUPER_ADMIN_EMAIL` / `BOOTSTRAP_SUPER_ADMIN_PASSWORD`
 (boot fails if no super admin exists and those env vars are missing).
 
@@ -172,7 +173,7 @@ required; `--force` alone never bypasses the environment guard. The CLI exits no
 
 | Command | Description |
 | --- | --- |
-| `pnpm start:dev` | Watch mode (needs Postgres from `compose.yaml`) |
+| `pnpm start:dev` | Watch mode (needs an external Postgres + Redis) |
 | `pnpm build` | Build to `dist/` (`nest build`) |
 | `pnpm start:prod` | Run the build (`node dist/main`) |
 | `pnpm lint` | eslint `--fix` over `{src,apps,libs,test}` |

@@ -24,7 +24,7 @@ apps/super_admin_dashboard   super_admin_dash    5173
 apps/tenant_store            tenant_store        3000
 packages/*                   intentionally empty
 load-tests/k6                k6 load tests (need >=10 seeded tenants)
-compose.yaml                 Postgres + Redis (project name saas_store)
+compose.yaml                 API + Redis (external Postgres; project name saas_store)
 ```
 
 ## Commands (from repo root)
@@ -37,9 +37,10 @@ compose.yaml                 Postgres + Redis (project name saas_store)
 
 ## Database
 
-- `docker compose up -d postgres` — container `saas_store_db`, volume
-  `saas_store_postgres_data` (kept from the pre-merge deployment so existing schemas survive).
-- Host `DB_HOST=127.0.0.1`; from inside a container use `postgres`.
+- Postgres is external (local or remote); Compose does not run it.
+- `docker compose up -d redis` starts the cache container `saas_store_redis`.
+- Host `DB_HOST=127.0.0.1`; from inside the API container Compose defaults `DB_HOST` to
+  `host.docker.internal` (override for a remote database).
 - Per-tenant schemas are created from entity metadata; no migrations. `DB_SYNCHRONIZE_TENANTS`
   (default false) is the production opt-in for tenant `synchronize`.
 
@@ -51,15 +52,17 @@ Every app has its own gitignored `.env`; only `.env.example` is committed.
 - `apps/store_owner_dashboard/.env`, `apps/super_admin_dashboard/.env` — `VITE_API_URL`.
 - `apps/tenant_store/.env` — `NEXTAUTH_URL`, `NEXTAUTH_SECRET`, `NEXT_PUBLIC_BACKEND_URL`,
   `NEXT_PUBLIC_APP_ROOT_DOMAIN`, `R2_PUBLIC_URL`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`.
-- root `.env` — Postgres values for Compose only.
+- root `.env` — API container + Redis Compose values.
 
 `VITE_*` / `NEXT_PUBLIC_*` are inlined at build time; changing one requires a rebuild.
 
 ## Docker
 
-All four images build from the repository root context:
-`docker build -f apps/<app>/Dockerfile .`. `RAILWAY.md` documents the Railway services but
-predates the implemented payments module.
+Only the API is containerized. `docker compose up -d --build` builds
+`apps/api/Dockerfile` (embedded Super Admin dashboard first, then the NestJS API) and runs it with
+Redis; Postgres is external. `apps/api/static` is rebuilt inside the image. The three frontends run
+from source with `pnpm dev` or a package filter; there are no per-app Dockerfiles and no
+`Dockerfile.dev`.
 
 ## Tooling notes
 

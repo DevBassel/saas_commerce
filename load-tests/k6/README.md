@@ -33,10 +33,8 @@ apps/api/test/seed-load-test.ts
 
 ## Prerequisites
 
-1. PostgreSQL running and `apps/api/.env` configured:
-   ```bash
-   docker compose up -d postgres
-   ```
+1. PostgreSQL running (external to Compose) and `apps/api/.env` configured. Redis is available from
+   the repository root with `docker compose up -d redis`.
 2. Raise the global rate limit for the load window. The API registers a global
    `ThrottlerGuard`, so a load test from a single IP will otherwise receive
    `429`s. In `apps/api/.env`:

@@ -31,7 +31,7 @@ one `pnpm install`, Turborepo for task orchestration.
 
 - Node.js `>=20` (the API image uses Node 26; the dashboards are built on Node 20-compatible Vite; the storefront runs Next.js 15 on Node 20+).
 - pnpm `12.4.1` (`corepack enable` honors the root `packageManager` field).
-- Docker + Docker Compose for Postgres (`compose.yaml` at the root).
+- Docker + Docker Compose for the API and Redis (`compose.yaml` at the root). Postgres is external.
 
 ## Install
 
@@ -124,16 +124,12 @@ There is no `test` task.
 
 ## Database
 
-`compose.yaml` keeps the original Compose project name `saas_store`, so the container
-(`saas_store_db`) and the `saas_store_postgres_data` volume are the same ones used before the
-merge — existing tenant schemas are preserved.
+Postgres is not managed by Compose; use a local or remote PostgreSQL 16 instance. `compose.yaml`
+runs only the API and Redis. `docker compose up -d redis` starts the cache; the API container
+reaches a database on the Docker host through `DB_HOST=host.docker.internal` by default.
 
-```bash
-docker compose up -d postgres
-```
-
-Compose reads only the DB-related variables from the root `.env` (see `.env.example`):
-`DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `POSTGRES_HOST_PORT`.
+Compose reads the DB-related variables from the root `.env` (see `.env.example`):
+`DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, and optional `DB_HOST` (set it for a remote database).
 
 ## Environment files
 
@@ -143,24 +139,32 @@ Per-app `.env` files stay per-app and are gitignored; only `.env.example` is com
 - `apps/store_owner_dashboard/.env` — `VITE_API_URL`.
 - `apps/super_admin_dashboard/.env` — `VITE_API_URL`.
 - `apps/tenant_store/.env` — `API_URL`, `APP_ROOT_DOMAIN`, `R2_PUBLIC_URL`, optional `NEXT_PUBLIC_*`.
-- root `.env` — Compose/Postgres only.
+- root `.env` — API container + Redis Compose values.
 
 ## Docker
 
-All images build from the repository root. The four `Dockerfile`s are production images
-(Railway-ready); the API's watch-mode image lives in `Dockerfile.dev`:
+Only the API is containerized. `compose.yaml` builds `apps/api/Dockerfile`, which builds the
+embedded Super Admin dashboard (`/platform`) and the NestJS API, then runs it with Redis. Postgres
+is supplied externally:
 
 ```bash
-docker build -f apps/api/Dockerfile .
-docker build -f apps/store_owner_dashboard/Dockerfile .
-docker build -f apps/super_admin_dashboard/Dockerfile .
-docker build -f apps/tenant_store/Dockerfile .
-
-# Development API image (watch mode, used by the commented compose service):
-docker build -f apps/api/Dockerfile.dev .
+docker compose up -d --build
 ```
 
-See `RAILWAY.md` for deploying the four services plus a Postgres plugin to Railway.
+The API is available at `http://localhost:4000`, including the embedded dashboard at
+`http://localhost:4000/platform`. Set `VITE_API_URL` (Compose build arg) only when the dashboard
+must call an API on another origin, then rebuild. Set `DB_HOST` when Postgres is not on the Docker
+host.
+
+The three frontends are not containerized. Run them from source instead:
+
+```bash
+pnpm --filter tenant_dash dev
+pnpm --filter super_admin_dash dev
+pnpm --filter tenant_store dev
+```
+
+There are no per-app `Dockerfile`s and no `Dockerfile.dev`.
 
 ## Source archives
 

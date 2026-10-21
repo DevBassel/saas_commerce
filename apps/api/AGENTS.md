@@ -11,8 +11,8 @@ cross-app contracts; the frontends' own `AGENTS.md` files describe their clients
 Run from the repository root with a filter, or from `apps/api` directly.
 
 - `pnpm --filter saas_store_api dev` — watch mode (`nest start --watch`; alias `start:dev`).
-  Needs Postgres and Redis from the root `compose.yaml`
-  (`docker compose up -d postgres redis`) and a real `apps/api/.env`.
+  Needs an external PostgreSQL 16 instance and Redis (`docker compose up -d redis` from the
+  repository root) plus a real `apps/api/.env`.
 - `pnpm --filter saas_store_api build` — `nest build`.
 - `pnpm --filter saas_store_api start:prod` — `node dist/main`.
 - `pnpm --filter saas_store_api lint` — `eslint "{src,apps,libs,test}/**/*.ts" --fix`.
@@ -65,6 +65,31 @@ npx ts-node -r tsconfig-paths/register test/seed-load-test.ts  # seeds >=10 tena
 
 Most modules contain a `workflow.md` mermaid diagram; treat those as the authoritative flow docs for
 that module. The root `workflow.md` documents the full request pipeline.
+
+## Embedded platform dashboard (`/platform`)
+
+The production build of `apps/super_admin_dashboard` is served by the API at `/platform`, outside
+the `/api/v1` global prefix. This does not change any API route, guard, or tenant resolution.
+
+- Build output lives in `apps/api/static` (gitignored). `nest build` clears only `dist`, so it does
+  not delete the dashboard output.
+- `app.module.ts` registers two `ServeStaticModule.forRoot` entries with
+  `rootPath: join(__dirname, '..', 'static')` and `serveRoot: '/platform'`:
+  - `renderPath: '/'` answers `/platform` and `/platform/`.
+  - `renderPath: '/:path*'` answers extensionless deep links such as `/platform/tenants`, while
+    `exclude: ['/platform/:path(.*\\..*)']` routes dotted paths to the normal Nest 404.
+  Two registrations are required: Express 4 uses `path-to-regexp@0.1.x`, where a single
+  `'/:path([^.]*)'` render path both misses `/platform` and returns `index.html` for missing
+  assets. Keep the `exclude` pattern; do not replace it with a bare `'*'`.
+- `__dirname` is `src` under `nest start --watch` and `dist` after `nest build`, so
+  `join(__dirname, '..', 'static')` resolves to `apps/api/static` in both modes.
+- `express.static` serves the hashed `assets/` and `favicon.ico` with `dotfiles: 'deny'`; missing
+  files and dotfiles return 404 instead of the SPA shell.
+- `/platform` is not tenant-scoped: `TenantMiddleware` only acts on `/api/v1` paths, so it leaves
+  static requests untouched. Swagger and every controller stay under `/api/v1`.
+- Rebuild the dashboard with `pnpm --filter super_admin_dash build`; it emits `base: '/platform/'`
+  and its `BrowserRouter` basename follows `import.meta.env.BASE_URL`. The Compose image always uses
+  this embedded build; `BUILD_STANDALONE=true` is only for a standalone `dist` with root base.
 
 ## Multi-tenancy
 

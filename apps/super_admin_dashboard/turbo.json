@@ -1,0 +1,10 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "outputs": ["$TURBO_ROOT$/apps/api/static/**"],
+      "env": ["BUILD_STANDALONE"]
+    }
+  }
+}

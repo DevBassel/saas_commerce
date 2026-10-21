@@ -44,4 +44,4 @@ subdomain.
 
 - Cross-cutting contracts: `AGENTS.md` (root).
 - Per-app rules and pitfalls: each app's `AGENTS.md`.
-- Full detail: `project-description.md`, `RAILWAY.md`, `README.md`.
+- Full detail: `project-description.md`, `README.md`.

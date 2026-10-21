@@ -92,48 +92,57 @@ These are the interfaces every frontend must honor when talking to the API.
 ## Environment files
 
 Every app has its own gitignored `.env`; only `.env.example` is committed at each level. The root
-`.env` feeds Docker Compose (Postgres) only.
+`.env` feeds Docker Compose (Postgres/Redis and the API container) only.
 
 - `apps/api/.env` — full API config, Joi-validated at boot.
 - `apps/store_owner_dashboard/.env` — `VITE_API_URL`.
 - `apps/super_admin_dashboard/.env` — `VITE_API_URL`.
 - `apps/tenant_store/.env` — `NEXTAUTH_URL`, `NEXTAUTH_SECRET`, `NEXT_PUBLIC_BACKEND_URL`,
   `NEXT_PUBLIC_APP_ROOT_DOMAIN`, `R2_PUBLIC_URL`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`.
-- root `.env` — `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `POSTGRES_HOST_PORT` for Compose.
+- root `.env` — `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, optional `DB_HOST`, `REDIS_HOST_PORT` for
+  Compose.
 
 Frontend `VITE_*` and `NEXT_PUBLIC_*` values are inlined at build time, so changing one requires a
 rebuild of that app.
 
 ## Database
 
-`compose.yaml` keeps the original Compose project name `saas_store`, so the container
-(`saas_store_db`) and volume (`saas_store_postgres_data`) match the pre-merge deployment and
-existing tenant schemas survive.
+Postgres is **not** managed by Compose; use a local or remote PostgreSQL 16 instance. `compose.yaml`
+runs the API and Redis only. The API container reaches a database on the Docker host through
+`DB_HOST=host.docker.internal` (the Compose default; `extra_hosts` makes it resolve on Linux too).
 
 ```bash
-docker compose up -d postgres redis
+docker compose up -d redis
 ```
 
-Redis is the only API cache store, so start it with Postgres; the API reaches it as
-`redis://redis:6379` inside Compose (see `RAILWAY.md` for production).
+`DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, and an optional `DB_HOST` come from the root `.env`
+(passed into the API container) or from `apps/api/.env`. Redis is the only API cache store; the API
+reaches it as `redis://redis:6379` inside Compose. The API container maps `REDIS_URL` in
+`compose.yaml`.
 
-Use the `postgres` service name as `DB_HOST` from inside a container; from the host it is
-`127.0.0.1`. Per-tenant schema details are in `apps/api/AGENTS.md`.
+Use `host.docker.internal` as `DB_HOST` from inside the container; from the host it is
+`127.0.0.1`. Per-tenant schema details are in `apps/api/AGENTS.md`. The previous
+`saas_store_postgres_data` volume is no longer mounted; existing data must live in the external
+Postgres instance.
 
 ## Docker and deployment
 
-All four images build from the repository root context:
+Only the API is containerized. `compose.yaml` builds `apps/api/Dockerfile` and runs the API with
+Redis; Postgres is supplied externally:
 
 ```bash
-docker build -f apps/api/Dockerfile .
-docker build -f apps/store_owner_dashboard/Dockerfile .
-docker build -f apps/super_admin_dashboard/Dockerfile .
-docker build -f apps/tenant_store/Dockerfile .
+docker compose up -d --build
 ```
 
-`apps/api/Dockerfile.dev` is the watch-mode development image used by the commented Compose API
-service. `RAILWAY.md` documents the four Railway services plus a Postgres plugin; note it predates
-the implemented payments module and should be read against `apps/api/AGENTS.md`.
+The image builds the embedded Super Admin dashboard first (Vite output in `apps/api/static`) and
+then the NestJS API, so `/platform` is served by the same container. `VITE_API_URL` is a build arg
+defaulting to `/api/v1`; set it and rebuild only if the dashboard must call another origin.
+`NODE_ENV`, `APP_PORT`, `DB_HOST`, and `REDIS_URL` are set by Compose; everything else comes from
+`apps/api/.env` (with root `.env` for the database credentials).
+
+The three frontends are deliberately not containerized. Run them from source with `pnpm dev` or a
+package filter. There is no `Dockerfile.dev`; API development is `pnpm --filter saas_store_api dev`
+against your Postgres and Redis from Compose (`docker compose up -d redis`).
 
 ## Workspace rules
 
@@ -150,8 +159,7 @@ the implemented payments module and should be read against `apps/api/AGENTS.md`.
 
 These were deliberately preserved when the source repositories were merged. Do not "clean them up":
 
-- Compose project/container names (`saas_store`, `saas_store_db`) and the volume `postgres_data`
-  (stays `saas_store_postgres_data`) so existing tenant data keeps resolving.
+- Compose project name `saas_store` and container names `saas_store_api` / `saas_store_redis`.
 - `APP_NAME`, `DB_NAME`, `R2_BUCKET`, `JWT_ISSUER`, `JWT_AUDIENCE`. Changing the JWT pair
   invalidates every issued access/refresh token; changing `DB_NAME`/`R2_BUCKET` orphans data.
 - All four workspace `package.json` names.

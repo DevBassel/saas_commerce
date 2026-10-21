@@ -191,14 +191,6 @@ subdomain, literal `false` = apex `?tenant=<slug>`), `NEXT_PUBLIC_STRIPE_PUBLISH
 an `r2.dev` host; there is no dynamic `R2_PUBLIC_URL` wiring, so a custom CDN host needs a code
 change.
 
-## Docker
-
-`Dockerfile` builds from the repository root context:
-`docker build -f apps/tenant_store/Dockerfile .`. It uses Node 22, installs the workspace, passes
-`NEXT_PUBLIC_BACKEND_URL`, `NEXT_PUBLIC_APP_ROOT_DOMAIN`, `NEXT_PUBLIC_ALLOW_SUBDOMAIN`, and
-`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` as build args, sets `NEXT_STANDALONE=1`, and runs the
-standalone server (`node apps/tenant_store/server.js`) on port 3000.
-
 `output: "standalone"` is enabled only when `NEXT_STANDALONE=1`; local `next build` skips it because
 tracing the pnpm store creates symlinks Windows dev machines reject. Never set `NEXT_STANDALONE=1`
 for a local Windows build.

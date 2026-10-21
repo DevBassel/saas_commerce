@@ -28,18 +28,21 @@ The tenant-scoped console is `apps/store_owner_dashboard`.
 ## Layout and routing
 
 - Entry is `src/index.tsx` (`index.html` loads `/src/index.tsx`); `src/App.tsx` wires
-  `BrowserRouter → ErrorBoundary → RefineKbarProvider → ThemeProvider → DevtoolsProvider → Refine`.
+  `BrowserRouter → ErrorBoundary → RefineKbarProvider → ThemeProvider → Devtools (dev-only) → Refine`.
 - Routing is React Router v7 `<Routes>`. Auth-gated routes render inside `Layout`; `/login` is
   wrapped by an `Authenticated` group that redirects signed-in users to `platform/tenants`.
 - Routes: `/` dashboard; `/tenants`, `/tenants/create`, `/tenants/show/:id`; `/payments`,
   `/payments/show/:id`; `/currency-requests`; `/subscription-plans`,
   `/subscription-plans/create`, `/subscription-plans/edit/:id`; `/login`; `*` → `ErrorComponent`.
+  Every page except `Dashboard` and the `*` error route is a `React.lazy()` chunk loaded through a
+  `Suspense` boundary; `Dashboard` is the authenticated landing route and stays static.
 - Refine resources in `src/lib/Resources.tsx`: `dashboard`, `platform/tenants`,
   `platform/payments`, `platform/currency-requests`, `platform/subscription-plans`. The sidebar is
   generated from `useMenu()`.
 - `syncWithLocation: true` is set globally and on the list views, so list state lives in the URL.
-- Devtools (`@refinedev/devtools`) are imported unconditionally and ship in the production bundle.
-  They bind port 5001 by default; set `REFINE_DEVTOOLS_PORT` when running both dashboards.
+- Devtools (`@refinedev/devtools`) are gated behind `import.meta.env.DEV` (same pattern as
+  `tenant_dash`), so the package is tree-shaken out of production builds. They bind port 5001 by
+  default; set `REFINE_DEVTOOLS_PORT` when running both dashboards.
 
 ## Auth and token storage
 
@@ -107,12 +110,29 @@ The tenant-scoped console is `apps/store_owner_dashboard`.
 Only `VITE_API_URL` is read (`src/api/constants.ts`). Copy `.env.example` to `.env`; the value is
 inlined at build time, so change it before building.
 
-## Docker
+## Build output and base path
 
-`Dockerfile` builds from the repository root context:
-`docker build -f apps/super_admin_dashboard/Dockerfile .`. It installs the workspace, inlines the
-`VITE_API_URL` build arg, runs `pnpm --filter super_admin_dash build`, and serves `dist` with
-`serve` on `${PORT:-3000}`. Changing `VITE_API_URL` requires a rebuild.
+- `pnpm --filter super_admin_dash build` is an **embedded** production build for the API. Vite
+  writes to `apps/api/static`, sets `base: "/platform/"`, and keeps `emptyOutDir` off so sibling
+  files in the API static directory are preserved. The API serves it at `/platform`.
+- `BrowserRouter` derives its `basename` from `import.meta.env.BASE_URL` (`/` in dev,
+  `/platform/` embedded, with the trailing slash stripped). `unauthenticatedRedirect` in
+  `src/api/client.ts` prefixes `BASE_URL` for the same reason, so dev URLs remain
+  `localhost:5173/login`.
+- `BUILD_STANDALONE=true` produces a standalone `dist` build with `outDir: dist`, `base: "/"`, and
+  `emptyOutDir`; the API image does not set it.
+- `apps/super_admin_dashboard/turbo.json` declares the embedded output
+  (`$TURBO_ROOT$/apps/api/static/**`) and hashes `BUILD_STANDALONE`.
+- `vite.config.ts` splits production output with `manualChunks` (path-normalized for Windows):
+  `react` (React/React DOM/scheduler), `refine` (`@refinedev/core`, `devtools-internal`,
+  `devtools-shared`, `react-router` adapter, `kbar`, `@tanstack/react-query`), `router`,
+  `http` (axios/jwt-decode), `tables` (react-table), `forms` (react-hook-form/zod/resolvers), and a
+  dev-only `devtools` group. Route pages are separate lazy chunks. Do **not** group all
+  `@radix-ui/*`, `lucide-react`, or `sonner`: the layout needs them initially, so a broad group
+  would pull lazy-route members back into the initial load.
+- Measured on a standalone (`BUILD_STANDALONE=true`) build: initial JavaScript dropped from
+  1,073.62 kB (330.16 kB gzip, one chunk) to 782.05 kB (252.00 kB gzip) across entry + preloaded
+  `react`, `router`, `refine`, and `http` chunks; no chunk exceeds the 500 kB warning threshold.
 
 ## Pitfalls
 
@@ -127,5 +147,5 @@ inlined at build time, so change it before building.
 - Unused boilerplate: `@refinedev/rest`, `@refinedev/simple-rest`, `@refinedev/react-hook-form`,
   `sign-up-form.tsx`, `forgot-password-form.tsx`, and `edit-view.tsx` are declared/present but not
   wired. Do not wire them up unless intended.
-- Do not rename the package (`super_admin_dash`) or the `localStorage` keys; Docker and Turborepo
-  filters and saved admin sessions depend on them.
+- Do not rename the package (`super_admin_dash`) or the `localStorage` keys; Turborepo filters and
+  saved admin sessions depend on them.

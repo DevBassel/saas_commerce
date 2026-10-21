@@ -1,6 +1,8 @@
 import { Refine, Authenticated } from "@refinedev/core";
 import { DevtoolsPanel, DevtoolsProvider } from "@refinedev/devtools";
 import { RefineKbar, RefineKbarProvider } from "@refinedev/kbar";
+import { lazy, Suspense } from "react";
+import type { ReactNode } from "react";
 
 import { BrowserRouter, Route, Routes, Outlet } from "react-router";
 import routerProvider, {
@@ -11,19 +13,11 @@ import routerProvider, {
 
 import { dataProvider } from "./providers/data";
 import { authProvider } from "./providers/auth";
-import { Login } from "./pages/login";
 import { Dashboard } from "./pages/dashboard";
-import { TenantsList, TenantsCreate, TenantsShow } from "./pages/tenants";
-import { PaymentsList, PaymentsShow } from "./pages/payments";
-import { CurrencyRequestsList } from "./pages/currency-requests";
-import {
-  SubscriptionPlanCreate,
-  SubscriptionPlanEdit,
-  SubscriptionPlansList,
-} from "./pages/subscription-plans";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ErrorComponent } from "./components/refine-ui/layout/error-component";
 import { Layout } from "./components/refine-ui/layout/layout";
+import { RouteFallback } from "./components/refine-ui/layout/route-fallback";
 import { UnsavedChangesDialog } from "./components/refine-ui/unsaved-changes-dialog";
 import { useNotificationProvider } from "./components/refine-ui/notification/use-notification-provider";
 import { Toaster } from "./components/refine-ui/notification/toaster";
@@ -31,13 +25,84 @@ import { ThemeProvider } from "./components/refine-ui/theme/theme-provider";
 import { Resources } from "./lib/Resources";
 import "./App.css";
 
+const Login = lazy(() =>
+  import("./pages/login").then((module) => ({ default: module.Login })),
+);
+
+const TenantsList = lazy(() =>
+  import("./pages/tenants/list").then((module) => ({
+    default: module.TenantsList,
+  })),
+);
+const TenantsCreate = lazy(() =>
+  import("./pages/tenants/create").then((module) => ({
+    default: module.TenantsCreate,
+  })),
+);
+const TenantsShow = lazy(() =>
+  import("./pages/tenants/show").then((module) => ({
+    default: module.TenantsShow,
+  })),
+);
+
+const PaymentsList = lazy(() =>
+  import("./pages/payments/list").then((module) => ({
+    default: module.PaymentsList,
+  })),
+);
+const PaymentsShow = lazy(() =>
+  import("./pages/payments/show").then((module) => ({
+    default: module.PaymentsShow,
+  })),
+);
+
+const CurrencyRequestsList = lazy(() =>
+  import("./pages/currency-requests/list").then((module) => ({
+    default: module.CurrencyRequestsList,
+  })),
+);
+
+const SubscriptionPlansList = lazy(() =>
+  import("./pages/subscription-plans/list").then((module) => ({
+    default: module.SubscriptionPlansList,
+  })),
+);
+const SubscriptionPlanCreate = lazy(() =>
+  import("./pages/subscription-plans/create").then((module) => ({
+    default: module.SubscriptionPlanCreate,
+  })),
+);
+const SubscriptionPlanEdit = lazy(() =>
+  import("./pages/subscription-plans/edit").then((module) => ({
+    default: module.SubscriptionPlanEdit,
+  })),
+);
+
+// Refine Devtools are a development aid. `import.meta.env.DEV` is inlined as
+// `false` for production builds, so this branch (and the `@refinedev/devtools`
+// import, which is side-effect free) is tree-shaken out of the shipped bundle.
+const Devtools = ({ children }: { children: ReactNode }) => {
+  if (!import.meta.env.DEV) return <>{children}</>;
+  return (
+    <DevtoolsProvider>
+      {children}
+      <DevtoolsPanel />
+    </DevtoolsProvider>
+  );
+};
+
+const routerBasename =
+  import.meta.env.BASE_URL === "/"
+    ? "/"
+    : import.meta.env.BASE_URL.replace(/\/$/, "");
+
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={routerBasename}>
       <ErrorBoundary>
         <RefineKbarProvider>
           <ThemeProvider>
-            <DevtoolsProvider>
+            <Devtools>
               <Refine
                 dataProvider={dataProvider}
                 notificationProvider={useNotificationProvider()}
@@ -59,7 +124,9 @@ function App() {
                         fallback={<CatchAllNavigate to="/login" />}
                       >
                         <Layout>
-                          <Outlet />
+                          <Suspense fallback={<RouteFallback />}>
+                            <Outlet />
+                          </Suspense>
                         </Layout>
                       </Authenticated>
                     }
@@ -99,7 +166,14 @@ function App() {
                       </Authenticated>
                     }
                   >
-                    <Route path="/login" element={<Login />} />
+                    <Route
+                      path="/login"
+                      element={
+                        <Suspense fallback={<RouteFallback fullScreen />}>
+                          <Login />
+                        </Suspense>
+                      }
+                    />
                   </Route>
                 </Routes>
 
@@ -108,8 +182,7 @@ function App() {
                 <UnsavedChangesDialog />
                 <DocumentTitleHandler />
               </Refine>
-              <DevtoolsPanel />
-            </DevtoolsProvider>
+            </Devtools>
           </ThemeProvider>
         </RefineKbarProvider>
       </ErrorBoundary>

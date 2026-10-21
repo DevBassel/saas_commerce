@@ -202,19 +202,11 @@ are read in `src/api/tenant.ts` at call time; `VITE_STRIPE_PUBLISHABLE_KEY` is r
 `src/lib/stripe.ts` at module load. Copy `.env.example` to `.env`; all values are inlined at build
 time, so change them before building.
 
-## Docker
-
-`Dockerfile` builds from the repository root context:
-`docker build -f apps/store_owner_dashboard/Dockerfile .`. It installs the workspace, inlines the
-`VITE_API_URL`, `VITE_ALLOW_SUBDOMAIN`, `VITE_APP_ROOT_DOMAIN`, and `VITE_STRIPE_PUBLISHABLE_KEY`
-build args, runs `pnpm --filter tenant_dash build`, and serves `dist` with `serve` on
-`${PORT:-3000}`. Changing any `VITE_*` value requires a rebuild.
-
 ## Pitfalls
 
 - `tsconfig.json` enables `strict`, `noUnusedLocals`, and `noUnusedParameters`; unused imports fail
   `typecheck` and `build`. `tsconfig.node.json` is orphaned, so `vite.config.ts` is not type-checked.
 - `src/components/refine-ui/form/sign-in-form.tsx` hard-codes default credentials
   (`owner@example.com` / `12345678`) — treat as source truth, not a clean example.
-- Do not rename the package (`tenant_dash`) or the `localStorage` keys; Docker and Turborepo filters
-  and saved sessions depend on them.
+- Do not rename the package (`tenant_dash`) or the `localStorage` keys; Turborepo filters and saved
+  sessions depend on them.
