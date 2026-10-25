@@ -6,12 +6,13 @@ import { TenantCacheService } from '../cache/tenant-cache.service';
 const CACHE = {
   enabled: true,
   driver: 'redis',
+  connected: true,
 };
 
 const buildController = () => {
   const query = jest.fn();
   const healthy = jest.fn();
-  const cacheStats = jest.fn().mockReturnValue(CACHE);
+  const cacheStats = jest.fn().mockResolvedValue(CACHE);
   const dataSource = { query } as unknown as DataSource;
   const r2 = { healthy } as unknown as R2Service;
   const cache = { stats: cacheStats } as unknown as TenantCacheService;

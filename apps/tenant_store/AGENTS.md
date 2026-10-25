@@ -135,8 +135,35 @@ is never used for routing or fetching here.
   `next: { revalidate: 60, tags: ["store", "store:<slug>"] }`, with the slug repeated in the URL
   (`?tenant=<slug>`) because the Next Data Cache key ignores the `x-tenant-slug` header. No route
   exports `revalidate` or `dynamic` yet.
-- API modules: `src/api/productsApi.ts`, `cartApi.ts`, `orderApi.ts`, `addressesApi.ts`,
-  `paymentsApi.ts`, `couponsApi.ts`, `authApi.ts`, `otpApi.ts`.
+- API modules: `src/api/productsApi.ts`, `categoriesApi.ts`, `cartApi.ts`, `orderApi.ts`,
+  `addressesApi.ts`, `paymentsApi.ts`, `couponsApi.ts`, `authApi.ts`, `otpApi.ts`.
+- The `/products` Server Component is the one public catalog path with a deliberate transport
+  exception: it creates a request-scoped anonymous Axios instance (`baseURL` plus the trusted
+  `x-tenant-slug` header only) and passes it through `getProductPage(..., undefined, client)` and
+  `getStoreCategoryOptions(client)`. It never forwards cookies, `Authorization`, incoming
+  `x-tenant-id`, or arbitrary request headers, and it never mutates `apiClient`. Authenticated
+  cart/order/payment calls keep using the shared client.
+- `/products` filter state is URL-backed (`search`, `categoryId`, `minPrice`, `maxPrice`, `inStock`,
+  `sortBy`, `sortOrder`, `page`) and parsed/validated by the pure `src/lib/product-filters.ts`.
+  `CatalogGrid` is presentation-only; totals and pages always come from the API envelope with a
+  fixed `limit=12`. Invalid/repeated parameters suppress the product request and show editable
+  errors; they are never silently dropped. Category options come from the public
+  `GET /store/categories`; a failure degrades only that control.
+- Product filters use one left `Sheet` at every viewport width, opened by a fixed lower-left
+  **Filters** button; there is no separate desktop sidebar. Price is one two-handle Base UI slider
+  built on `src/components/ui/slider.tsx`: the display ceiling comes from a separate bounded
+  `GET /products?page=1&limit=1&sortBy=price&sortOrder=desc` lookup (not the visible 12 items),
+  unset bounds stay unset, and handles may meet but not cross. Availability is the
+  `src/components/ui/switch.tsx` "In stock only" control: ON sends `inStock=true`, OFF omits it;
+  legacy `inStock=false` links keep out-of-stock results behind an explicit notice and reset.
+  Dragging/toggling never requests; draft edits commit on **Apply filters**. `sortBy` is case-sensitive
+  (`createdAt`, not lowercased).
+- Applied filter tags (`src/components/products/ActiveFilterChips.tsx`) render first in the product
+  results section, below the page header and above results/errors on every width. They are outside
+  the `Sheet`. `src/components/products/filter-navigation.tsx` wraps the catalog grid with one
+  `FilterNavigationProvider`: Apply, tag removal, Clear all, and category/price retries share the
+  pending guard. Its push uses `useTenantRouter`, preserving apex `?tenant=` navigation; removing a
+  tag preserves other committed filters and resets page to 1.
 
 ## Email OTP
 
@@ -177,7 +204,7 @@ is never used for routing or fetching here.
   (**not** Radix); Base UI's `render={<Button/>}` trigger pattern is used in dialogs.
 - Tailwind v4 is CSS-first (`src/app/globals.css` with `@import "tailwindcss"` and `@theme inline`
   tokens); there is no `tailwind.config.*`. `cn()` is `twMerge(clsx(...))` in `src/lib/utils.ts`.
-- `pagination.tsx` and `tooltip.tsx` are unused so far.
+- `pagination.tsx` is used by `/products` and `/orders`; `tooltip.tsx` is unused so far.
 
 ## Environment
 

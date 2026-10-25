@@ -4,6 +4,12 @@ What works, what is left, and known issues. Update when work completes or debt i
 
 ## What works
 
+- **OpenCode persistent planning (2026-10-24):** project configuration in `opencode.json` and
+  `.opencode/` implements the root-plan workflow documented in `AGENTS.md` and `plans/README.md`.
+  Custom `project-plan` is needed because OpenCode `1.19.4` hard-codes native Plan reminders/storage.
+  The dependency-free writer, native/Build agent availability, command routing, and root path from
+  an app subdirectory were verified using the installed CLI; nine writer-boundary tests passed.
+  Original global config/custom commands were preserved. Full proof: `plans/opencode-plan-mode.md`.
 - **Deployment surface:** only the API is containerized, via `docker compose up -d --build`
   (compose project `saas_store`). `apps/api/Dockerfile` builds the embedded Super Admin dashboard
   then the API; Compose runs `saas_store_api` with `saas_store_redis`. Postgres is external and the
@@ -45,9 +51,75 @@ What works, what is left, and known issues. Update when work completes or debt i
   `X-Cache`, and a single-flight namespace store. Redis is the only driver (`REDIS_URL` required):
   namespace key sets, namespace versions, and cross-instance invalidation via pub/sub.
   `DB_STATEMENT_TIMEOUT_MS` bounds each PostgreSQL statement, and `GET /health` reports
-  `cache: { enabled, driver }`.
+  `cache: { enabled, driver, connected }`.
   The endpoint-priority admission-control experiment was removed; the stock `ThrottlerGuard` is
-  back.
+  back. Fingerprints now hash a versioned (`v3:`) type-preserving JSON-like canonical form with
+  sorted keys/arrays, so delimiter-containing search values cannot collide with other query
+  parameters (2026-10-24). A 2026-10-25 cleanup removed unused store entry metadata, the unused
+  single-key delete operation, and redundant policy names. Health `PING` now waits for Redis
+  readiness within the connect timeout, and local invalidation scans the bounded in-flight map
+  directly, fixing an older-flight cleanup race. API lint/typecheck and seven focused suites passed
+  (130 tests, including four against live Redis).
+- **Storefront product filters (2026-10-24):** `/products` now browses the full tenant catalog
+  through the API instead of filtering the current 12 cards locally. URL-backed filters
+  (`search`, `categoryId`, inclusive `minPrice`/`maxPrice`, `inStock`, six sort presets, `page`)
+  are parsed/validated by `apps/tenant_store/src/lib/product-filters.ts`; invalid or repeated
+  values suppress the product request and show editable errors. A responsive shadcn/Base UI form
+  (desktop card + mobile `Sheet`) applies once on submit, shows chips/Clear all, and preserves
+  committed filters through pagination. The page uses a request-local anonymous Axios client with
+  only the trusted tenant header (no cookies/Authorization). New public
+  `GET /api/v1/store/categories` returns active `{ id, name }[]`, ordered by name then id, and is
+  uncached (`private, no-store` / `X-Cache: BYPASS`). Automated gates passed: targeted API Jest
+  14 suites / 319 tests, API typecheck + build, storefront lint/typecheck/build. Live PostgreSQL and
+  manual browser/tenant-mode/accessibility checks were **not** run.
+- **Storefront filter sidebar, price slider, availability switch (2026-10-25, uncommitted):** on
+  `lg`+ the `/products` filters are an `<aside>` beside the results, with the same shared draft in a
+  left `Sheet` below that width. Price is one Base UI two-thumb slider (`ui/slider.tsx`) bounded by
+  a separate `page=1&limit=1&sortBy=price&sortOrder=desc` tenant read rather than the visible 12
+  items; unset bounds stay unset, handles may meet but not cross, and a lookup failure leaves
+  results usable. Availability is a Base UI switch (`ui/switch.tsx`): ON sends `inStock=true`, OFF
+  omits it, and legacy `inStock=false` stays visible behind an explicit notice/reset. The sort
+  parser no longer lowercases `sortBy` (restores `createdAt` drafts), and no-match "Clear all
+  filters" now links to the tenant-aware clean `/products`. Verified with storefront lint, scoped
+  ESLint, typecheck, 20 focused range/query assertions, SSR and orchestration probes (tenant
+  isolation, fixed lookup, credential-free outbound calls, invalid-query suppression, price-only
+  failure). **`next build` did not pass:** two attempts hit Turbopack worker OOM, including one with
+  a 4 GB `NODE_OPTIONS`. Live/manual browser checks were **not** run.
+- **Storefront filter tags above results (2026-10-25, uncommitted):** implemented
+  `plans/tenant-store-filter-chips-above-results.md`. `ActiveFilterChips.tsx` is first in the
+  product results section; `filter-navigation.tsx` supplies the shared transition guard for the
+  tag row and filter form. Existing tag removal, page-1 reset, Clear all, false/zero semantics,
+  and tenant-aware URLs were preserved. Lint/typecheck, SSR placement/recovery probes, controlled
+  navigation/pending probes, and the previous tenant orchestration probe passed. Production build
+  repeated worker OOM then Turbopack IPC failure; live widths/hydration/navigation timing remain
+  unchecked, so the plan stays `Approved`. Current contract: `apps/tenant_store/AGENTS.md` →
+  API client and data fetching.
+- **Storefront ProductFilters refactor (2026-10-25, uncommitted):** implemented the structural work
+  in `plans/tenant-store-product-filters-refactor.md`. Parent shrank from 646 to 208 lines; nine
+  modules in `src/components/products/filters/` contain five controlled fields, shared fields/actions,
+  types, and pure error/category/price-presentation utilities. Public props and parent state/navigation
+  remain intact; neighboring catalog/provider/domain/UI/config files match preflight hashes.
+  Verified: lint/typecheck, 36 helper cases with exact baseline output parity, 27 actual React/Base UI
+  SSR renders with exact normalized-markup parity and ID/description checks, and nine synthetic-state
+  callback scenarios. **Final storefront production build passed**, including TypeScript and all 17
+  generated pages; baseline had reproduced worker OOM. Live browser/hydration/focus/history/tenant-mode
+  checks remain unverified because browser tooling was unavailable, so the plan remains `Approved`.
+- **Storefront all-screen filter Sheet (2026-10-25, uncommitted):** `/products` now uses the same
+  left Sheet on mobile, tablet, and desktop, opened by a fixed lower-left Filters button. The
+  desktop Card/sidebar and 18rem results column were removed; existing draft validation,
+  Apply/Cancel/Clear behavior, URL navigation, category recovery, and tags remain. Storefront lint
+  and typecheck passed. Standard Turbopack builds failed with the recurring worker Zone Allocation
+  OOM/IPC panic, including a 4 GB heap retry; `next build --webpack` passed compilation,
+  TypeScript, and generation of all 17 pages. Live visual/focus checks remain open.
+- **Product filtering (2026-10-24):** `GET /products` supports `search` (trimmed, 1–255 chars,
+  case-insensitive across name/sku/slug/description with literal `%`/`_`/`\`), `categoryId`,
+  inclusive `minPrice`/`maxPrice`, `inStock`, allowlisted `sortBy`/`sortOrder` with deterministic
+  `id DESC` tie-break, and `page`/`limit` (defaults 1/10, 50-item clamp). Filters and sorting apply
+  with or without pagination; the array response is preserved when neither pagination parameter is
+  supplied, otherwise the existing `{ data, total, page, limit }` envelope reports filtered totals.
+  Invalid query values fail HTTP 400 before repository access. Verified with 14 Jest suites /
+  342 tests, TypeScript, and changed-file ESLint. Live PostgreSQL behavior was not exercised;
+  repository assertions are mocked.
 - **Seeding module** (`apps/api/src/modules/seeding/`): registry-driven platform + tenant seeders
   (permissions, roles, super-admin, subscription-plans, subscription-backfill; opt-in categories),
   a single `SeedingBootstrapService` boot owner, and the `test/seed.ts` CLI
@@ -113,8 +185,8 @@ What works, what is left, and known issues. Update when work completes or debt i
   product `notFound()` + `generateMetadata`, and a hard 404 for unknown store subdomains. See
   `activeContext.md` for the host-routing change and the earlier architecture-review remediation
   (P0-1/P0-2, P1-3/P1-4/P1-5, P2-3..P2-6, P2-9, P3-3..P3-6). Catalog caching (P1-1/P1-2),
-  server-side search (P2-1), `PlaceOrder` split (P2-2), full SEO (P2-7) and shared API types (P2-8)
-  remain.
+  `PlaceOrder` split (P2-2), full SEO (P2-7) and shared API types (P2-8) remain. Server-side
+  catalog search/filtering for `/products` is now wired (2026-10-24, see above).
 - **Storefront email OTP** (`apps/tenant_store`): `otpApi.ts` plus public `/verify-email`,
   `/forgot-password`, `/reset-password` pages (shadcn `input-otp` code entry). Register routes to
   verify; any `EMAIL_NOT_VERIFIED` (login, proxy before render for protected paths, or the apiClient

@@ -431,6 +431,11 @@ Connect destination-charge flow.
 ## Storefront and catalog endpoints
 
 - `GET /store/info` is `@Public` and returns `{ name, slug, currency }` for the resolved tenant.
+- `GET /store/categories` is `@Public`, tenant-scoped, and returns the active categories of the
+  resolved tenant as `{ id, name }[]`, ordered by name then id. It is served by
+  `StorefrontController` delegating to `CategoriesService.findStorefrontOptions` and is intentionally
+  **not** cached (no `@CacheResponse`), so it answers `Cache-Control: private, no-store` and
+  `X-Cache: BYPASS`. It does not change the protected `/categories` management routes.
 - Product reads are `@Public`: `GET /products` and `GET /products/:id`. Because `@Public` short-
   circuits `PermissionGuard`, the `products:read` decorators on those GETs are inert.
 - Category reads (`GET /categories`) are **not** public and require a permission.
@@ -447,17 +452,16 @@ unchanged and applies to every request, including cache hits.
   key set (`ns:<namespace>`), a namespace version (`nsv:<namespace>`), and a Lua write guard.
   `TenantCacheService` builds keys
   (`api:v1:cache:tenant:<schema>:<namespace>:<sha256>` / `…:platform:…`), single-flights loads,
-  handles invalidation races with identity tokens, and fails open on store errors. `CacheModule` is
-  `@Global`, always constructs `RedisCacheStore`, and lives in `CoreModule`.
+  handles invalidation races with identity tokens, and fails open on store errors. Local namespace
+  invalidation scans the `CACHE_MAX_INFLIGHT`-bounded flight map directly. `CacheModule` is `@Global`,
+  always constructs `RedisCacheStore`, and lives in `CoreModule`.
 - Redis invalidation is cross-instance: `invalidateNamespace` increments the namespace version,
   deletes the keys in the namespace index, and publishes `cache:invalidate`; every replica marks
   its local in-flight loads stale. A write whose captured version no longer matches is rejected and
   retried once. Invalidation never uses `KEYS`/`SCAN`.
 - `CACHE_MAX_ENTRY_BYTES` is enforced by the store. Bound Redis with `maxmemory` +
-  `maxmemory-policy allkeys-lru`. Redis `entries`/`bytes`/`evictions` in health come from
-  `DBSIZE`/`INFO` and are Redis-wide, not cache-only. Under memory pressure, eviction of a namespace
-  index or version key weakens invalidation to the entry TTL, so size `maxmemory` above the working
-  set.
+  `maxmemory-policy allkeys-lru`. Under memory pressure, eviction of a namespace index or version
+  key weakens invalidation to the entry TTL, so size `maxmemory` above the working set.
 - The only cacheable routes are `GET /products`, `GET /products/:id`, `GET /categories`,
   `GET /categories/:id`, `GET /subscription/plans`, and `GET /platform/subscription-plans`.
   `@CacheResponse({ policy, scope })` on any other route is ignored with a warning. Plans use the
@@ -472,7 +476,8 @@ unchanged and applies to every request, including cache hits.
   post-serialization handler result, so `@Exclude` fields are never cached.
 - `DB_STATEMENT_TIMEOUT_MS` (default 30000, `0` disables) is passed to both DataSources as
   `extra.statement_timeout`. It is a per-statement PostgreSQL timeout, not a request deadline.
-- `GET /health` adds `cache: { enabled, driver }`; cache status does not change the top-level
+- `GET /health` adds `cache: { enabled, driver, connected }`; its Redis `PING` waits for the client
+  `ready` state up to `CACHE_REDIS_CONNECT_TIMEOUT_MS`. Cache status does not change the top-level
   `status` (still DB + R2).
 
 ## Environment

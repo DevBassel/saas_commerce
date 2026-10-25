@@ -11,7 +11,10 @@ import { TenantManagerService } from '../tenants/services/tenant-manager.service
 import { TenantRef } from '../tenants/utils/tenant.utils';
 import { resolveTenantScope } from '../tenants/utils/tenant-scope';
 import { slugify } from '../../common/utils/slug';
-import { SerializedCategory } from './constants/categories.interface';
+import {
+  SerializedCategory,
+  StorefrontCategoryOption,
+} from './constants/categories.interface';
 import { TenantCacheService } from '../../common/cache/tenant-cache.service';
 
 export const serializeCategory = (category: Category): SerializedCategory => ({
@@ -68,6 +71,18 @@ export class CategoriesService {
     const categoryRepo = await this.repo(tenant);
     const categories = await categoryRepo.find({ order: { name: 'ASC' } });
     return categories.map((category) => serializeCategory(category));
+  }
+
+  async findStorefrontOptions(
+    tenant?: TenantRef,
+  ): Promise<StorefrontCategoryOption[]> {
+    const categoryRepo = await this.repo(tenant);
+    const categories = await categoryRepo.find({
+      where: { isActive: true },
+      select: { id: true, name: true },
+      order: { name: 'ASC', id: 'ASC' },
+    });
+    return categories.map(({ id, name }) => ({ id, name }));
   }
 
   async findOne(id: number, tenant?: TenantRef) {

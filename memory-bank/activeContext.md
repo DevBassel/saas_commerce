@@ -1,146 +1,93 @@
 # Active Context — saas_commerce
 
-Current focus and recent changes. This file is **rewritten**, not appended, on every update.
-Most dynamic file in the bank — keep it short and current.
+Current focus and recent changes. Rewritten on each update.
 
 ## Current focus
 
-**Super Admin bundle optimization, on top of the embedded `/platform` dashboard** (all
-uncommitted). The Vite build is split by vendor chunk and route, Refine Devtools are
-development-only, and the API still serves the built dashboard from `apps/api/static` at
-`http://localhost:4000/platform`. API routes, guards, tenant resolution, Store Owner dashboard,
-auth, and Refine resources are unchanged. Plans:
-`.kilo/plans/1792427730268-super-admin-bundle-split.md` (bundle) and
-`.kilo/plans/1792425806785-serve-super-admin-dashboard-at-platform.md` (embedded hosting).
-Container deployment is Compose under `apps/docker-compose.yml`: 3 API replicas behind an nginx
-proxy, plus Redis; Postgres is external.
+**The Redis cache module cleanup is complete and verified.** Dead store metadata/operations and a
+redundant policy field were removed; local invalidation now scans the bounded in-flight map instead
+of maintaining a second index that could lose a replacement flight; and health `PING` waits for the
+ioredis client to become ready within `CACHE_REDIS_CONNECT_TIMEOUT_MS`. Cache keys, route allowlist,
+TTLs, fail-open behavior, public services/decorators, Lua invalidation, and shutdown cleanup are
+unchanged. API lint/typecheck, 130 focused tests, and four live-Redis integration cases pass.
+
+The uncommitted storefront product-filter work remains as previously recorded. Live browser layout,
+focus, keyboard, and tenant-mode checks are still open.
+
+Earlier filter/refactor plans remain `Approved` with their live/manual checks open:
+`plans/tenant-store-product-filters-refactor.md`,
+`plans/tenant-store-filter-chips-above-results.md`,
+`plans/tenant-store-filter-sidebar-controls.md`, and
+`plans/tenant-store-product-filters.md`. Current contracts: `apps/tenant_store/AGENTS.md` → API
+client and data fetching.
 
 ## Recent changes
 
-- 2026-10-21 — Tenant cache simplified (uncommitted):
-  - `TenantCacheService` dropped the unused per-process hit/miss/bypass/error/invalidation
-    counters, the unused in-flight token, the `driver` getter, and `recordBypass()`.
-  - Removed the now-dead `CacheStore.stats()` (`RedisCacheStore` `DBSIZE`/`INFO` path),
-    `CacheStoreStats`, and `CacheStats`. The service `stats()` returns `{ enabled, driver }`.
-  - `ResponseCacheInterceptor` no longer counts bypasses; cache/health specs updated.
-  - `GET /api/v1/health` cache output is now `{ enabled, driver }` (no
-    `status`/`entries`/`bytes`/`hits`/`misses`/`errors`).
-- 2026-10-21 — nginx proxy + replica load balancing fixed (uncommitted):
-  - `apps/nginx/nginx.conf` now proxies to `api:4000` (the API listens on `APP_PORT`, not 3000),
-    sets `Host`/`X-Real-IP`/`X-Forwarded-*`, re-declares `client_max_body_size 32m` for product
-    uploads, and logs `$upstream_addr`/`$upstream_status`.
-  - `apps/docker-compose.yml` gained the `redis` service plus `REDIS_URL=redis://redis:6379`
-    (the `.env` value `redis://localhost:6379` points at the API container itself),
-    explicit `APP_PORT=4000`, `DB_HOST=host.docker.internal`, `extra_hosts: host-gateway`,
-    `restart: unless-stopped`, `proxy` -> `api` ordering, and an `8080:80` alias on the proxy.
-  - **Verified:** `docker compose up -d --build` brings up `api-1/2/3` + `proxy` + `redis`;
-    `nginx -t` passes; `/api/v1/health` returns 200 through the proxy with `db`, `r2` and
-    `cache.enabled = true`; the access log shows requests spread over multiple replica IPs.
-  - `GET /` remains a 404 by design (global prefix `/api/v1`); `/platform` is the only non-prefixed
-    route. Diagnosed, not changed.
-- 2026-10-19 — Docker surface reduced to API-only Compose (uncommitted):
-  - Deleted `apps/store_owner_dashboard/Dockerfile`, `apps/super_admin_dashboard/Dockerfile`,
-    `apps/tenant_store/Dockerfile`, `apps/api/Dockerfile.dev`, `apps/api/.dockerignore`, and the
-    obsolete four-service `RAILWAY.md`.
-  - `apps/api/Dockerfile` is now a production multi-stage image that builds the embedded Super
-    Admin dashboard, then the NestJS API, and runs `node dist/main`.
-  - `compose.yaml` builds only the API and runs it with Redis; no bind mounts or watch mode.
-    Postgres is external, with `DB_HOST` defaulting to `host.docker.internal`. The frontends run
-    from source.
-- 2026-10-19 — Super Admin bundle split (uncommitted):
-  - `apps/super_admin_dashboard/vite.config.ts` — `manualChunks` (Windows path-normalized) for
-    `devtools` (dev-only), `react`, `refine` (core, devtools-internal/shared, react-router adapter,
-    kbar, `@tanstack/react-query`), `router`, `http`, `tables`, `forms`; `undefined` for everything
-    else. No broad Radix/lucide/sonner groups.
-  - `src/App.tsx` — Devtools wrapped in a `import.meta.env.DEV` gate (tenant_dash pattern); every
-    page except `Dashboard` and the `*` error route is `React.lazy()` with named-export mapping,
-    served through `Suspense` inside `Layout` (`/login` has its own full-screen fallback).
-  - New `src/components/refine-ui/layout/route-fallback.tsx` (centered `Loader2`, `role="status"`).
-  - **Measured** (standalone build): 1,073.62 kB raw / 330.16 kB gzip in one chunk → 782.05 kB raw
-    / 252.00 kB gzip initial (entry 250.71 + react 187.72 + router 38.81 + refine 252.43 + http
-    52.38). No >500 kB warning. `tables` (73.72 kB) and `forms` (92.65 kB) are route-only.
-  - **Verified:** typecheck, lint (pre-existing warnings only), standalone and embedded builds.
-    Served by the running API on port 4000: `/platform`, `/platform/login`,
-    `/platform/tenants/show/1` return HTML; entry/react/CSS assets return 200 under
-    `/platform/assets`; a missing hash returns 404; `/api/v1/health` is 200. No
-    `DevtoolsPanel`/`refine-devtools` strings in `apps/api/static/assets/*.js`, and all 36
-    dynamically referenced chunks exist. Browser sign-in/navigation and Ctrl+K were not manually
-    exercised.
-  - Docs updated: `apps/super_admin_dashboard/AGENTS.md` (dev-only Devtools, bundle-splitting
-    notes, measured sizes).
-- 2026-10-19 — Embedded `/platform` dashboard (uncommitted):
-  - `@nestjs/serve-static@^4.0.2` in `saas_store_api`; `apps/api/src/app.module.ts` registers two
-    `ServeStaticModule.forRoot` entries (`renderPath: '/'` and `renderPath: '/:path*'` with a
-    dotted-path `exclude`) so `/platform` and extensionless deep links serve the SPA while missing
-    assets 404.
-  - `vite.config.ts` uses `base: '/platform/'`, `outDir: ../api/static`, `emptyOutDir: false` for
-    embedded builds; `BUILD_STANDALONE=true` restores `dist`, base `/`, `emptyOutDir`.
-  - `src/App.tsx` derives `BrowserRouter basename` from `import.meta.env.BASE_URL`;
-    `src/api/client.ts` redirects to `${BASE_URL}login`.
-  - The dashboard `turbo.json` declares the embedded output and hashes `BUILD_STANDALONE`;
-    `apps/api/.gitignore` ignores `/static`.
-- 2026-10-18 — Redis-only API caching (committed as `5248de9`): six catalog/plan reads, namespace
-  versions and cross-instance invalidation, forced `Cache-Control: no-store`, `X-Cache`, and cache
-  stats in `GET /health`. `REDIS_URL` is required. Details in `progress.md` and
-  `apps/api/AGENTS.md` → Caching.
-- 2026-10-09 — Tenant and Super Admin subscription checkout/cancel/refund flows (committed as
-  `8a93350`); see `progress.md` and `apps/api/AGENTS.md` → Payments, Subscriptions.
+- 2026-10-25 — Cache module simplification and reliability fixes (uncommitted):
+  - Removed unused `CacheEntry.expiresAt`/`namespace`, `CacheStore.delete`, and policy `name` data.
+  - Replaced the duplicate namespace-to-flight index with a scan of the bounded in-flight map,
+    preventing an older request's cleanup from untracking a newer replacement request.
+  - Redis health checks now wait for `ready` with connection-error and timeout handling before
+    issuing `PING`; the live Redis fixture uses the same readiness boundary and always closes.
+  - API lint/typecheck and seven focused suites passed (130 tests, including live Redis).
+- 2026-10-25 — All-screen floating filter Sheet (uncommitted):
+  - `ProductFilters` now renders only the shared left Sheet and a fixed lower-left trigger at every
+    breakpoint; the duplicate desktop Card form was removed.
+  - `/products` no longer reserves an 18rem desktop sidebar column, so tags and product results use
+    the full content width. The category failure alert remains in normal flow without an empty
+    trigger row.
+  - `pnpm --filter tenant_store lint` and `typecheck` passed. The normal Turbopack build and a 4 GB
+    retry failed with the known worker `Zone Allocation` OOM/IPC panic; the webpack fallback build
+    compiled, typechecked, and generated all 17 pages successfully.
+- 2026-10-25 — ProductFilters refactor (uncommitted):
+  - Parent was reduced from 646 to 208 lines. Nine modules under
+    `apps/tenant_store/src/components/products/filters/` contain five controlled fields,
+    `FilterFields`, `FilterActions`, shared types, and pure utilities.
+  - Public props/import and parent state/navigation were retained. Pure-helper, React/Base UI SSR,
+    callback, lint, typecheck, and a prior standard production build passed; see `progress.md`.
+- 2026-10-25 — Filter tags above results (uncommitted): `ActiveFilterChips.tsx` and
+  `filter-navigation.tsx` split tags from controls while preserving pending and tenant navigation.
+- 2026-10-25 — Sidebar, dual-handle slider, and stock switch (uncommitted): bounded full-catalog
+  price lookup, `createdAt` parser correction, and tenant-aware no-match recovery link. The sidebar
+  shell from that change has now been replaced by the all-screen Sheet.
+- 2026-10-24 — Full-catalog storefront filtering/public category options (uncommitted): API Jest,
+  API typecheck/build, and storefront lint/typecheck/build passed at that stage.
+- 2026-10-24 — Product filtering and versioned (`v3:`) cache fingerprints (uncommitted).
+- 2026-10-19 — Docker reduced to API-only Compose; embedded `/platform` served by the API.
 
 ## Decisions taken
 
-- The dashboard is **embedded** in the API for `/platform` production serving. Only the API is
-  containerized (Compose); the dashboards and storefront run from source. `BUILD_STANDALONE=true`
-  remains a build-only option for a standalone `dist`.
-- `/platform` stays outside the global prefix; no API route or global guard changed.
-- The SPA fallback is extensionless-only; missing assets must 404 rather than receive
-  `index.html`.
-- Two `ServeStaticModule` registrations are deliberate (root + deep links + dotted-path exclude).
-  Do not "simplify" back to a single custom-regex `renderPath` while the API stays on Express 4.
-- `apps/api/static` is build output and is gitignored; no clean script or `nest build` may delete
-  it beyond the Vite build's own output.
-- Bundle splitting is conservative: only stable initial-runtime vendors get names. Route-only
-  libraries are left unassigned so Rollup keeps them with their lazy route; `Dashboard` stays
-  static (no post-auth waterfall); React, `scheduler`, and `react-dom` stay in one chunk and
-  `@tanstack/react-query` stays with `@refinedev/core`.
-- `manualChunks` must normalize `\` to `/`; on Windows the IDs are absolute `C:\...` paths.
+- Keep Redis command behavior fail-open and command-timeout bounded; only the health readiness wait
+  uses the longer Redis connect timeout.
+- Keep in-flight invalidation simple by scanning the configured `CACHE_MAX_INFLIGHT`-bounded map;
+  do not maintain a second mutable namespace index.
+- Keep the extracted controlled fields and existing draft/errors/sheet state architecture.
+- Use the same left Sheet on every viewport and keep its trigger fixed at the lower-left; do not
+  reintroduce a desktop-only filter form or results sidebar column.
+- Keep applied tags above results and outside the Sheet. Preserve shared pending and tenant-aware
+  navigation behavior.
 
-## Working tree state (check before relying on HEAD)
+## Working tree state
 
-HEAD is `6d2653f` (`refactor: fix api docker file`). The `/platform` hosting, bundle-split, Compose
-proxy, and cache-cleanup work is uncommitted, including `apps/api/static` (gitignored) and
-`apps/super_admin_dashboard/dist` (standalone build). Verify with `git status --short`; memory-bank
-entries older than the latest session may describe work already committed.
+Git inspection confirmed accumulated uncommitted API filtering/cache, storefront filtering,
+dashboard, and OpenCode planning work. Cache cleanup changed files inside
+`apps/api/src/common/cache/` plus cache test doubles in the untracked products controller spec; it
+did not revert or commit any pre-existing work. Recheck actual Git state before committing.
 
 ## Known tooling issues
 
-- **Port 80 on this machine is shadowed by WSL.** `wslrelay.exe` (PID 852) listens on
-  `127.0.0.1:80` and `[::1]:80` and forwards to a stock Ubuntu nginx (`nginx/1.24.0`, default
-  `sites-enabled/default`, `root /var/www/html`). `http://localhost/` therefore reaches that nginx,
-  not the Compose proxy, and Docker cannot take the bind. Use `http://127.0.0.1:8080` (works), or
-  stop the WSL service (`sudo systemctl disable --now nginx` inside Ubuntu) and drop the `8080:80`
-  alias. `wsl.exe` currently fails with `Wsl/Service/0x8007274c`, so this cannot be changed from
-  the agent shell.
-- Docker Desktop was not running on 2026-10-19, so the API image build and `docker compose up`
-  were not verified. Host Postgres (5432) and Redis (6379) were reachable and the compiled API on
-  port 4000 served `/platform`.
-- `pnpm install` can crash with a pnpm (Rust) allocator failure; retry with `pnpm install
-  --prefer-offline`.
-- Full-repo `pnpm --filter saas_store_api lint` can OOM; lint changed files with
-  `NODE_OPTIONS=--max-old-space-size=4096 npx eslint <files> --fix`. `pnpm --filter saas_store_api
-  test` may OOM; use `-- --runInBand`.
-- `pnpm --filter tenant_dash test` can OOM (exit 134); use
-  `pnpm --filter tenant_dash exec vitest run --no-file-parallelism`.
-- `next build` for `tenant_store` can OOM; use `NODE_OPTIONS=--max-old-space-size=8192`.
+- Storefront Turbopack worker OOM has occurred repeatedly. For the all-screen Sheet change, both the
+  normal build and a 4 GB heap retry failed in worker processes; `next build --webpack` passed.
+- Browser tools and local Playwright/Puppeteer packages were unavailable in the earlier filter work.
+  Automated checks do not verify visual placement, hydration, focus, or real transition timing.
+- Earlier environment issues: WSL nginx shadows port 80; pnpm can have allocator failures; API
+  lint/Jest can OOM; mixed line endings can trip API Prettier. Details in `progress.md`.
 
 ## Next steps
 
-- Manual browser smoke of `/platform`: unauthenticated redirect to `/platform/login`, sign in,
-  dashboard load, each list/detail/create/edit chunk on first navigation, deep-link refresh
-  (`/platform/tenants/show/1`), logout, Ctrl+K command bar, and no Devtools request in production.
-- Rebuild both artifacts in either order (`pnpm --filter super_admin_dash build`,
-  `pnpm --filter saas_store_api build`) whenever the dashboard changes; the API serves whatever is
-  currently in `apps/api/static`.
-- Compose stack is up and verified as of 2026-10-21. Remaining: free port 80 from the WSL nginx
-  (then drop the `8080:80` alias and re-check `http://localhost/api/v1/health`), and a browser
-  smoke through the proxy (`/platform`, `/api/v1/health`, an authenticated API call).
-- Consider committing the `/platform` + bundle work; no commit was made in this session.
+- Check the floating trigger and left Sheet in a browser at desktop/mobile widths, including no
+  obscured controls, focus/dismissal, real pending timing, Back/Forward, and subdomain/apex tenant
+  navigation.
+- Complete the earlier plans' slider/keyboard/accessibility, live category ordering/full-catalog
+  price-ceiling, and credential-inspection matrix; probes used mocked backend responses.
+- Decide whether to commit accumulated uncommitted work.

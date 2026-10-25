@@ -2,6 +2,10 @@
 flowchart TD
     Client["Client (tenant user)"] --> GUARDS["Global pipeline: TenantMiddleware, TenantGuard,<br/>JwtGuard, PermissionGuard<br/>see auth/workflow.md"]
 
+    subgraph PUBLIC["Public storefront projection — StorefrontController /api/v1/store"]
+        GUARDS -->|"GET /store/categories (@Public)"| SFO["CategoriesService.findStorefrontOptions<br/>where isActive = true<br/>select id, name<br/>order name ASC, id ASC"]
+    end
+
     subgraph API["API — CategoriesController /api/v1/categories"]
         GUARDS --> CRO{"route"}
         CRO -->|"GET /categories<br/>needs categories:read"| CFA["findAll — ordered by name"]
@@ -23,6 +27,10 @@ flowchart TD
         TM --> TDB[("PostgreSQL tenant schema<br/>categories (products.categoryId FK SET NULL)")]
     end
 ```
+
+`GET /store/categories` is public and tenant-scoped but deliberately minimal: it returns only
+active `{ id, name }` options for the storefront filter form. It is not cached and must not be
+confused with the protected category-management API, which keeps its existing permissions.
 
 Base categories are available only through the opt-in tenant seeder `categories`
 (`seed --tenants --name categories`). They are **not** created by tenant provisioning or boot.

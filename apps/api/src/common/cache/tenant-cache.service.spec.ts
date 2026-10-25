@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import { ConfigService } from '@nestjs/config';
+import { createHash } from 'crypto';
 import { IENV } from '../config/env.interface';
 import { TenantCacheService } from './tenant-cache.service';
 import { CacheEntry, CacheStore } from './cache.types';
@@ -31,9 +32,7 @@ class FakeCacheStore implements CacheStore {
     if (!this.entries.has(key)) return Promise.resolve(null);
     return Promise.resolve({
       value: this.entries.get(key) as T,
-      expiresAt: Date.now() + 60_000,
       sizeBytes: 0,
-      namespace: this.namespaces.get(key) ?? '',
     });
   }
 
@@ -54,12 +53,6 @@ class FakeCacheStore implements CacheStore {
     return Promise.resolve(true);
   }
 
-  delete(key: string): Promise<void> {
-    this.entries.delete(key);
-    this.namespaces.delete(key);
-    return Promise.resolve();
-  }
-
   invalidateNamespace(namespace: string): Promise<number> {
     this.versions.set(namespace, (this.versions.get(namespace) ?? 0) + 1);
     let removed = 0;
@@ -74,6 +67,10 @@ class FakeCacheStore implements CacheStore {
 
   getVersion(namespace: string): Promise<number> {
     return Promise.resolve(this.versions.get(namespace) ?? 0);
+  }
+
+  pingRedis(): Promise<boolean> {
+    return Promise.resolve(true);
   }
 }
 
@@ -156,6 +153,190 @@ describe('TenantCacheService', () => {
       expect(sorted).not.toBe(page1);
       expect(repeatedA).toBe(repeatedB);
       expect(params).not.toBe(page1);
+    });
+
+    it('separates literal search delimiters from separate filter parameters', () => {
+      const { service } = build();
+      const base = { method: 'GET', route: 'GET /products' };
+      const literal = Object.fromEntries(
+        new URLSearchParams('search=shirt%26sortBy%3Dprice&page=1&limit=12'),
+      );
+      const sorted = Object.fromEntries(
+        new URLSearchParams('search=shirt&sortBy=price&page=1&limit=12'),
+      );
+
+      expect(service.fingerprint({ ...base, query: literal })).not.toBe(
+        service.fingerprint({ ...base, query: sorted }),
+      );
+    });
+
+    it.each([
+      [{ search: '[a,b]' }, { search: ['a', 'b'] }],
+      [{ search: ['a,b', 'c'] }, { search: ['a', 'b,c'] }],
+      [{ search: '{a:b}' }, { search: { a: 'b' } }],
+      [{ search: { a: 'b,c:d' } }, { search: { a: 'b', c: 'd' } }],
+      [{ search: { 'a:b': 'c' } }, { search: { a: 'b:c' } }],
+      [
+        { 'search=shirt&sortBy': 'price' },
+        { search: 'shirt', sortBy: 'price' },
+      ],
+      [{ search: '[]' }, { search: [] }],
+      [{ search: '{}' }, { search: {} }],
+      [{ search: 'null' }, { search: null }],
+      [{ search: 'undefined' }, { search: undefined }],
+      [{ minPrice: '1' }, { minPrice: 1 }],
+      [{ inStock: 'true' }, { inStock: true }],
+      [{ search: ['a'] }, { search: ['a', 'a'] }],
+    ])('preserves scalar types and container boundaries: %j vs %j', (a, b) => {
+      const { service } = build();
+      const base = { method: 'GET', route: 'GET /products' };
+
+      expect(service.fingerprint({ ...base, query: a })).not.toBe(
+        service.fingerprint({ ...base, query: b }),
+      );
+    });
+
+    it('normalizes method, query keys, nested object keys, and repeated-value order', () => {
+      const { service } = build();
+
+      expect(
+        service.fingerprint({
+          method: 'get',
+          route: 'GET /products',
+          query: {
+            search: 'shirt',
+            nested: { a: ['one', 'two'], b: 'three' },
+            categoryId: '3',
+          },
+        }),
+      ).toBe(
+        service.fingerprint({
+          method: 'GET',
+          route: 'GET /products',
+          query: {
+            categoryId: '3',
+            nested: { b: 'three', a: ['two', 'one'] },
+            search: 'shirt',
+          },
+        }),
+      );
+    });
+
+    it.each([
+      ['search', 'hat'],
+      ['categoryId', '4'],
+      ['minPrice', '1'],
+      ['maxPrice', '30'],
+      ['inStock', 'false'],
+      ['sortBy', 'name'],
+      ['sortOrder', 'desc'],
+      ['page', '2'],
+      ['limit', '10'],
+    ])('distinguishes a change to the %s filter', (field, value) => {
+      const { service } = build();
+      const base = { method: 'GET', route: 'GET /products' };
+      const query = {
+        search: 'shirt',
+        categoryId: '3',
+        minPrice: '0',
+        maxPrice: '20',
+        inStock: 'true',
+        sortBy: 'price',
+        sortOrder: 'asc',
+        page: '1',
+        limit: '12',
+      };
+
+      expect(service.fingerprint({ ...base, query })).not.toBe(
+        service.fingerprint({ ...base, query: { ...query, [field]: value } }),
+      );
+    });
+
+    it('preserves boundaries between route, params, and query', () => {
+      const { service } = build();
+      const query = { search: 'shirt' };
+
+      expect(
+        service.fingerprint({
+          method: 'GET',
+          route: 'GET /products\nid=1',
+          query,
+        }),
+      ).not.toBe(
+        service.fingerprint({
+          method: 'GET',
+          route: 'GET /products',
+          params: { id: '1\n' },
+          query,
+        }),
+      );
+    });
+
+    it('does not reuse a legacy delimiter-based fingerprint', () => {
+      const { service } = build();
+      const legacy = createHash('sha256')
+        .update(
+          'GET\nGET /products\n\nlimit=12&page=1&search=shirt&sortBy=price',
+        )
+        .digest('hex');
+
+      expect(
+        service.fingerprint({
+          method: 'GET',
+          route: 'GET /products',
+          query: { search: 'shirt', sortBy: 'price', page: '1', limit: '12' },
+        }),
+      ).not.toBe(legacy);
+    });
+
+    it("never returns another filter request or tenant's cached response", async () => {
+      const { service } = build();
+      const base = { method: 'GET', route: 'GET /products' };
+      const literal = service.fingerprint({
+        ...base,
+        query: { search: 'shirt&sortBy=price', page: '1', limit: '12' },
+      });
+      const sorted = service.fingerprint({
+        ...base,
+        query: { search: 'shirt', sortBy: 'price', page: '1', limit: '12' },
+      });
+      const literalLoader = jest.fn().mockResolvedValue(['literal result']);
+      const sortedLoader = jest.fn().mockResolvedValue(['sorted result']);
+      const otherTenantLoader = jest.fn().mockResolvedValue(['other tenant']);
+
+      for (const status of ['miss', 'hit']) {
+        await expect(
+          service.resolve(
+            'tenant',
+            'tenant_a',
+            'products',
+            literal,
+            literalLoader,
+          ),
+        ).resolves.toMatchObject({ status, value: ['literal result'] });
+        await expect(
+          service.resolve(
+            'tenant',
+            'tenant_a',
+            'products',
+            sorted,
+            sortedLoader,
+          ),
+        ).resolves.toMatchObject({ status, value: ['sorted result'] });
+        await expect(
+          service.resolve(
+            'tenant',
+            'tenant_b',
+            'products',
+            sorted,
+            otherTenantLoader,
+          ),
+        ).resolves.toMatchObject({ status, value: ['other tenant'] });
+      }
+
+      expect(literalLoader).toHaveBeenCalledTimes(1);
+      expect(sortedLoader).toHaveBeenCalledTimes(1);
+      expect(otherTenantLoader).toHaveBeenCalledTimes(1);
     });
 
     it('bypasses when canonical input exceeds 8 KiB', () => {
@@ -303,7 +484,6 @@ describe('TenantCacheService', () => {
         get: jest.fn().mockResolvedValue(null),
         getVersion: jest.fn().mockResolvedValue(0),
         set: jest.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true),
-        delete: jest.fn(),
         invalidateNamespace: jest.fn(),
       } as unknown as CacheStore;
       const service = new TenantCacheService(
@@ -360,6 +540,52 @@ describe('TenantCacheService', () => {
       const key = service.keyFor('platform', undefined, 'plans', 'fp')!;
       await expect(store.get(key)).resolves.toMatchObject({ value: 'fresh' });
     });
+
+    it('keeps a replacement flight tracked for a later invalidation', async () => {
+      const { service, store } = build();
+      const firstGate = deferred<string>();
+      const secondGate = deferred<string>();
+      let calls = 0;
+      const loader = jest.fn(() => {
+        calls += 1;
+        if (calls === 1) return firstGate.promise;
+        if (calls === 2) return secondGate.promise;
+        return Promise.resolve('fresh');
+      });
+
+      const oldFlight = service.resolve(
+        'platform',
+        undefined,
+        'plans',
+        'fp',
+        loader,
+      );
+      await flush();
+
+      await service.invalidatePlans();
+      const replacementFlight = service.resolve(
+        'platform',
+        undefined,
+        'plans',
+        'fp',
+        loader,
+      );
+      await flush();
+
+      firstGate.resolve('stale-one');
+      await flush();
+      await service.invalidatePlans();
+      secondGate.resolve('stale-two');
+
+      await expect(replacementFlight).resolves.toMatchObject({
+        value: 'fresh',
+      });
+      await expect(oldFlight).resolves.toMatchObject({ value: 'fresh' });
+      expect(loader).toHaveBeenCalledTimes(3);
+
+      const key = service.keyFor('platform', undefined, 'plans', 'fp')!;
+      await expect(store.get(key)).resolves.toMatchObject({ value: 'fresh' });
+    });
   });
 
   describe('fail-open behaviour', () => {
@@ -377,7 +603,6 @@ describe('TenantCacheService', () => {
       const store = {
         get: jest.fn().mockRejectedValue(new Error('read failed')),
         set: jest.fn().mockResolvedValue(true),
-        delete: jest.fn(),
         invalidateNamespace: jest.fn(),
         getVersion: jest.fn().mockResolvedValue(0),
       } as unknown as CacheStore;
@@ -402,7 +627,6 @@ describe('TenantCacheService', () => {
       const store = {
         get: jest.fn().mockResolvedValue(null),
         set: jest.fn().mockRejectedValue(new Error('write failed')),
-        delete: jest.fn(),
         invalidateNamespace: jest.fn(),
         getVersion: jest.fn().mockResolvedValue(0),
       } as unknown as CacheStore;
@@ -427,7 +651,6 @@ describe('TenantCacheService', () => {
       const store = {
         get: jest.fn(() => new Promise(() => undefined)),
         set: jest.fn().mockResolvedValue(true),
-        delete: jest.fn(),
         invalidateNamespace: jest.fn().mockResolvedValue(0),
         getVersion: jest.fn().mockResolvedValue(0),
       } as unknown as CacheStore;
@@ -452,7 +675,6 @@ describe('TenantCacheService', () => {
       const store = {
         get: jest.fn(),
         set: jest.fn(),
-        delete: jest.fn(),
         invalidateNamespace: jest.fn().mockRejectedValue(new Error('down')),
         getVersion: jest.fn(),
       } as unknown as CacheStore;

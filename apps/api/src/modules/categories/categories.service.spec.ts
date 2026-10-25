@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { CategoriesService } from './categories.service';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
+import { tenantStorage } from '../auth/tenant-context';
 
 const TENANT = { schemaName: 'tenant_test' };
 
@@ -180,5 +181,91 @@ describe('CategoriesService', () => {
 
     await expect(service.remove(1, TENANT)).rejects.toThrow(NotFoundException);
     expect(categoryRepo.delete).not.toHaveBeenCalled();
+  });
+
+  describe('findStorefrontOptions', () => {
+    const optionRow = {
+      id: 7,
+      name: 'Home',
+      slug: 'home',
+      description: null,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    it('projects active categories down to id and name', async () => {
+      const { service, categoryRepo } = buildMocks();
+      categoryRepo.find.mockResolvedValue([optionRow]);
+
+      const result = await service.findStorefrontOptions(TENANT);
+
+      expect(result).toEqual([{ id: 7, name: 'Home' }]);
+      expect(categoryRepo.find).toHaveBeenCalledWith({
+        where: { isActive: true },
+        select: { id: true, name: true },
+        order: { name: 'ASC', id: 'ASC' },
+      });
+    });
+
+    it('returns an empty list when the tenant has no active categories', async () => {
+      const { service, categoryRepo } = buildMocks();
+      categoryRepo.find.mockResolvedValue([]);
+
+      await expect(service.findStorefrontOptions(TENANT)).resolves.toEqual([]);
+    });
+
+    it('requires a tenant context and never queries without one', async () => {
+      const { service, categoryRepo } = buildMocks();
+
+      await expect(service.findStorefrontOptions()).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(categoryRepo.find).not.toHaveBeenCalled();
+    });
+
+    it('reads each request context from its own tenant repository', async () => {
+      const alphaRepo = {
+        find: jest.fn().mockResolvedValue([{ id: 1, name: 'Alpha' }]),
+      };
+      const betaRepo = {
+        find: jest.fn().mockResolvedValue([{ id: 1, name: 'Beta' }]),
+      };
+      const tenantManager = {
+        getRepository: jest.fn(
+          (_entity: unknown, tenant: { schemaName: string }) =>
+            Promise.resolve(
+              tenant.schemaName === 'tenant_alpha' ? alphaRepo : betaRepo,
+            ),
+        ),
+      } as unknown as TenantManagerService;
+      const service = new CategoriesService(tenantManager, {} as never);
+
+      const [alpha, beta] = await Promise.all([
+        tenantStorage.run(
+          {
+            tenant: {
+              id: 1,
+              slug: 'alpha',
+              schemaName: 'tenant_alpha',
+            } as never,
+            tenantSchema: 'tenant_alpha',
+          },
+          () => service.findStorefrontOptions(),
+        ),
+        tenantStorage.run(
+          {
+            tenant: { id: 2, slug: 'beta', schemaName: 'tenant_beta' } as never,
+            tenantSchema: 'tenant_beta',
+          },
+          () => service.findStorefrontOptions(),
+        ),
+      ]);
+
+      expect(alpha).toEqual([{ id: 1, name: 'Alpha' }]);
+      expect(beta).toEqual([{ id: 1, name: 'Beta' }]);
+      expect(alphaRepo.find).toHaveBeenCalledTimes(1);
+      expect(betaRepo.find).toHaveBeenCalledTimes(1);
+    });
   });
 });

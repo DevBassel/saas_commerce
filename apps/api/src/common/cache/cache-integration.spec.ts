@@ -88,9 +88,7 @@ const createStore = (): CacheStore => {
         entries.has(key)
           ? {
               value: entries.get(key) as T,
-              expiresAt: Date.now() + 60_000,
               sizeBytes: 0,
-              namespace: '',
             }
           : null,
       ),
@@ -98,16 +96,13 @@ const createStore = (): CacheStore => {
       entries.set(key, value);
       return Promise.resolve(true);
     },
-    delete: (key: string): Promise<void> => {
-      entries.delete(key);
-      return Promise.resolve();
-    },
     invalidateNamespace: (): Promise<number> => {
       const removed = entries.size;
       entries.clear();
       return Promise.resolve(removed);
     },
     getVersion: (): Promise<number> => Promise.resolve(0),
+    pingRedis: (): Promise<boolean> => Promise.resolve(true),
   };
 };
 

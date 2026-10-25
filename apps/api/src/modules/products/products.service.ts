@@ -5,7 +5,16 @@ import {
   PayloadTooLargeException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { In, Repository } from 'typeorm';
+import {
+  Between,
+  ILike,
+  In,
+  LessThanOrEqual,
+  MoreThan,
+  MoreThanOrEqual,
+  Repository,
+} from 'typeorm';
+import type { FindOptionsWhere } from 'typeorm';
 import { Product } from './entities/product.entity';
 import { ProductImage } from './entities/product-image.entity';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -34,18 +43,7 @@ import {
 import { ListProductsQueryDto } from './dto/list-products.query.dto';
 import { SubscriptionEntitlementsService } from '../subscriptions/services/subscription-entitlements.service';
 import { TenantCacheService } from '../../common/cache/tenant-cache.service';
-
-const PRODUCT_SORTABLE_FIELDS: readonly (keyof Product)[] = [
-  'name',
-  'sku',
-  'slug',
-  'price',
-  'stock',
-  'isActive',
-  'categoryId',
-  'createdAt',
-  'updatedAt',
-];
+import { PRODUCT_SORTABLE_FIELDS } from './constants/products-query.constants';
 
 @Injectable()
 export class ProductsService {
@@ -123,26 +121,49 @@ export class ProductsService {
   async findAll(query: ListProductsQueryDto = {}, tenant?: TenantRef) {
     const { productRepo } = await this.repos(tenant);
     const relations = { images: true, category: true };
+    const filters: FindOptionsWhere<Product> = {};
 
-    if (!isPaginatedQuery(query)) {
-      const products = await productRepo.find({
-        relations,
-        order: { createdAt: 'DESC' },
-      });
-      return products.map((product) => this.serialize(product));
+    if (query.categoryId !== undefined) filters.categoryId = query.categoryId;
+    if (query.minPrice !== undefined && query.maxPrice !== undefined) {
+      filters.price = Between(query.minPrice, query.maxPrice);
+    } else if (query.minPrice !== undefined) {
+      filters.price = MoreThanOrEqual(query.minPrice);
+    } else if (query.maxPrice !== undefined) {
+      filters.price = LessThanOrEqual(query.maxPrice);
+    }
+    if (query.inStock !== undefined) {
+      filters.stock = query.inStock ? MoreThan(0) : LessThanOrEqual(0);
     }
 
-    const { page, limit, skip, take } = resolvePagination(query);
+    let where: FindOptionsWhere<Product> | FindOptionsWhere<Product>[] =
+      filters;
+    if (query.search !== undefined) {
+      const search = ILike(`%${query.search.replace(/[\\%_]/g, '\\$&')}%`);
+      where = [
+        { ...filters, name: search },
+        { ...filters, sku: search },
+        { ...filters, slug: search },
+        { ...filters, description: search },
+      ];
+    }
+
     const order = resolveSort<Product>(
       query.sortBy,
       query.sortOrder,
       PRODUCT_SORTABLE_FIELDS,
       { field: 'createdAt', order: 'desc' },
     );
+    order.id = 'DESC';
+    const options = { where, relations, order };
 
+    if (!isPaginatedQuery(query)) {
+      const products = await productRepo.find(options);
+      return products.map((product) => this.serialize(product));
+    }
+
+    const { page, limit, skip, take } = resolvePagination(query);
     const [products, total] = await productRepo.findAndCount({
-      relations,
-      order,
+      ...options,
       skip,
       take,
       relationLoadStrategy: 'query',

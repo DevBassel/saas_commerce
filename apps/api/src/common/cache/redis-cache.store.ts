@@ -75,9 +75,7 @@ export class RedisCacheStore implements CacheStore {
     try {
       return {
         value: JSON.parse(raw) as T,
-        expiresAt: Date.now(),
         sizeBytes: Buffer.byteLength(raw, 'utf8'),
-        namespace: '',
       };
     } catch {
       return null;
@@ -111,10 +109,6 @@ export class RedisCacheStore implements CacheStore {
     return Number(result) === 1;
   }
 
-  async delete(key: string): Promise<void> {
-    await this.client.del(key);
-  }
-
   async invalidateNamespace(namespace: string): Promise<number> {
     const removed = await this.client.eval(
       INVALIDATE_SCRIPT,
@@ -140,8 +134,8 @@ export class RedisCacheStore implements CacheStore {
     });
   }
 
-  subscribeInvalidations(handler: InvalidationHandler): Promise<void> {
-    if (this.subscribed) return Promise.resolve();
+  subscribeInvalidations(handler: InvalidationHandler): void {
+    if (this.subscribed) return;
 
     const subscriber =
       this.subscriber ??
@@ -183,7 +177,6 @@ export class RedisCacheStore implements CacheStore {
         'cache.invalidation_subscribe_failed',
       );
     });
-    return Promise.resolve();
   }
 
   async close(): Promise<void> {
@@ -229,5 +222,41 @@ export class RedisCacheStore implements CacheStore {
 
   private indexKey(namespace: string): string {
     return `ns:${namespace}`;
+  }
+
+  async pingRedis(): Promise<boolean> {
+    if (this.client.status !== 'ready') {
+      await new Promise<void>((resolve, reject) => {
+        const cleanup = () => {
+          clearTimeout(timer);
+          this.client.off('ready', onReady);
+          this.client.off('error', onError);
+        };
+        const onReady = () => {
+          cleanup();
+          resolve();
+        };
+        const onError = (error: Error) => {
+          cleanup();
+          reject(error);
+        };
+
+        const timer = setTimeout(() => {
+          cleanup();
+          reject(
+            new Error(
+              `Redis was not ready after ${this.options.redis.connectTimeoutMs}ms`,
+            ),
+          );
+        }, this.options.redis.connectTimeoutMs);
+
+        this.client.once('ready', onReady);
+        this.client.once('error', onError);
+
+        // Close the gap between the initial status check and listener setup.
+        if (this.client.status === 'ready') onReady();
+      });
+    }
+    return (await this.client.ping()) === 'PONG';
   }
 }

@@ -29,13 +29,17 @@ describeRedis('RedisCacheStore (live Redis)', () => {
   const namespace = `itest:${randomUUID()}`;
   const key = (suffix: string) => `api:v1:cache:${namespace}:${suffix}`;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     store = new RedisCacheStore(cacheOptions(), logger as never);
+    await store.pingRedis();
   });
 
   afterAll(async () => {
-    await store.invalidateNamespace(namespace);
-    await store.close();
+    try {
+      await store.invalidateNamespace(namespace);
+    } finally {
+      await store.close();
+    }
   });
 
   it('reads and writes values', async () => {

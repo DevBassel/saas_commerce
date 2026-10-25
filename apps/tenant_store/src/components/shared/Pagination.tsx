@@ -11,6 +11,8 @@ interface PaginationProps {
   basePath: string;
   page: number;
   pageCount: number;
+  /** Extra committed query parameters to preserve while paging. */
+  queryParams?: Record<string, string>;
 }
 
 /**
@@ -22,6 +24,7 @@ export default function Pagination({
   basePath,
   page,
   pageCount,
+  queryParams,
 }: PaginationProps) {
   const tenantParam = useTenantParam();
 
@@ -34,6 +37,12 @@ export default function Pagination({
     "pointer-events-none opacity-50",
   );
 
+  const pageHref = (targetPage: number): string => {
+    const params = new URLSearchParams(queryParams);
+    params.set("page", String(targetPage));
+    return withTenantParam(`${basePath}?${params.toString()}`, tenantParam);
+  };
+
   return (
     <nav
       role="navigation"
@@ -42,10 +51,7 @@ export default function Pagination({
     >
       {hasPrevious ? (
         <Link
-          href={withTenantParam(
-            `${basePath}?page=${page - 1}`,
-            tenantParam,
-          )}
+          href={pageHref(page - 1)}
           aria-label="Go to previous page"
           className={buttonVariants({ variant: "outline", size: "sm" })}
         >
@@ -61,10 +67,7 @@ export default function Pagination({
       </span>
       {hasNext ? (
         <Link
-          href={withTenantParam(
-            `${basePath}?page=${page + 1}`,
-            tenantParam,
-          )}
+          href={pageHref(page + 1)}
           aria-label="Go to next page"
           className={buttonVariants({ variant: "outline", size: "sm" })}
         >

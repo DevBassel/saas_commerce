@@ -1,8 +1,6 @@
 export interface CacheEntry<T = unknown> {
   value: T;
-  expiresAt: number;
   sizeBytes: number;
-  namespace: string;
 }
 
 export type InvalidationHandler = (namespace: string) => void;
@@ -22,13 +20,14 @@ export interface CacheStore {
     namespace: string,
     expectedVersion?: number,
   ): Promise<boolean>;
-  delete(key: string): Promise<void>;
   invalidateNamespace(namespace: string): Promise<number>;
   getVersion(namespace: string): Promise<number>;
   /** Optional cross-instance invalidation subscription (Redis). */
-  subscribeInvalidations?(handler: InvalidationHandler): Promise<void>;
+  subscribeInvalidations?(handler: InvalidationHandler): void;
   /** Optional lifecycle hook for network clients. */
   close?(): Promise<void>;
+  /** Health check ping. */
+  pingRedis(): Promise<boolean>;
 }
 
 export const CACHE_STORE = Symbol('CACHE_STORE');

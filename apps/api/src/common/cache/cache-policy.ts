@@ -5,16 +5,14 @@ export type CacheScope = 'tenant' | 'platform';
 export type CachePolicyName = 'products' | 'categories' | 'plans';
 
 export interface CachePolicyDefinition {
-  name: CachePolicyName;
   scope: CacheScope;
   namespace: string;
 }
 
 export const CACHE_POLICIES: Record<CachePolicyName, CachePolicyDefinition> = {
-  products: { name: 'products', scope: 'tenant', namespace: 'products' },
-  categories: { name: 'categories', scope: 'tenant', namespace: 'categories' },
+  products: { scope: 'tenant', namespace: 'products' },
+  categories: { scope: 'tenant', namespace: 'categories' },
   plans: {
-    name: 'plans',
     scope: 'platform',
     namespace: 'subscription-plans',
   },

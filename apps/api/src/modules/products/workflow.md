@@ -4,7 +4,7 @@ flowchart TD
 
     subgraph API["API — ProductsController /api/v1/products"]
         GUARDS --> RO{"route"}
-        RO -->|"GET /products — @Public<br/>(storefront + dashboard)"| FA["findAll — images + category,<br/>newest first"]
+        RO -->|"GET /products — @Public<br/>(storefront + dashboard)"| FA["findAll — validated filters,<br/>images + category, stable sort"]
         RO -->|"GET /products/:id — @Public"| FO["findOne — 404 if missing"]
         RO -->|"POST /products<br/>needs products:create"| CR["create — assertCanCreateProduct<br/>(PRODUCTS limit), sku dup 400,<br/>categoryId must exist 400, unique slug"]
         RO -->|"PATCH /products/:id<br/>needs products:update"| UP["update — sku re-check, category check,<br/>slug refresh when name changes"]
@@ -67,5 +67,32 @@ flowchart TD
         O1 -->|"yes"| O2{"imageIds exactly match<br/>current image ids?"} -->|"no"| O2E["400 imageIds must match current ids"]
         O2 -->|"yes"| O3["position = array index per id"]
 ```
+
+## Listing (`GET /products`)
+
+`ListProductsQueryDto` validates the optional filters and keeps `page`/`limit`
+optional. Supported parameters:
+
+| Parameter | Behavior |
+| --- | --- |
+| `search` | Trimmed 1–255 chars; case-insensitive substring on `name`, `sku`, `slug`, or `description`. `%`, `_`, and `\` are literal. |
+| `categoryId` | Positive PostgreSQL integer; filters the tenant-local FK only (no category lookup). |
+| `minPrice` / `maxPrice` | Finite non-negative numbers, inclusive; `minPrice <= maxPrice` is enforced. |
+| `inStock` | `true` → `stock > 0`; `false` → `stock <= 0`; active status is not implied. |
+| `sortBy` | One of `name`, `sku`, `slug`, `price`, `stock`, `isActive`, `categoryId`, `createdAt`, `updatedAt`; default `createdAt`. |
+| `sortOrder` | `asc`/`desc` (case-insensitive); default `desc`. |
+| `page` / `limit` | Positive integers; default 1/10 when either is sent; `limit` is clamped to 50. |
+
+Text search is a grouped OR over the four text columns; category, price, and
+stock conditions are repeated in every alternative so they combine with AND.
+Every sort adds `id DESC` as the deterministic tie-break.
+
+Without `page` or `limit` (including when only filters/sorting are supplied) the
+response remains a serialized product array; an empty result is `[]`. When
+either pagination parameter is present the response is
+`{ data, total, page, limit }`, where `total` counts filtered products. The
+route stays `@Public`, tenant-scoped, and cached per tenant + canonical query
+fingerprint; invalid query fields are rejected with HTTP 400 before the service
+runs.
 
 Slug rules (`products.slug.ts`): `slugifyProductName(name)` is the base; `ensureUniqueProductSlug` appends a numeric suffix when taken. A slug is generated when the product has none, and refreshed from the name on rename only when the new base slug is free (or owned by the same product). The storefront stores product URLs as `/products/<slug>`.

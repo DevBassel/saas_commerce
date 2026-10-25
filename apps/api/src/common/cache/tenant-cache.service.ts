@@ -33,26 +33,29 @@ interface CanonicalInput {
 
 const MAX_CANONICAL_BYTES = 8 * 1024;
 
-const canonicalValue = (value: unknown): string => {
+// Bump when the canonical representation changes so old ambiguous fingerprints
+// are never reused for new requests.
+const CANONICAL_VERSION = 'v3:';
+
+function stableStringify(value: unknown): string {
+  if (value === undefined) return 'undefined';
+  if (value === null) return 'null';
   if (Array.isArray(value)) {
-    const values = value.map(canonicalValue).sort();
-    return `[${values.join(',')}]`;
+    // Sort array elements for consistent fingerprinting
+    const sorted = value.map(stableStringify).sort();
+    return `[${sorted.join(',')}]`;
   }
-  if (value && typeof value === 'object') {
-    const record = value as Record<string, unknown>;
-    const keys = Object.keys(record).sort();
+  if (typeof value === 'object') {
+    const keys = Object.keys(value).sort();
     return `{${keys
-      .map((key) => `${key}:${canonicalValue(record[key])}`)
+      .map(
+        (k) =>
+          `${stableStringify(k)}:${stableStringify((value as Record<string, unknown>)[k])}`,
+      )
       .join(',')}}`;
   }
-  return String(value);
-};
-
-const canonicalRecord = (record: Record<string, unknown> = {}): string =>
-  Object.keys(record)
-    .sort()
-    .map((key) => `${key}=${canonicalValue(record[key])}`)
-    .join('&');
+  return JSON.stringify(value);
+}
 
 @Injectable()
 export class TenantCacheService implements OnModuleInit, OnModuleDestroy {
@@ -68,10 +71,10 @@ export class TenantCacheService implements OnModuleInit, OnModuleDestroy {
     return this.config.getOrThrow<IENV['cache']>('cache').enabled;
   }
 
-  async onModuleInit(): Promise<void> {
+  onModuleInit(): void {
     if (!this.store.subscribeInvalidations) return;
     try {
-      await this.store.subscribeInvalidations((namespace) =>
+      this.store.subscribeInvalidations((namespace) =>
         this.invalidateLocalFlights(namespace),
       );
     } catch (error) {
@@ -94,12 +97,14 @@ export class TenantCacheService implements OnModuleInit, OnModuleDestroy {
   }
 
   fingerprint(input: CanonicalInput): string | null {
-    const canonical = [
-      input.method.toUpperCase(),
-      input.route,
-      canonicalRecord(input.params),
-      canonicalRecord(input.query),
-    ].join('\n');
+    const canonical =
+      CANONICAL_VERSION +
+      stableStringify({
+        method: input.method.toUpperCase(),
+        route: input.route,
+        params: input.params ?? {},
+        query: input.query ?? {},
+      });
     if (Buffer.byteLength(canonical, 'utf8') > MAX_CANONICAL_BYTES) {
       return null;
     }
@@ -242,11 +247,24 @@ export class TenantCacheService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  stats(): { enabled: boolean; driver: 'redis' } {
-    return {
-      enabled: this.enabled,
-      driver: 'redis',
-    };
+  async stats(): Promise<{
+    enabled: boolean;
+    driver: 'redis';
+    connected: boolean;
+  }> {
+    try {
+      return {
+        enabled: this.enabled,
+        driver: 'redis',
+        connected: await this.store.pingRedis(),
+      };
+    } catch {
+      return {
+        enabled: this.enabled,
+        driver: 'redis',
+        connected: false,
+      };
+    }
   }
 
   hashTenant(schemaName: string | undefined): string {
@@ -307,13 +325,13 @@ export class TenantCacheService implements OnModuleInit, OnModuleDestroy {
       try {
         value = await loader();
       } catch (error) {
-        if (this.inflight.get(key) === record) this.inflight.delete(key);
+        this.cleanupFlight(key, record);
         throw error;
       }
 
       const current = this.inflight.get(key);
       const stale = record.invalidated || current !== record;
-      if (current === record) this.inflight.delete(key);
+      this.cleanupFlight(key, record);
 
       if (stale) {
         // The result was invalidated while loading: never write it and retry
@@ -383,6 +401,12 @@ export class TenantCacheService implements OnModuleInit, OnModuleDestroy {
     })();
 
     return record.promise as Promise<{ value: T; bypassed: boolean }>;
+  }
+
+  private cleanupFlight(key: string, record: InFlightRecord): void {
+    if (this.inflight.get(key) === record) {
+      this.inflight.delete(key);
+    }
   }
 
   private measure(value: unknown): number {

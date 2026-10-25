@@ -5,10 +5,23 @@ import {
   NotFoundException,
   PayloadTooLargeException,
 } from '@nestjs/common';
+import {
+  Between,
+  ILike,
+  LessThanOrEqual,
+  MoreThan,
+  MoreThanOrEqual,
+} from 'typeorm';
+import type { FindManyOptions } from 'typeorm';
 import { ProductsService } from './products.service';
 import { Product } from './entities/product.entity';
+import { ProductImage } from './entities/product-image.entity';
+import { ListProductsQueryDto } from './dto/list-products.query.dto';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
 import { TenantService } from '../tenants/tenant.service';
+import { Tenant } from '../tenants/entities/tenant.entity';
+import type { TenantRef } from '../tenants/utils/tenant.utils';
+import { tenantStorage } from '../auth/tenant-context';
 import { CategoriesService } from '../categories/categories.service';
 import { R2Service } from '../../common/storage/r2.service';
 import { IENV, IFiles, IDB } from '../../common/config/env.interface';
@@ -40,8 +53,11 @@ const buildMocks = () => {
   const productRepo = {
     findOneBy: jest.fn(),
     findOne: jest.fn(),
-    find: jest.fn(),
-    findAndCount: jest.fn(),
+    find: jest.fn<Promise<unknown[]>, [FindManyOptions<Product>]>(),
+    findAndCount: jest.fn<
+      Promise<[unknown[], number]>,
+      [FindManyOptions<Product>]
+    >(),
     save: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
@@ -56,19 +72,20 @@ const buildMocks = () => {
     delete: jest.fn(),
     maximum: jest.fn(),
   };
-  const tenantManager = {
-    getRepository: jest.fn((entity: unknown) =>
+  const getRepository = jest.fn<Promise<unknown>, [unknown, TenantRef]>(
+    (entity) =>
       entity === Product
         ? Promise.resolve(productRepo)
         : Promise.resolve(imageRepo),
-    ),
-  } as unknown as TenantManagerService;
+  );
+  const tenantManager = { getRepository } as unknown as TenantManagerService;
   const tenantService = {
     adjustStorageUsedBytes: jest.fn().mockResolvedValue(0),
     findBySchemaName: jest.fn().mockResolvedValue(null),
   };
+  const findById = jest.fn().mockResolvedValue({ id: 1 });
   const categoriesService = {
-    findById: jest.fn().mockResolvedValue({ id: 1 }),
+    findById,
   } as unknown as CategoriesService;
   const r2Mocks = {
     publicUrl: jest.fn((key: string) => `https://cdn.test/${key}`),
@@ -110,8 +127,10 @@ const buildMocks = () => {
     service,
     productRepo,
     imageRepo,
+    getRepository,
     tenantService,
     categoriesService,
+    findById,
     r2Mocks,
     r2,
     cacheMocks,
@@ -146,9 +165,13 @@ const product = (overrides: Record<string, unknown> = {}) => ({
 
 describe('ProductsService', () => {
   it('requires a tenant context', async () => {
-    const { service } = buildMocks();
+    const { service, getRepository } = buildMocks();
     await expect(service.findAll()).rejects.toThrow(ForbiddenException);
+    await expect(
+      service.findAll({ search: 'shirt', categoryId: 3, page: 1 }),
+    ).rejects.toThrow(ForbiddenException);
     await expect(service.findOne(1)).rejects.toThrow(ForbiddenException);
+    expect(getRepository).not.toHaveBeenCalled();
   });
 
   it('creates a product and serializes empty images', async () => {
@@ -186,9 +209,9 @@ describe('ProductsService', () => {
   });
 
   it('rejects an unknown category on create', async () => {
-    const { service, productRepo, categoriesService } = buildMocks();
+    const { service, productRepo, findById } = buildMocks();
     productRepo.findOneBy.mockResolvedValue(null);
-    (categoriesService.findById as jest.Mock).mockResolvedValue(null);
+    findById.mockResolvedValue(null);
 
     await expect(
       service.create(
@@ -225,10 +248,19 @@ describe('ProductsService', () => {
 
       expect(Array.isArray(result)).toBe(true);
       expect(productRepo.find).toHaveBeenCalledWith({
+        where: {},
         relations: { images: true, category: true },
-        order: { createdAt: 'DESC' },
+        order: { createdAt: 'DESC', id: 'DESC' },
       });
       expect(productRepo.findAndCount).not.toHaveBeenCalled();
+    });
+
+    it('preserves inactive and uncategorized products in the unfiltered array', async () => {
+      const { service, productRepo } = buildMocks();
+      const inactive = product({ isActive: false, stock: 0 });
+      productRepo.find.mockResolvedValue([inactive]);
+
+      await expect(service.findAll({}, TENANT)).resolves.toEqual([inactive]);
     });
 
     it('returns a paginated envelope when page/limit are sent', async () => {
@@ -239,7 +271,7 @@ describe('ProductsService', () => {
 
       expect(productRepo.findAndCount).toHaveBeenCalledWith(
         expect.objectContaining({
-          order: { createdAt: 'DESC' },
+          order: { createdAt: 'DESC', id: 'DESC' },
           skip: 0,
           take: 10,
           relationLoadStrategy: 'query',
@@ -261,6 +293,59 @@ describe('ProductsService', () => {
       expect(result).toMatchObject({ page: 3, limit: 50, total: 120 });
     });
 
+    it.each([
+      { query: { page: 2 }, page: 2, limit: 10, skip: 10 },
+      { query: { limit: 12 }, page: 1, limit: 12, skip: 0 },
+    ])('defaults the missing pagination value for $query', async (test) => {
+      const { service, productRepo } = buildMocks();
+      productRepo.findAndCount.mockResolvedValue([[], 0]);
+
+      await expect(service.findAll(test.query, TENANT)).resolves.toEqual({
+        data: [],
+        total: 0,
+        page: test.page,
+        limit: test.limit,
+      });
+      expect(productRepo.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({ skip: test.skip, take: test.limit }),
+      );
+      expect(productRepo.find).not.toHaveBeenCalled();
+    });
+
+    it('keeps the filtered total on pages beyond the last result', async () => {
+      const { service, productRepo } = buildMocks();
+      productRepo.findAndCount.mockResolvedValue([[], 3]);
+
+      await expect(
+        service.findAll({ categoryId: 3, page: 5, limit: 2 }, TENANT),
+      ).resolves.toEqual({ data: [], total: 3, page: 5, limit: 2 });
+      expect(productRepo.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { categoryId: 3 }, skip: 8, take: 2 }),
+      );
+    });
+
+    it('keeps the same unique tie-break order across page boundaries', async () => {
+      const { service, productRepo } = buildMocks();
+      productRepo.findAndCount
+        .mockResolvedValueOnce([[product({ id: 3 }), product({ id: 2 })], 3])
+        .mockResolvedValueOnce([[product({ id: 1 })], 3]);
+
+      for (const page of [1, 2]) {
+        await service.findAll(
+          { page, limit: 2, sortBy: 'price', sortOrder: 'asc' },
+          TENANT,
+        );
+        expect(productRepo.findAndCount).toHaveBeenNthCalledWith(
+          page,
+          expect.objectContaining({
+            order: { price: 'ASC', id: 'DESC' },
+            skip: (page - 1) * 2,
+            take: 2,
+          }),
+        );
+      }
+    });
+
     it('honors a whitelisted sort and ignores unknown fields', async () => {
       const { service, productRepo } = buildMocks();
       productRepo.findAndCount.mockResolvedValue([[], 0]);
@@ -270,7 +355,7 @@ describe('ProductsService', () => {
         TENANT,
       );
       expect(productRepo.findAndCount).toHaveBeenLastCalledWith(
-        expect.objectContaining({ order: { price: 'ASC' } }),
+        expect.objectContaining({ order: { price: 'ASC', id: 'DESC' } }),
       );
 
       await service.findAll(
@@ -278,10 +363,263 @@ describe('ProductsService', () => {
         TENANT,
       );
       expect(productRepo.findAndCount).toHaveBeenLastCalledWith(
-        expect.objectContaining({ order: { createdAt: 'DESC' } }),
+        expect.objectContaining({ order: { createdAt: 'DESC', id: 'DESC' } }),
       );
     });
   });
+
+  describe.each([false, true])(
+    'findAll filters (paginated: %s)',
+    (paginated) => {
+      const run = async (
+        query: ListProductsQueryDto,
+        rows = [product()],
+        total = rows.length,
+      ) => {
+        const mocks = buildMocks();
+        mocks.productRepo.find.mockResolvedValue(rows);
+        mocks.productRepo.findAndCount.mockResolvedValue([rows, total]);
+        const result = await mocks.service.findAll(
+          paginated ? { ...query, page: 1, limit: 12 } : query,
+          TENANT,
+        );
+        const calls = paginated
+          ? mocks.productRepo.findAndCount.mock.calls
+          : mocks.productRepo.find.mock.calls;
+        const options = calls[0][0];
+        return { ...mocks, result, options };
+      };
+
+      it('ANDs every shared filter with each case-insensitive search alternative', async () => {
+        const { options } = await run({
+          search: 'sHiRt',
+          categoryId: 3,
+          minPrice: 10,
+          maxPrice: 20,
+          inStock: true,
+        });
+
+        expect(options.where).toEqual([
+          {
+            categoryId: 3,
+            price: Between(10, 20),
+            stock: MoreThan(0),
+            name: ILike('%sHiRt%'),
+          },
+          {
+            categoryId: 3,
+            price: Between(10, 20),
+            stock: MoreThan(0),
+            sku: ILike('%sHiRt%'),
+          },
+          {
+            categoryId: 3,
+            price: Between(10, 20),
+            stock: MoreThan(0),
+            slug: ILike('%sHiRt%'),
+          },
+          {
+            categoryId: 3,
+            price: Between(10, 20),
+            stock: MoreThan(0),
+            description: ILike('%sHiRt%'),
+          },
+        ]);
+        expect(options.relations).toEqual({ images: true, category: true });
+        if (paginated) {
+          expect(options).toMatchObject({
+            skip: 0,
+            take: 12,
+            relationLoadStrategy: 'query',
+          });
+        } else {
+          expect(options.skip).toBeUndefined();
+          expect(options.take).toBeUndefined();
+        }
+      });
+
+      it('keeps LIKE wildcards, backslashes, and SQL-looking text literal', async () => {
+        const { options } = await run({
+          search: "50%_off\\sale' OR 1=1 --",
+        });
+        const pattern = ILike("%50\\%\\_off\\\\sale' OR 1=1 --%");
+
+        expect(options.where).toEqual([
+          { name: pattern },
+          { sku: pattern },
+          { slug: pattern },
+          { description: pattern },
+        ]);
+      });
+
+      it.each([
+        { query: { minPrice: 0 }, expected: MoreThanOrEqual(0) },
+        { query: { minPrice: 10.5 }, expected: MoreThanOrEqual(10.5) },
+        { query: { maxPrice: 0 }, expected: LessThanOrEqual(0) },
+        { query: { maxPrice: 20.5 }, expected: LessThanOrEqual(20.5) },
+        { query: { minPrice: 10, maxPrice: 20 }, expected: Between(10, 20) },
+        { query: { minPrice: 10, maxPrice: 10 }, expected: Between(10, 10) },
+        { query: { minPrice: 0, maxPrice: 0 }, expected: Between(0, 0) },
+      ])('uses inclusive price comparisons for $query', async (test) => {
+        const { options } = await run(test.query);
+        expect(options.where).toEqual({ price: test.expected });
+      });
+
+      it.each([
+        { inStock: true, expected: MoreThan(0) },
+        { inStock: false, expected: LessThanOrEqual(0) },
+      ])(
+        'filters inStock=$inStock independently of active status',
+        async (test) => {
+          const { options } = await run({ inStock: test.inStock });
+          expect(options.where).toEqual({ stock: test.expected });
+        },
+      );
+
+      it('returns an empty result for a missing tenant-local category without a category lookup', async () => {
+        const { result, options, findById, getRepository } = await run(
+          { categoryId: 999 },
+          [],
+        );
+
+        expect(options.where).toEqual({ categoryId: 999 });
+        expect(result).toEqual(
+          paginated ? { data: [], total: 0, page: 1, limit: 12 } : [],
+        );
+        expect(findById).not.toHaveBeenCalled();
+        expect(getRepository).toHaveBeenCalledWith(Product, TENANT);
+        expect(getRepository).toHaveBeenCalledWith(ProductImage, TENANT);
+      });
+
+      it.each(['asc', 'desc'] as const)(
+        'sorts filtered results %s with a deterministic secondary key',
+        async (sortOrder) => {
+          const { options } = await run({
+            search: 'shirt',
+            sortBy: 'price',
+            sortOrder,
+          });
+          expect(options.order).toEqual({
+            price: sortOrder === 'asc' ? 'ASC' : 'DESC',
+            id: 'DESC',
+          });
+        },
+      );
+
+      it('preserves category/image serialization and counts products, not images', async () => {
+        const category = {
+          id: 3,
+          name: 'Tops',
+          slug: 'tops',
+          description: null,
+          isActive: true,
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+          updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+        };
+        const source = product({
+          categoryId: 3,
+          category,
+          images: [
+            {
+              id: 5,
+              objectKey: 'second.png',
+              mimeType: 'image/png',
+              sizeBytes: 4,
+              position: 2,
+            },
+            {
+              id: 6,
+              objectKey: 'first.png',
+              mimeType: 'image/png',
+              sizeBytes: 5,
+              position: 1,
+            },
+          ],
+        });
+        const { result } = await run({ categoryId: 3 }, [source], 1);
+        const serialized = {
+          ...source,
+          category,
+          images: [
+            {
+              id: 6,
+              url: 'https://cdn.test/first.png',
+              mimeType: 'image/png',
+              sizeBytes: 5,
+              position: 1,
+            },
+            {
+              id: 5,
+              url: 'https://cdn.test/second.png',
+              mimeType: 'image/png',
+              sizeBytes: 4,
+              position: 2,
+            },
+          ],
+        };
+
+        expect(result).toEqual(
+          paginated
+            ? { data: [serialized], total: 1, page: 1, limit: 12 }
+            : [serialized],
+        );
+      });
+
+      it('isolates concurrent ALS tenants with overlapping product/category IDs', async () => {
+        const { service, getRepository, imageRepo } = buildMocks();
+        const tenants = ['a', 'b'].map((slug, index) =>
+          Object.assign(new Tenant(), {
+            id: index + 1,
+            schemaName: `tenant_${slug}`,
+          }),
+        );
+        const repositories = tenants.map((tenant) => {
+          const rows = [product({ name: tenant.schemaName, categoryId: 3 })];
+          return {
+            find: jest.fn().mockResolvedValue(rows),
+            findAndCount: jest.fn().mockResolvedValue([rows, 1]),
+          };
+        });
+        getRepository.mockImplementation(
+          (entity, target) =>
+            new Promise((resolve) => {
+              setImmediate(() => {
+                const index = tenants.findIndex(
+                  (tenant) => tenant.schemaName === target.schemaName,
+                );
+                resolve(entity === Product ? repositories[index] : imageRepo);
+              });
+            }),
+        );
+
+        const results = await Promise.all(
+          tenants.map((tenant) =>
+            tenantStorage.run({ tenant, tenantSchema: tenant.schemaName }, () =>
+              service.findAll(
+                paginated ? { categoryId: 3, page: 1 } : { categoryId: 3 },
+              ),
+            ),
+          ),
+        );
+
+        results.forEach((result, index) => {
+          const rows = Array.isArray(result) ? result : result.data;
+          expect(rows).toHaveLength(1);
+          expect(rows[0]).toMatchObject({
+            id: 1,
+            categoryId: 3,
+            name: tenants[index].schemaName,
+          });
+          expect(getRepository).toHaveBeenCalledWith(Product, {
+            schemaName: tenants[index].schemaName,
+          });
+          expect(getRepository).toHaveBeenCalledWith(ProductImage, {
+            schemaName: tenants[index].schemaName,
+          });
+        });
+      });
+    },
+  );
 
   describe('uploadImages', () => {
     it('rejects unsupported mime types', async () => {

@@ -22,19 +22,48 @@ const CACHE: ICache = {
 const logger = { warn: jest.fn() };
 
 const fakeClient = () => {
-  const handlers: Record<string, (...args: unknown[]) => void> = {};
+  const handlers = new Map<
+    string,
+    Array<{ handler: (...args: unknown[]) => void; once: boolean }>
+  >();
+  const addHandler = (
+    event: string,
+    handler: (...args: unknown[]) => void,
+    once: boolean,
+  ) => {
+    handlers.set(event, [...(handlers.get(event) ?? []), { handler, once }]);
+  };
   return {
+    status: 'ready',
     on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
-      handlers[event] = handler;
+      addHandler(event, handler, false);
+    }),
+    once: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
+      addHandler(event, handler, true);
+    }),
+    off: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
+      handlers.set(
+        event,
+        (handlers.get(event) ?? []).filter(
+          (entry) => entry.handler !== handler,
+        ),
+      );
     }),
     get: jest.fn(),
     eval: jest.fn(),
-    del: jest.fn(),
     publish: jest.fn(),
     subscribe: jest.fn().mockResolvedValue(1),
+    ping: jest.fn().mockResolvedValue('PONG'),
     quit: jest.fn().mockResolvedValue('OK'),
     disconnect: jest.fn(),
-    emit: (event: string, ...args: unknown[]) => handlers[event]?.(...args),
+    emit(event: string, ...args: unknown[]) {
+      const listeners = handlers.get(event) ?? [];
+      handlers.set(
+        event,
+        listeners.filter((entry) => !entry.once),
+      );
+      for (const entry of listeners) entry.handler(...args);
+    },
   };
 };
 
@@ -163,12 +192,12 @@ describe('RedisCacheStore', () => {
     await expect(store.getVersion('ns')).resolves.toBe(0);
   });
 
-  it('subscribes once and dispatches invalidation messages', async () => {
+  it('subscribes once and dispatches invalidation messages', () => {
     const { store, subscriber } = build();
     const handler = jest.fn();
 
-    await store.subscribeInvalidations(handler);
-    await store.subscribeInvalidations(handler);
+    store.subscribeInvalidations(handler);
+    store.subscribeInvalidations(handler);
 
     expect(subscriber.subscribe).toHaveBeenCalledTimes(1);
     expect(subscriber.subscribe).toHaveBeenCalledWith('cache:invalidate');
@@ -184,14 +213,62 @@ describe('RedisCacheStore', () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
-  it('deletes a key and closes both clients', async () => {
+  it('closes both clients', async () => {
     const { store, client, subscriber } = build();
-
-    await store.delete('k');
-    expect(client.del).toHaveBeenCalledWith('k');
 
     await store.close();
     expect(subscriber.quit).toHaveBeenCalled();
     expect(client.quit).toHaveBeenCalled();
+  });
+
+  it('pings immediately when Redis is ready', async () => {
+    const { store, client } = build();
+
+    await expect(store.pingRedis()).resolves.toBe(true);
+    expect(client.ping).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits for Redis readiness before pinging', async () => {
+    const { store, client } = build();
+    client.status = 'connecting';
+
+    const probe = store.pingRedis();
+    expect(client.ping).not.toHaveBeenCalled();
+
+    client.status = 'ready';
+    client.emit('ready');
+
+    await expect(probe).resolves.toBe(true);
+    expect(client.ping).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails the readiness probe when Redis emits a connection error', async () => {
+    const { store, client } = build();
+    client.status = 'connecting';
+
+    const probe = store.pingRedis();
+    client.emit('error', new Error('connection failed'));
+
+    await expect(probe).rejects.toThrow('connection failed');
+    expect(client.ping).not.toHaveBeenCalled();
+  });
+
+  it('bounds the Redis readiness wait by the connect timeout', async () => {
+    jest.useFakeTimers();
+    try {
+      const { store, client } = build();
+      client.status = 'connecting';
+
+      const probe = store.pingRedis();
+      const expectation = expect(probe).rejects.toThrow(
+        'Redis was not ready after 1000ms',
+      );
+      jest.advanceTimersByTime(1000);
+
+      await expectation;
+      expect(client.ping).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

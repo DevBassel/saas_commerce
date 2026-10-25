@@ -174,6 +174,21 @@ archives. The monorepo imported the committed `main` of the first two (identical
 `pre-cleanup` tag) and a plain copy of the third (its source repo had zero commits). Do not push to
 the old remotes or edit the archives.
 
+## OpenCode planning workflow
+
+For OpenCode feature requests and complex tasks, follow
+`.opencode/instructions/plan-workflow.md`: use the default `project-plan` agent or
+`/plan`, inspect the relevant code, save a complete implementation plan directly in
+root `plans/`, and stop for explicit user approval. Creating a plan is not approval
+to execute it. `/implement-plan plans/<name>.md` is the user's approval/Build handoff.
+Usage and version-specific limits: `plans/README.md`.
+
+During planning, only the create-only `save-plan` tool may write; application code,
+configuration, infrastructure, dependencies, and the memory bank stay read-only.
+Never overwrite an existing plan without explicit user permission. This project's
+root-plan workflow takes precedence over generic planning-file layouts and autonomous
+continuation instructions. Existing app conventions and tenant-isolation rules apply.
+
 ## Memory Bank
 
 My memory resets between sessions. The `memory-bank/` directory is this project's persistent
@@ -187,6 +202,10 @@ Only then plan and act, treating the bank as authoritative context.
 **Before finishing a task that changed behavior, decisions, or state:** update the affected
 files. `activeContext.md` is rewritten, never appended. When the user says "update memory bank",
 review every file.
+
+**Planning-only exception:** read the bank, but record new findings in the root `plans/`
+document and defer memory-bank writes to approved Build work. Do not expand planning
+permissions to satisfy the update rule.
 
 **Do not** store secrets, tokens, credentials, or `.env` values. Do not copy durable rules that
 already live in the `AGENTS.md` files — link to them instead (for example

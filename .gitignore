@@ -6,7 +6,7 @@ dist/
 build/
 coverage/
 .turbo/
-
+plans/
 # Logs
 logs/
 *.log

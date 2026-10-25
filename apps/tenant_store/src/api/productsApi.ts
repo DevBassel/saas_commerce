@@ -42,6 +42,20 @@ export interface IProductPage {
   limit: number;
 }
 
+export interface ProductPageParams {
+  page: number;
+  limit: number;
+  search?: string;
+  categoryId?: number;
+  minPrice?: number;
+  maxPrice?: number;
+  inStock?: boolean;
+  sortBy?: "createdAt" | "price" | "name";
+  sortOrder?: "asc" | "desc";
+}
+
+type ProductRequestParam = string | number | boolean;
+
 export async function getProducts(
   config?: AxiosRequestConfig,
   client: AxiosInstance = apiClient,
@@ -51,13 +65,22 @@ export async function getProducts(
 }
 
 export async function getProductPage(
-  params: { page: number; limit: number },
+  params: ProductPageParams,
   config?: AxiosRequestConfig,
   client: AxiosInstance = apiClient,
 ): Promise<IProductPage> {
+  const requestParams: Record<string, ProductRequestParam> = {
+    ...(config?.params as Record<string, ProductRequestParam> | undefined),
+  };
+
+  // Explicit typed arguments take precedence over caller-supplied config params.
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) requestParams[key] = value;
+  }
+
   const res = await client.get<IProductPage>("/products", {
     ...config,
-    params: { ...config?.params, page: params.page, limit: params.limit },
+    params: requestParams,
   });
   return res.data;
 }

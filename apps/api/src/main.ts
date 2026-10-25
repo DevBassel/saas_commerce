@@ -18,7 +18,6 @@ async function bootstrap() {
       level: 9,
     }),
   );
-
   const { name, apiPrefix, apiVersion, port, rootDomain } = app
     .get(ConfigService<IENV>)
     .getOrThrow<IAPP>('app');

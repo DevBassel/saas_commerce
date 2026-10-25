@@ -9,7 +9,9 @@ per-app `AGENTS.md` files.
   `pnpm-lock.yaml` and `.npmrc` (`legacy-peer-deps=true`).
 - **API:** NestJS 10, TypeORM 0.3, PostgreSQL 16, Joi-validated env, pino logging, helmet,
   Swagger at `/api/v1`, `@aws-sdk/client-s3` for R2, Stripe SDK, ioredis for the Redis-only
-  response cache (`REDIS_URL` required at boot).
+  response cache (`REDIS_URL` required at boot). Cache fingerprints use a versioned (`v3:`)
+  type-preserving JSON-like canonical serialization with sorted keys/arrays. Redis health probes wait for client
+  readiness up to `CACHE_REDIS_CONNECT_TIMEOUT_MS`; normal commands retain their shorter timeout.
 - **Dashboards:** Refine v5, Vite 6, React 19, React Router 7, axios, Tailwind v4 (CSS-first),
   shadcn/ui, react-hook-form + zod. Store owner adds Vitest; super admin has none.
 - **Storefront:** Next.js 16 App Router, React 19, NextAuth v4 (JWT), Tailwind v4, Base UI
@@ -66,6 +68,11 @@ from source with `pnpm dev` or a package filter; there are no per-app Dockerfile
 
 ## Tooling notes
 
+- OpenCode project configuration lives in `opencode.json` and `.opencode/`, verified with CLI
+  `1.19.4` on Windows. Root `plans/` holds implementation documents. See `AGENTS.md` → OpenCode
+  planning workflow and `plans/README.md` for usage, verification, and version-specific limits.
+  OpenCode bootstraps its own ignored runtime SDK files under `.opencode/`; application pnpm
+  manifests and lockfile are independent.
 - `apps/api` ESLint is flat config and `lint` auto-fixes (mutates files).
 - Store owner typecheck is strict with `noUnusedLocals`/`noUnusedParameters`; unused imports fail
   `typecheck` and `build`.

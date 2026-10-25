@@ -37,13 +37,25 @@ Browser (store subdomain)                 Browser (admin subdomains)
 - **Server-side cache is Redis-only and shared.** A Redis-backed store caches six catalog/plan
   reads; `@CacheResponse` metadata is ignored outside that allowlist. Writes invalidate namespaces
   after the transaction/write resolves. Every replica shares entries and cross-instance
-  invalidations through Redis (`REDIS_URL` is required); there is no process-local driver.
+  invalidations through Redis (`REDIS_URL` is required); there is no process-local driver. Health
+  checks wait for the ioredis client `ready` state within the Redis connect timeout before `PING`.
+  Local invalidation scans the `CACHE_MAX_INFLIGHT`-bounded flight map directly so stale cleanup
+  cannot untrack a newer replacement flight.
+  `GET /store/categories` is deliberately outside the allowlist and stays no-store.
 - **Auth is stateless JWT with rotation.** Access + refresh use separate secrets; refresh rotates
   `jti` and rejects a stored `user.jti` mismatch. Refresh is single-flight in every client.
 - **Entity placement rule:** tenant entities go in `src/modules/tenants/utils/tenant-entities.ts`;
   never add a tenant entity to `PUBLIC_ENTITIES` in `src/core.module.ts`.
 - **Public vs tenant repository access:** tenant data via `getRepository` / tenant-scope helpers;
   public data via `@InjectRepository` on the public DataSource.
+- **Minimal public storefront projections.** Public routes that need tenant data expose a narrow
+  service method rather than making a management controller public. `GET /store/categories`
+  reuses `CategoriesService` but selects only active `id`/`name` and orders by name then id; the
+  authenticated `/categories` routes keep their permissions.
+- **Request-scoped anonymous catalog reads.** The storefront `/products` Server Component builds a
+  local Axios instance with the backend URL and the trusted tenant header only, then passes it
+  through the existing injected-client seams. This keeps public catalog reads credential-free and
+  tenant-isolated without changing the shared authenticated `apiClient`.
 - **Transactional coupon consumption:** inside checkout, always use the passed `EntityManager`
   (pessimistic lock on the coupon row), never `tenantManager.getRepository`, or writes escape the
   transaction.

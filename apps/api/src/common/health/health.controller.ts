@@ -20,12 +20,16 @@ export class HealthController {
 
   @Get()
   async check() {
-    const [db, r2] = await Promise.all([this.pingDb(), this.r2.healthy()]);
+    const [db, r2, cache] = await Promise.all([
+      this.pingDb(),
+      this.r2.healthy(),
+      this.cache.stats(),
+    ]);
     return {
       status: db && r2 ? 'ok' : 'degraded',
       db,
       r2,
-      cache: this.cache.stats(),
+      cache,
     };
   }
 
