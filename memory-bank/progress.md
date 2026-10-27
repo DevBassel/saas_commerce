@@ -4,255 +4,92 @@ What works, what is left, and known issues. Update when work completes or debt i
 
 ## What works
 
-- **OpenCode persistent planning (2026-10-24):** project configuration in `opencode.json` and
-  `.opencode/` implements the root-plan workflow documented in `AGENTS.md` and `plans/README.md`.
-  Custom `project-plan` is needed because OpenCode `1.19.4` hard-codes native Plan reminders/storage.
-  The dependency-free writer, native/Build agent availability, command routing, and root path from
-  an app subdirectory were verified using the installed CLI; nine writer-boundary tests passed.
-  Original global config/custom commands were preserved. Full proof: `plans/opencode-plan-mode.md`.
-- **Deployment surface:** only the API is containerized, via `docker compose up -d --build`
-  (compose project `saas_store`). `apps/api/Dockerfile` builds the embedded Super Admin dashboard
-  then the API; Compose runs `saas_store_api` with `saas_store_redis`. Postgres is external and the
-  API reaches the Docker host through `DB_HOST=host.docker.internal` by default. Frontends run from
-  source; there are no per-app Dockerfiles or `Dockerfile.dev`.
-- **API** (`saas_store_api`): schema-per-tenant isolation, tenant resolution + guards, JWT auth
-  with rotation, RBAC (45 seeded permissions), products/categories/cart/orders/addresses/coupons,
-  implemented Stripe payments (PaymentIntent, webhook, Connect), R2 storage with quotas, platform
-  endpoints, dashboard endpoints, currency requests, and SaaS subscription plans (limits/features,
-  Super-Admin assignment + platform reads for a tenant's subscription and usage, tenant read-only
-  APIs, enforcement in user/coupon/product/order flows, plus an opt-in HTTP-layer
-  `SubscriptionGuard` on annotated routes). Tenant subscription routes are **read-only**; plans are
-  assigned by Super Admin. Recurring self-serve subscription billing was removed (2026-10-09): no
-  `StripeBillingService`, no checkout/cancel/resume routes, no billing webhook handling, and no
-  `stripe*` columns on `Subscription`. A one-off purchase flow was re-added the same day:
-  `POST /payments/stripe/subscription` (`subscriptions:manage`, STORE_OWNER only) creates a
-  platform-account Stripe PaymentIntent for a public/active plan and writes a `PENDING`
-  `SubscriptionPayment`; the webhook split then assigns the plan on `payment_intent.succeeded`
-  (`kind === 'subscription'` → `handleSubscriptionEvents` → ledger `PAID` +
-  `SubscriptionService.assignPlan`), with `CANCELED`/`FAILED` ledger transitions and a full refund
-  falling back to the free plan. Super Admin can also `POST /platform/tenants/:id/subscription/cancel`
-  to cancel and refund the latest paid purchase in one call (implemented in `PaymentsModule`). Tenants
-  have a self-serve counterpart — `POST /payments/stripe/subscription/cancel` (`subscriptions:manage`)
-  refunds the latest PAID purchase within a 7-day window (`SUBSCRIPTION_REFUND_WINDOW_DAYS`, from
-  `paidAt`/`createdAt`) and downgrades to free; `GET /subscription` reports additive
-  `refundEligible`/`refundDeadline`. Seeded plans carry `monthlyPrice`/`yearlyPrice`/`currency`.
-  ~79 unit spec files.
-- **Email OTP** (`apps/api/src/modules/email-otp/` + `src/modules/email/`): tenant-scoped OTP with
-  an `otp_challenges` tenant entity, HMAC-SHA256 code hashing, resend cooldown/per-window cap/
-  attempt limits, pessimistic-lock consume, and an `EMAIL_TRANSPORT` seam (`nodemailer` SMTP / log /
-  memory; new `nodemailer` dependency). Routes `POST /auth/email-otp/{request,verify}` and
-  `POST /auth/password-reset/confirm`; register dispatches `EMAIL_VERIFICATION`; login can be gated
-  by `OTP_REQUIRE_EMAIL_VERIFIED`. Platform OTP and login MFA are deferred. Global
-  `EmailVerifiedGuard` requires a verified email on all authenticated tenant routes (`403
-  EMAIL_NOT_VERIFIED`); `@AllowUnverifiedEmail()` opts out (logout).
-- **API caching** (`apps/api/src/common/cache`): a Redis-backed cache on six reads
-  (`GET /products`, `/products/:id`, `/categories`, `/categories/:id`, `/subscription/plans`,
-  `/platform/subscription-plans`) with post-write invalidation, forced `Cache-Control: no-store`,
-  `X-Cache`, and a single-flight namespace store. Redis is the only driver (`REDIS_URL` required):
-  namespace key sets, namespace versions, and cross-instance invalidation via pub/sub.
-  `DB_STATEMENT_TIMEOUT_MS` bounds each PostgreSQL statement, and `GET /health` reports
-  `cache: { enabled, driver, connected }`.
-  The endpoint-priority admission-control experiment was removed; the stock `ThrottlerGuard` is
-  back. Fingerprints now hash a versioned (`v3:`) type-preserving JSON-like canonical form with
-  sorted keys/arrays, so delimiter-containing search values cannot collide with other query
-  parameters (2026-10-24). A 2026-10-25 cleanup removed unused store entry metadata, the unused
-  single-key delete operation, and redundant policy names. Health `PING` now waits for Redis
-  readiness within the connect timeout, and local invalidation scans the bounded in-flight map
-  directly, fixing an older-flight cleanup race. API lint/typecheck and seven focused suites passed
-  (130 tests, including four against live Redis).
-- **Storefront product filters (2026-10-24):** `/products` now browses the full tenant catalog
-  through the API instead of filtering the current 12 cards locally. URL-backed filters
-  (`search`, `categoryId`, inclusive `minPrice`/`maxPrice`, `inStock`, six sort presets, `page`)
-  are parsed/validated by `apps/tenant_store/src/lib/product-filters.ts`; invalid or repeated
-  values suppress the product request and show editable errors. A responsive shadcn/Base UI form
-  (desktop card + mobile `Sheet`) applies once on submit, shows chips/Clear all, and preserves
-  committed filters through pagination. The page uses a request-local anonymous Axios client with
-  only the trusted tenant header (no cookies/Authorization). New public
-  `GET /api/v1/store/categories` returns active `{ id, name }[]`, ordered by name then id, and is
-  uncached (`private, no-store` / `X-Cache: BYPASS`). Automated gates passed: targeted API Jest
-  14 suites / 319 tests, API typecheck + build, storefront lint/typecheck/build. Live PostgreSQL and
-  manual browser/tenant-mode/accessibility checks were **not** run.
-- **Storefront filter sidebar, price slider, availability switch (2026-10-25, uncommitted):** on
-  `lg`+ the `/products` filters are an `<aside>` beside the results, with the same shared draft in a
-  left `Sheet` below that width. Price is one Base UI two-thumb slider (`ui/slider.tsx`) bounded by
-  a separate `page=1&limit=1&sortBy=price&sortOrder=desc` tenant read rather than the visible 12
-  items; unset bounds stay unset, handles may meet but not cross, and a lookup failure leaves
-  results usable. Availability is a Base UI switch (`ui/switch.tsx`): ON sends `inStock=true`, OFF
-  omits it, and legacy `inStock=false` stays visible behind an explicit notice/reset. The sort
-  parser no longer lowercases `sortBy` (restores `createdAt` drafts), and no-match "Clear all
-  filters" now links to the tenant-aware clean `/products`. Verified with storefront lint, scoped
-  ESLint, typecheck, 20 focused range/query assertions, SSR and orchestration probes (tenant
-  isolation, fixed lookup, credential-free outbound calls, invalid-query suppression, price-only
-  failure). **`next build` did not pass:** two attempts hit Turbopack worker OOM, including one with
-  a 4 GB `NODE_OPTIONS`. Live/manual browser checks were **not** run.
-- **Storefront filter tags above results (2026-10-25, uncommitted):** implemented
-  `plans/tenant-store-filter-chips-above-results.md`. `ActiveFilterChips.tsx` is first in the
-  product results section; `filter-navigation.tsx` supplies the shared transition guard for the
-  tag row and filter form. Existing tag removal, page-1 reset, Clear all, false/zero semantics,
-  and tenant-aware URLs were preserved. Lint/typecheck, SSR placement/recovery probes, controlled
-  navigation/pending probes, and the previous tenant orchestration probe passed. Production build
-  repeated worker OOM then Turbopack IPC failure; live widths/hydration/navigation timing remain
-  unchecked, so the plan stays `Approved`. Current contract: `apps/tenant_store/AGENTS.md` →
-  API client and data fetching.
-- **Storefront ProductFilters refactor (2026-10-25, uncommitted):** implemented the structural work
-  in `plans/tenant-store-product-filters-refactor.md`. Parent shrank from 646 to 208 lines; nine
-  modules in `src/components/products/filters/` contain five controlled fields, shared fields/actions,
-  types, and pure error/category/price-presentation utilities. Public props and parent state/navigation
-  remain intact; neighboring catalog/provider/domain/UI/config files match preflight hashes.
-  Verified: lint/typecheck, 36 helper cases with exact baseline output parity, 27 actual React/Base UI
-  SSR renders with exact normalized-markup parity and ID/description checks, and nine synthetic-state
-  callback scenarios. **Final storefront production build passed**, including TypeScript and all 17
-  generated pages; baseline had reproduced worker OOM. Live browser/hydration/focus/history/tenant-mode
-  checks remain unverified because browser tooling was unavailable, so the plan remains `Approved`.
-- **Storefront all-screen filter Sheet (2026-10-25, uncommitted):** `/products` now uses the same
-  left Sheet on mobile, tablet, and desktop, opened by a fixed lower-left Filters button. The
-  desktop Card/sidebar and 18rem results column were removed; existing draft validation,
-  Apply/Cancel/Clear behavior, URL navigation, category recovery, and tags remain. Storefront lint
-  and typecheck passed. Standard Turbopack builds failed with the recurring worker Zone Allocation
-  OOM/IPC panic, including a 4 GB heap retry; `next build --webpack` passed compilation,
-  TypeScript, and generation of all 17 pages. Live visual/focus checks remain open.
-- **Product filtering (2026-10-24):** `GET /products` supports `search` (trimmed, 1–255 chars,
-  case-insensitive across name/sku/slug/description with literal `%`/`_`/`\`), `categoryId`,
-  inclusive `minPrice`/`maxPrice`, `inStock`, allowlisted `sortBy`/`sortOrder` with deterministic
-  `id DESC` tie-break, and `page`/`limit` (defaults 1/10, 50-item clamp). Filters and sorting apply
-  with or without pagination; the array response is preserved when neither pagination parameter is
-  supplied, otherwise the existing `{ data, total, page, limit }` envelope reports filtered totals.
-  Invalid query values fail HTTP 400 before repository access. Verified with 14 Jest suites /
-  342 tests, TypeScript, and changed-file ESLint. Live PostgreSQL behavior was not exercised;
-  repository assertions are mocked.
-- **Seeding module** (`apps/api/src/modules/seeding/`): registry-driven platform + tenant seeders
-  (permissions, roles, super-admin, subscription-plans, subscription-backfill; opt-in categories),
-  a single `SeedingBootstrapService` boot owner, and the `test/seed.ts` CLI
-  (`seed`/`seed:platform`/`seed:tenants`/`seed:all`, `--name`, `--tenant`, `--force`). Idempotent,
-  conflict-safe upserts; production seeding requires `SEED_ALLOW_PRODUCTION=true` + `--force`.
-  Legacy seed services (`RbacSeedService`, `SubscriptionSeedService`, `TenantReseedService`,
-  `categories.seed.ts`) were removed.
-- **Tenant schema size** (`getSchemaSizes` → `pg_total_relation_size`) is wired as `schemaSizeBytes`
-  into `GET platform/tenants`, `GET platform/tenants/:id`, and `GET dashboard/stats`, with a
-  display-only `schemaCapacityBytes` from `TENANT_DB_CAPACITY_BYTES`, and rendered in the
-  super-admin tenant list/show and the store-owner StorageCard. Display-only; size failures report
-  `0`.
-- **Store owner dashboard** (`tenant_dash`): auth + single-flight refresh, tenant-scoped lists and
-  forms for products/categories/orders/users, payments and store settings, plus public
-  `/verify-email`, `/forgot-password`, `/reset-password` pages backed by `otp.api.ts`. The
-  `/settings/subscription` page shows the current plan (status/billing/price/period/trial) and live
-  usage against `subscription`, `subscription/plans`, `subscription/usage` plus an "Available plans"
-  shadcn `Tabs` section with a Monthly/Yearly toggle. Self-serve checkout is restored (2026-10-09):
-  each non-current billable tab has an **Upgrade** button opening a Stripe Elements
-  `PlanCheckoutDialog` (`src/lib/stripe.ts` + `@stripe/*` deps, build-time
-  `VITE_STRIPE_PUBLISHABLE_KEY`) that creates a `POST payments/stripe/subscription` intent, confirms
-  the card, and polls `GET subscription` until the webhook assigns the plan. Self-serve **cancel +
-  refund** is now built (2026-10-09): a destructive button + `CancelSubscriptionDialog` on the
-  current-plan card when `subscription.refundEligible`, posting `payments/stripe/subscription/cancel`
-  and `refetchAll()` on success (Resume remains unbuilt). `subscriptions.api.ts` gained
-  `createPaymentIntent` (in-flight dedupe) and `cancelSubscription`.
-  An unverified login redirects to `/verify-email` without storing a session. Tenant resolution has
-  an optional apex `?tenant=<slug>` fallback when the build-time `VITE_ALLOW_SUBDOMAIN=false`
-  (browser resolve in `src/api/tenant.ts`; `apiClient` attaches `x-tenant-slug`; `TenantParamSync`
-  re-appends the param after Refine navigation). Fourteen Vitest files (169 tests).
-  A 2026-10-09 review-fix pass (plan `.kilo/plans/1791552085658-tenant-dashboard-review-fix-plan.md`)
-  added: full-reload cache reset on logout / tenant switch (`src/lib/client-reset.ts`,
-  `src/lib/tenant-sync.ts`), tenant-aware forced-401 redirect, `canManageCatalog` role gates on
-  catalog create/row actions, explicit-`null` clearing for product category and coupon optionals,
-  `PENDING`/`CANCELED` payment statuses, list/detail error+retry states (`QueryErrorState`), a
-  route-level error boundary, confirmation dialogs for destructive actions, `nextStatuses`-gated
-  order-status options, accessibility labels, and `import.meta.env.DEV` gating of
-   Refine Devtools (removed from the production bundle). Low findings are deferred to the plan's
-   backlog. (That pass also hardened an older subscription checkout; it was removed and then
-   freshly re-added as the 2026-10-09 self-serve checkout described above.)
-- **Super admin dashboard** (`super_admin_dash`): tenant provisioning/lifecycle, platform payments
-  oversight, currency request approve/reject, and subscription plan CRUD (list/create/edit/delete)
-  plus a per-tenant subscription panel (current plan/status/period, live usage, change plan +
-  interval, cancel/reactivate) backed by the platform subscription reads. A 2026-10-19 bundle pass
-  added `manualChunks` vendor groups, lazy-loaded every route except `Dashboard`/`*`, and gated
-  Refine Devtools behind `import.meta.env.DEV`: initial JS fell from 1,073.62 kB / 330.16 kB gzip
-  (one chunk) to 782.05 kB / 252.00 kB gzip, with no chunk over 500 kB.
-- **Embedded platform dashboard** (`/platform`): the API serves the production build of
-  `super_admin_dash` from `apps/api/static` via `@nestjs/serve-static@4` (NestJS 10 line). The
-  build uses `base: '/platform/'` and an `import.meta.env.BASE_URL`-derived `BrowserRouter`
-  basename, so `/platform` and deep links work while `/api/v1` remains unchanged. Two
-  `ServeStaticModule` registrations handle root vs. deep links, and an `exclude` pattern keeps
-  missing assets/dotfiles on the normal Nest 404. `BUILD_STANDALONE=true` preserves the separate
-  Docker image (`dist`, base `/`).
-- **Storefront** (`tenant_store`): host-decided platform vs tenant contexts (`classifyHost` in
-  `src/lib/tenant/host.ts`), with an optional apex `?tenant=<slug>` fallback when the build-time
-  `NEXT_PUBLIC_ALLOW_SUBDOMAIN=false` (proxy `resolveTenantSlug`; a trusted `x-tenant-slug` request
-  header is injected and client navigation keeps the param), two route groups with two root
-  layouts, platform landing/plans/register-store on the apex (`/` rewritten to `/home`) and the
-  subdomain storefront for tenants, NextAuth credentials login with the refresh token kept
-  server-side only, tenant-keyed store-info cache, catalog by numeric id, cart, checkout, Stripe
-  payment step, order history/cancel/return, refresh proxy, route `loading`/`error` boundaries,
-  product `notFound()` + `generateMetadata`, and a hard 404 for unknown store subdomains. See
-  `activeContext.md` for the host-routing change and the earlier architecture-review remediation
-  (P0-1/P0-2, P1-3/P1-4/P1-5, P2-3..P2-6, P2-9, P3-3..P3-6). Catalog caching (P1-1/P1-2),
-  `PlaceOrder` split (P2-2), full SEO (P2-7) and shared API types (P2-8) remain. Server-side
-  catalog search/filtering for `/products` is now wired (2026-10-24, see above).
-- **Storefront email OTP** (`apps/tenant_store`): `otpApi.ts` plus public `/verify-email`,
-  `/forgot-password`, `/reset-password` pages (shadcn `input-otp` code entry). Register routes to
-  verify; any `EMAIL_NOT_VERIFIED` (login, proxy before render for protected paths, or the apiClient
-  interceptor) redirects to `/verify-email`, which reads the email from the session.
+- **OpenCode persistent planning (2026-10-24):** project configuration in `opencode.json` and `.opencode/` implements the root-plan workflow documented in `AGENTS.md` and `plans/README.md`. Custom `project-plan` is needed because OpenCode `1.19.4` hard-codes native Plan reminders/storage. The dependency-free writer, native/Build agent availability, command routing, and root path from an app subdirectory were verified using the installed CLI; nine writer-boundary tests passed. Original global config/custom commands were preserved. Full proof: `plans/opencode-plan-mode.md`.
+
+- **Deployment surface:** only the API is containerized, via `docker compose up -d --build` (compose project `saas_store`). `apps/api/Dockerfile` builds the embedded Super Admin dashboard then the API; Compose runs `saas_store_api` with `saas_store_redis`. Postgres is external and the API reaches the Docker host through `DB_HOST=host.docker.internal` by default. Frontends run from source; there are no per-app Dockerfiles or `Dockerfile.dev`.
+
+- **API** (`saas_store_api`): schema-per-tenant isolation, tenant resolution + guards, JWT auth with rotation, RBAC (45 seeded permissions), products/categories/cart/orders/addresses/coupons, implemented Stripe payments (PaymentIntent, webhook, Connect), R2 storage with quotas, platform endpoints, dashboard endpoints, currency requests, and SaaS subscription plans (limits/features, Super-Admin assignment + platform reads for a tenant's subscription and usage, tenant read-only APIs, enforcement in user/coupon/product/order flows, plus an opt-in HTTP-layer `SubscriptionGuard` on annotated routes). Tenant subscription routes are **read-only**; plans are assigned by Super Admin. Recurring self-serve subscription billing was removed (2026-10-09): no `StripeBillingService`, no checkout/cancel/resume routes, no billing webhook handling, and no `stripe*` columns on `Subscription`. A one-off purchase flow was re-added the same day: `POST /payments/stripe/subscription` (`subscriptions:manage`, STORE_OWNER only) creates a platform-account Stripe PaymentIntent for a public/active plan and writes a `PENDING` `SubscriptionPayment`; the webhook split then assigns the plan on `payment_intent.succeeded` (`kind === 'subscription'` → `handleSubscriptionEvents` → ledger `PAID` + `SubscriptionService.assignPlan`), with `CANCELED`/`FAILED` ledger transitions and a full refund falling back to the free plan. Super Admin can also `POST /platform/tenants/:id/subscription/cancel` to cancel and refund the latest paid purchase in one call (implemented in `PaymentsModule`). Tenants have a self-serve counterpart — `POST /payments/stripe/subscription/cancel` (`subscriptions:manage`) refunds the latest PAID purchase within a 7-day window (`SUBSCRIPTION_REFUND_WINDOW_DAYS`, from `paidAt`/`createdAt`) and downgrades to free; `GET /subscription` reports additive `refundEligible`/`refundDeadline`. Seeded plans carry `monthlyPrice`/`yearlyPrice`/`currency`. **Test suite: 104 unit suites (1,357 tests) + 4 integration suites (65 tests) pass. Typecheck and build pass.**
+
+- **Email OTP** (`apps/api/src/modules/email-otp/` + `src/modules/email/`): tenant-scoped OTP with an `otp_challenges` tenant entity, HMAC-SHA256 code hashing, resend cooldown/per-window cap/attempt limits, pessimistic-lock consume, and an `EMAIL_TRANSPORT` seam (`nodemailer` SMTP / log / memory; new `nodemailer` dependency). Routes `POST /auth/email-otp/{request,verify}` and `POST /auth/password-reset/confirm`; register dispatches `EMAIL_VERIFICATION`; login can be gated by `OTP_REQUIRE_EMAIL_VERIFIED`. Platform OTP and login MFA are deferred. Global `EmailVerifiedGuard` requires a verified email on all authenticated tenant routes (`403 EMAIL_NOT_VERIFIED`); `@AllowUnverifiedEmail()` opts out (logout).
+
+- **API caching** (`apps/api/src/common/cache`): a Redis-backed cache on six reads (`GET /products`, `/products/:id`, `/categories`, `/categories/:id`, `/subscription/plans`, `/platform/subscription-plans`) with post-write invalidation, forced `Cache-Control: no-store`, `X-Cache`, and a single-flight namespace store. Redis is the only driver (`REDIS_URL` required): namespace key sets, namespace versions, and cross-instance invalidation via pub/sub. `DB_STATEMENT_TIMEOUT_MS` bounds each PostgreSQL statement, and `GET /health` reports `cache: { enabled, driver, connected }`. The endpoint-priority admission-control experiment was removed; the stock `ThrottlerGuard` is back. Fingerprints now hash a versioned (`v3:`) type-preserving JSON-like canonical form with sorted keys/arrays, so delimiter-containing search values cannot collide with other query parameters (2026-10-24). A 2026-10-25 cleanup removed unused store entry metadata, the unused single-key delete operation, and redundant policy names. Health `PING` now waits for Redis readiness within the connect timeout, and local invalidation scans the bounded in-flight map directly, fixing an older-flight cleanup race. **API lint/typecheck and seven focused suites passed (130 tests, including four against live Redis).**
+
+- **Storefront product filters (2026-10-24):** `/products` now browses the full tenant catalog through the API instead of filtering the current 12 cards locally. URL-backed filters (`search`, `categoryId`, inclusive `minPrice`/`maxPrice`, `inStock`, six sort presets, `page`) are parsed/validated by `apps/tenant_store/src/lib/product-filters.ts`; invalid or repeated values suppress the product request and show editable errors. A responsive shadcn/Base UI form (desktop card + mobile `Sheet`) applies once on submit, shows chips/Clear all, and preserves committed filters through pagination. The page uses a request-local anonymous Axios client with only the trusted tenant header (no cookies/Authorization). New public `GET /api/v1/store/categories` returns active `{ id, name }[]`, ordered by name then id, and is uncached (`private, no-store` / `X-Cache: BYPASS`). Automated gates passed: targeted API Jest 14 suites / 319 tests, API typecheck + build, storefront lint/typecheck/build. Live PostgreSQL and manual browser/tenant-mode/accessibility checks were **not** run.
+
+- **Storefront filter sidebar, price slider, availability switch (2026-10-25, uncommitted):** on `lg`+ the `/products` filters are an `<aside>` beside the results, with the same shared draft in a left `Sheet` below that width. Price is one Base UI two-thumb slider (`ui/slider.tsx`) bounded by a separate `page=1&limit=1&sortBy=price&sortOrder=desc` tenant read rather than the visible 12 items; unset bounds stay unset, handles may meet but not cross, and a lookup failure leaves results usable. Availability is a Base UI switch (`ui/switch.tsx`): ON sends `inStock=true`, OFF omits it, and legacy `inStock=false` stays visible behind an explicit notice/reset. The sort parser no longer lowercases `sortBy` (restores `createdAt` drafts), and no-match "Clear all filters" now links to the tenant-aware clean `/products`. Verified with storefront lint, scoped ESLint, typecheck, 20 focused range/query assertions, SSR and orchestration probes (tenant isolation, fixed lookup, credential-free outbound calls, invalid-query suppression, price-only failure). **`next build` did not pass:** two attempts hit Turbopack worker OOM, including one with a 4 GB `NODE_OPTIONS`. Live/manual browser checks were **not** run.
+
+- **Storefront filter tags above results (2026-10-25, uncommitted):** implemented `plans/tenant-store-filter-chips-above-results.md`. `ActiveFilterChips.tsx` is first in the product results section; `filter-navigation.tsx` supplies the shared transition guard for the tag row and filter form. Existing tag removal, page-1 reset, Clear all, false/zero semantics, and tenant-aware URLs were preserved. Lint/typecheck, SSR placement/recovery probes, controlled navigation/pending probes, and the previous tenant orchestration probe passed. Production build repeated worker OOM then Turbopack IPC failure; live widths/hydration/navigation timing remain unchecked, so the plan stays `Approved`. Current contract: `apps/tenant_store/AGENTS.md` → API client and data fetching.
+
+- **Storefront ProductFilters refactor (2026-10-25, uncommitted):** implemented the structural work in `plans/tenant-store-product-filters-refactor.md`. Parent shrank from 646 to 208 lines; nine modules in `src/components/products/filters/` contain five controlled fields, shared fields/actions, types, and pure error/category/price-presentation utilities. Public props and parent state/navigation remain intact; neighboring catalog/provider/domain/UI/config files match preflight hashes. Verified: lint/typecheck, 36 helper cases with exact baseline output parity, 27 actual React/Base UI SSR renders with exact normalized-markup parity and ID/description checks, and nine synthetic-state callback scenarios. **Final storefront production build passed**, including TypeScript and all 17 generated pages; baseline had reproduced worker OOM. Live browser/hydration/focus/history/tenant-mode checks remain unverified because browser tooling was unavailable, so the plan remains `Approved`.
+
+- **Storefront all-screen filter Sheet (2026-10-25, uncommitted):** `/products` now uses the same left Sheet on mobile, tablet, and desktop, opened by a fixed lower-left Filters button. The desktop Card/sidebar and 18rem results column were removed; existing draft validation, Apply/Cancel/Clear behavior, URL navigation, category recovery, and tags remain. Storefront lint and typecheck passed. Standard Turbopack builds failed with the recurring worker Zone Allocation OOM/IPC panic, including a 4 GB heap retry; `next build --webpack` passed compilation, TypeScript, and generation of all 17 pages. **Current Turbopack build passes** (31s compile, 5.7s TypeScript, 17 pages generated). Live visual/focus checks remain open.
+
+- **Product filtering (2026-10-24):** `GET /products` supports `search` (trimmed, 1–255 chars, case-insensitive across name/sku/slug/description with literal `%`/`_`/`\`), `categoryId`, inclusive `minPrice`/`maxPrice`, `inStock`, allowlisted `sortBy`/`sortOrder` with deterministic `id DESC` tie-break, and `page`/`limit` (defaults 1/10, 50-item clamp). Filters and sorting apply with or without pagination; the array response is preserved when neither pagination parameter is supplied, otherwise the existing `{ data, total, page, limit }` envelope reports filtered totals. Invalid query values fail HTTP 400 before repository access. Verified with 14 Jest suites / 342 tests, TypeScript, and changed-file ESLint. Live PostgreSQL behavior was not exercised; repository assertions are mocked.
+
+- **Seeding module** (`apps/api/src/modules/seeding/`): registry-driven platform + tenant seeders (permissions, roles, super-admin, subscription-plans, subscription-backfill; opt-in categories), a single `SeedingBootstrapService` boot owner, and the `test/seed.ts` CLI (`seed`/`seed:platform`/`seed:tenants`/`seed:all`, `--name`, `--tenant`, `--force`). Idempotent, conflict-safe upserts; production seeding requires `SEED_ALLOW_PRODUCTION=true` + `--force`. Legacy seed services (`RbacSeedService`, `SubscriptionSeedService`, `TenantReseedService`, `categories.seed.ts`) were removed.
+
+- **Tenant schema size** (`getSchemaSizes` → `pg_total_relation_size`) is wired as `schemaSizeBytes` into `GET platform/tenants`, `GET platform/tenants/:id`, and `GET dashboard/stats`, with a display-only `schemaCapacityBytes` from `TENANT_DB_CAPACITY_BYTES`, and rendered in the super-admin tenant list/show and the store-owner StorageCard. Display-only; size failures report `0`.
+
+- **Store owner dashboard** (`tenant_dash`): auth + single-flight refresh, tenant-scoped lists and forms for products/categories/orders/users, payments and store settings, plus public `/verify-email`, `/forgot-password`, `/reset-password` pages backed by `otp.api.ts`. The `/settings/subscription` page shows the current plan (status/billing/price/period/trial) and live usage against `subscription`, `subscription/plans`, `subscription/usage` plus an "Available plans" shadcn `Tabs` section with a Monthly/Yearly toggle. Self-serve checkout is restored (2026-10-09): each non-current billable tab has an **Upgrade** button opening a Stripe Elements `PlanCheckoutDialog` (`src/lib/stripe.ts` + `@stripe/*` deps, build-time `VITE_STRIPE_PUBLISHABLE_KEY`) that creates a `POST payments/stripe/subscription` intent, confirms the card, and polls `GET subscription` until the webhook assigns the plan. Self-serve **cancel + refund** is now built (2026-10-09): a destructive button + `CancelSubscriptionDialog` on the current-plan card when `subscription.refundEligible`, posting `payments/stripe/subscription/cancel` and `refetchAll()` on success (Resume remains unbuilt). `subscriptions.api.ts` gained `createPaymentIntent` (in-flight dedupe) and `cancelSubscription`. An unverified login redirects to `/verify-email` without storing a session. Tenant resolution has an optional apex `?tenant=<slug>` fallback when the build-time `VITE_ALLOW_SUBDOMAIN=false` (browser resolve in `src/api/tenant.ts`; `apiClient` attaches `x-tenant-slug`; `TenantParamSync` re-appends the param after Refine navigation). Fourteen Vitest files (169 tests). A 2026-10-09 review-fix pass (plan `.kilo/plans/1791552085658-tenant-dashboard-review-fix-plan.md`) added: full-reload cache reset on logout / tenant switch (`src/lib/client-reset.ts`, `src/lib/tenant-sync.ts`), tenant-aware forced-401 redirect, `canManageCatalog` role gates on catalog create/row actions, explicit-`null` clearing for product category and coupon optionals, `PENDING`/`CANCELED` payment statuses, list/detail error+retry states (`QueryErrorState`), a route-level error boundary, confirmation dialogs for destructive actions, `nextStatuses`-gated order-status options, accessibility labels, and `import.meta.env.DEV` gating of Refine Devtools (removed from the production bundle). Low findings are deferred to the plan's backlog. (That pass also hardened an older subscription checkout; it was removed and then freshly re-added as the 2026-10-09 self-serve checkout described above.)
+
+- **Super admin dashboard** (`super_admin_dash`): tenant provisioning/lifecycle, platform payments oversight, currency request approve/reject, and subscription plan CRUD (list/create/edit/delete) plus a per-tenant subscription panel (current plan/status/period, live usage, change plan + interval, cancel/reactivate) backed by the platform subscription reads. A 2026-10-19 bundle pass added `manualChunks` vendor groups, lazy-loaded every route except `Dashboard`/`*`, and gated Refine Devtools behind `import.meta.env.DEV`: initial JS fell from 1,073.62 kB / 330.16 kB gzip (one chunk) to 782.05 kB / 252.00 kB gzip, with no chunk over 500 kB.
+
+- **Embedded platform dashboard** (`/platform`): the API serves the production build of `super_admin_dash` from `apps/api/static` via `@nestjs/serve-static@4` (NestJS 10 line). The build uses `base: '/platform/'` and an `import.meta.env.BASE_URL`-derived `BrowserRouter` basename, so `/platform` and deep links work while `/api/v1` remains unchanged. Two `ServeStaticModule` registrations handle root vs. deep links, and an `exclude` pattern keeps missing assets/dotfiles on the normal Nest 404. `BUILD_STANDALONE=true` preserves the separate Docker image (`dist`, base `/`).
+
+- **Storefront** (`tenant_store`): host-decided platform vs tenant contexts (`classifyHost` in `src/lib/tenant/host.ts`), with an optional apex `?tenant=<slug>` fallback when the build-time `NEXT_PUBLIC_ALLOW_SUBDOMAIN=false` (proxy `resolveTenantSlug`; a trusted `x-tenant-slug` request header is injected and client navigation keeps the param), two route groups with two root layouts, platform landing/plans/register-store on the apex (`/` rewritten to `/home`) and the subdomain storefront for tenants, NextAuth credentials login with the refresh token kept server-side only, tenant-keyed store-info cache, catalog by numeric id, cart, checkout, Stripe payment step, order history/cancel/return, refresh proxy, route `loading`/`error` boundaries, product `notFound()` + `generateMetadata`, and a hard 404 for unknown store subdomains. See `activeContext.md` for the host-routing change and the earlier architecture-review remediation (P0-1/P0-2, P1-3/P1-4/P1-5, P2-3..P2-6, P2-9, P3-3..P3-6). Catalog caching (P1-1/P1-2), `PlaceOrder` split (P2-2), full SEO (P2-7) and shared API types (P2-8) remain. Server-side catalog search/filtering for `/products` is now wired (2026-10-24, see above).
+
+- **Storefront email OTP** (`apps/tenant_store`): `otpApi.ts` plus public `/verify-email`, `/forgot-password`, `/reset-password` pages (shadcn `input-otp` code entry). Register routes to verify; any `EMAIL_NOT_VERIFIED` (login, proxy before render for protected paths, or the apiClient interceptor) redirects to `/verify-email`, which reads the email from the session.
+
+- **Test file reorganization (2026-10-26, uncommitted):** All API unit test files moved from co-located `*.spec.ts` into `specs/` subdirectories mirroring the module structure (e.g., `src/common/cache/specs/`, `src/modules/products/specs/`, `src/modules/auth/specs/`). Integration tests live under `specs/integration/`. Jest config unchanged; all 1,357 unit tests and 65 integration tests pass. Typecheck and build pass.
+
+- **API README documentation completed (2026-10-26, uncommitted):** `apps/api/README.md` completely rewritten with verified architecture documentation covering all required sections (overview, tech stack, directory structure, modules, REST conventions, auth, multi-tenancy, database, caching, integrations, configuration, local development, testing, security, limitations, source index). All 22 controllers and routes verified against source; environment variables from Joi schema; Docker compose path corrected; manual verification script executed successfully; all 28 local links resolve; Prettier passes.
 
 ## What is left / not wired
 
-- No migrations system; tenant schemas rely on entity metadata + `DB_SYNCHRONIZE_TENANTS`. The
-  public-schema subscription tables are also created by `synchronize`, not migrations.
-- Stripe SaaS billing **phase 2** is not wired: no plan switching/proration, no Billing Portal,
-  no stored Stripe Price ids on `SubscriptionPlan`, and no webhook event-dedupe table (idempotent
-  upserts only). Already-billed tenants are blocked from a new checkout intent. Super Admin can
-  still assign plans directly.
-- The public `SubscriptionPayment` entity (`subscription_payments`) now has an end-to-end flow:
-  `POST /payments/stripe/subscription` writes a `PENDING` row, and the Stripe webhook reconciles it
-  via the two-handler split (`handleOrderPaymentEvents` / `handleSubscriptionEvents`, classified on
-  `metadata.data.kind`). Subscription `succeeded` assigns the plan (`assignPlan`, idempotent when
-  already `PAID`), `canceled`/`payment_failed` update the ledger, and a **fully refunded** payment
-  falls back to the free plan (`SubscriptionService.downgradeToFree`; partial refunds keep the paid
-  plan). A `PLAN_INACTIVE`/missing-row error on `succeeded` still returns non-2xx, so Stripe
-  retries until resolved. Table is created by `synchronize` on boot.
-- Subscription database-size gate runs `pg_total_relation_size` only at checkout; product create is
-  gated by a live `PRODUCTS` count (free 10 / starter 100 / growth 1000 / pro 5000 / enterprise
-  unlimited). The HTTP-layer `SubscriptionGuard` is parity-only and runs the same checks as the
-  service; `STORE_ADMINS`/`STORAGE_BYTES` stay service-only because they have no annotatable tenant
-  route (store-admin creation is on the `@Public @Platform` register route).
-- Base product categories are created only by the **opt-in** tenant seeder
-  (`seed --tenants --name categories`); provisioning, reseeding, and boot never create them. The old
-  dead `categories.seed.ts` was deleted as part of the seeding-module consolidation.
-- Store owner: cart `UpdateCartItem`/`ClearCart` equivalents and some endpoints exist but are not
-  wired to UI on the storefront (see `apps/tenant_store` cart endpoints).
-- Super admin: `authProvider.getIdentity` returns `{ id, name, roles }` but `UserAvatar`/`UserInfo`
-  expect `{ firstName, lastName, fullName, ... }`, so avatar initials/identity text render blank.
-- Super admin unused boilerplate: `@refinedev/rest`, `@refinedev/simple-rest`,
-  `@refinedev/react-hook-form`, `sign-up-form.tsx`, `forgot-password-form.tsx`, `edit-view.tsx`.
+- No migrations system; tenant schemas rely on entity metadata + `DB_SYNCHRONIZE_TENANTS`. The public-schema subscription tables are also created by `synchronize`, not migrations.
+
+- Stripe SaaS billing **phase 2** is not wired: no plan switching/proration, no Billing Portal, no stored Stripe Price ids on `SubscriptionPlan`, and no webhook event-dedupe table (idempotent upserts only). Already-billed tenants are blocked from a new checkout intent. Super Admin can still assign plans directly.
+
+- The public `SubscriptionPayment` entity (`subscription_payments`) now has an end-to-end flow: `POST /payments/stripe/subscription` writes a `PENDING` row, and the Stripe webhook reconciles it via the two-handler split (`handleOrderPaymentEvents` / `handleSubscriptionEvents`, classified on `metadata.data.kind`). Subscription `succeeded` assigns the plan (`assignPlan`, idempotent when already `PAID`), `canceled`/`payment_failed` update the ledger, and a **fully refunded** payment falls back to the free plan (`SubscriptionService.downgradeToFree`; partial refunds keep the paid plan). A `PLAN_INACTIVE`/missing-row error on `succeeded` still returns non-2xx, so Stripe retries until resolved. Table is created by `synchronize` on boot.
+
+- Subscription database-size gate runs `pg_total_relation_size` only at checkout; product create is gated by a live `PRODUCTS` count (free 10 / starter 100 / growth 1000 / pro 5000 / enterprise unlimited). The HTTP-layer `SubscriptionGuard` is parity-only and runs the same checks as the service; `STORE_ADMINS`/`STORAGE_BYTES` stay service-only because they have no annotatable tenant route (store-admin creation is on the `@Public @Platform` register route).
+
+- Base product categories are created only by the **opt-in** tenant seeder (`seed --tenants --name categories`); provisioning, reseeding, and boot never create them. The old dead `categories.seed.ts` was deleted as part of the seeding-module consolidation.
+
+- Store owner: cart `UpdateCartItem`/`ClearCart` equivalents and some endpoints exist but are not wired to UI on the storefront (see `apps/tenant_store` cart endpoints).
+
+- Super admin: `authProvider.getIdentity` returns `{ id, name, roles }` but `UserAvatar`/`UserInfo` expect `{ firstName, lastName, fullName, ... }`, so avatar initials/identity text render blank.
+
+- Super admin unused boilerplate: `@refinedev/rest`, `@refinedev/simple-rest`, `@refinedev/react-hook-form`, `sign-up-form.tsx`, `forgot-password-form.tsx`, `edit-view.tsx`.
+
+- API lint: 14 errors in the reorganized test files (unused vars, unsafe `any` assignments) — pre-existing code style issues.
 
 ## Known issues / tech debt
 
-- **Kilo CLI frontmatter (tooling, not app code):** `@kilocode/cli` 7.8.3 reports
-  `Failed to parse frontmatter: No context found for instance` for every `.kilo/command/*.md` and
-  `.kilo/agent/*.md`. A minimal one-line frontmatter and even a file with no frontmatter both fail,
-  so the defect is in the compiled CLI engine, not the files. Commands may load without metadata
-  until the CLI is updated.
+- **Kilo CLI frontmatter (tooling, not app code):** `@kilocode/cli` 7.8.3 reports `Failed to parse frontmatter: No context found for instance` for every `.kilo/command/*.md` and `.kilo/agent/*.md`. A minimal one-line frontmatter and even a file with no frontmatter both fail, so the defect is in the compiled CLI engine, not the files. Commands may load without metadata until the CLI is updated.
+
 - `PaymentsModule` provides a second `TenantManagerService` instance (duplicate DataSource cache).
+
 - `R2Module` lists `TenantModule` as a provider instead of importing it.
-- `PaymentsService` writes `canceledAt`/`failedAt` properties that are not entity columns
-  (silent no-ops). `payment.entity.ts` has a stale comment calling the module a scaffold.
-- Storefront `src/app/page.tsx` debug button and the login/401 `console.log`s were removed, and the
-  swallowed `catch {}` blocks in register/cart/checkout now surface errors (2026-10-08 review).
+
+- `PaymentsService` writes `canceledAt`/`failedAt` properties that are not entity columns (silent no-ops). `payment.entity.ts` has a stale comment calling the module a scaffold.
+
+- Storefront `src/app/page.tsx` debug button and the login/401 `console.log`s were removed, and the swallowed `catch {}` blocks in register/cart/checkout now surface errors (2026-10-08 review).
+
 - Storefront `.gitignore` now covers `.env*.local` (including `.env.production.local`).
-- Dashboards import Refine Devtools only in development: both `tenant_dash` and `super_admin_dash`
-  gate them behind `import.meta.env.DEV` (tree-shaken from production since 2026-10-09 / 2026-10-19).
-  Both bind port 5001 in dev (set `REFINE_DEVTOOLS_PORT` to separate).
+
+- Dashboards import Refine Devtools only in development: both `tenant_dash` and `super_admin_dash` gate them behind `import.meta.env.DEV` (tree-shaken from production since 2026-10-09 / 2026-10-19). Both bind port 5001 in dev (set `REFINE_DEVTOOLS_PORT` to separate).
 
 ## Verification commands
 
-- `pnpm --filter saas_store_api test` — API unit specs.
+- `pnpm --filter saas_store_api test` — API unit specs (1,357 tests pass).
+- `pnpm --filter saas_store_api test:integration` — API integration specs (65 tests pass, 1 skipped).
 - `pnpm --filter saas_store_api typecheck` / `pnpm --filter tenant_dash build` — build gates.
-- `pnpm --filter tenant_dash test` — store owner Vitest.
-- `pnpm --filter super_admin_dash build` then `pnpm --filter saas_store_api build` — embeds the
-  platform dashboard in `apps/api/static`; run the API and check `/platform` plus `/api/v1/health`.
-- `docker compose up -d redis` (Postgres is external) then `pnpm --filter saas_store_api dev` for
-  manual API checks.
+- `pnpm --filter tenant_dash test` — store owner Vitest (169 tests).
+- `pnpm --filter super_admin_dash build` then `pnpm --filter saas_store_api build` — embeds the platform dashboard in `apps/api/static`; run the API and check `/platform` plus `/api/v1/health`.
+- `docker compose up -d redis` (Postgres is external) then `pnpm --filter saas_store_api dev` for manual API checks.
+- `pnpm --filter tenant_store build` — storefront production build (now passes with Turbopack).
 
 ## Manual integration scripts (need live Postgres + `.env`)
 
-`test/verify-tenant-provision.ts`, `verify-tenant-guard.ts`, `verify-tenant-lifecycle.ts`,
-`verify-register-store-guard.ts`, `reset-dev-db.ts`, `seed-load-test.ts`,
-`verify-email-otp.ts`, `migrate-otp-challenges.ts` (see `apps/api/AGENTS.md`).
+`pnpm --dir apps/api exec ts-node -r tsconfig-paths/register test/verify-tenant-provision.ts`, `verify-tenant-guard.ts`, `verify-tenant-lifecycle.ts`, `verify-register-store-guard.ts`, `reset-dev-db.ts`, `seed-load-test.ts`, `verify-email-otp.ts`, `migrate-otp-challenges.ts` (see `apps/api/AGENTS.md`).
