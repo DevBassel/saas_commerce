@@ -25,10 +25,7 @@ describe('PlatformSubscriptionPaymentController', () => {
 
   describe('cancelAndRefund', () => {
     it('delegates to StripePaymentService.cancelSubscriptionWithRefund with id', async () => {
-      const expected = {
-        refunded: true,
-        subscription: { id: 1, status: 'CANCELED' },
-      };
+      const expected = { id: 1, planId: 1, status: 'ACTIVE' };
       stripePaymentService.cancelSubscriptionWithRefund.mockResolvedValue(
         expected,
       );

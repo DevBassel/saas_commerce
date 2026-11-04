@@ -16,12 +16,12 @@ workspace rules, deployment, and invariants that must not change.
 
 ## Workspace layout
 
-| Path | Package name | Stack | Dev port |
-| --- | --- | --- | --- |
-| `apps/api` | `saas_store_api` | NestJS 10, TypeORM 0.3, PostgreSQL 16 | 4000 |
-| `apps/store_owner_dashboard` | `tenant_dash` | Refine v5, Vite 6, React 19 | 5174 |
-| `apps/super_admin_dashboard` | `super_admin_dash` | Refine v5, Vite 6, React 19 | 5173 |
-| `apps/tenant_store` | `tenant_store` | Next.js 16 App Router, React 19 | 3000 |
+| Path                         | Package name       | Stack                                 | Dev port |
+| ---------------------------- | ------------------ | ------------------------------------- | -------- |
+| `apps/api`                   | `saas_store_api`   | NestJS 10, TypeORM 0.3, PostgreSQL 16 | 4000     |
+| `apps/store_owner_dashboard` | `tenant_dash`      | Refine v5, Vite 6, React 19           | 5174     |
+| `apps/super_admin_dashboard` | `super_admin_dash` | Refine v5, Vite 6, React 19           | 5173     |
+| `apps/tenant_store`          | `tenant_store`     | Next.js 16 App Router, React 19       | 3000     |
 
 Package names are unchanged from the source repositories, so Turborepo filters use them verbatim.
 `packages/*` is a declared workspace glob and is intentionally empty (only `.gitkeep`).
@@ -173,21 +173,6 @@ These were deliberately preserved when the source repositories were merged. Do n
 archives. The monorepo imported the committed `main` of the first two (identical SHAs, plus the
 `pre-cleanup` tag) and a plain copy of the third (its source repo had zero commits). Do not push to
 the old remotes or edit the archives.
-
-## OpenCode planning workflow
-
-For OpenCode feature requests and complex tasks, follow
-`.opencode/instructions/plan-workflow.md`: use the default `project-plan` agent or
-`/plan`, inspect the relevant code, save a complete implementation plan directly in
-root `plans/`, and stop for explicit user approval. Creating a plan is not approval
-to execute it. `/implement-plan plans/<name>.md` is the user's approval/Build handoff.
-Usage and version-specific limits: `plans/README.md`.
-
-During planning, only the create-only `save-plan` tool may write; application code,
-configuration, infrastructure, dependencies, and the memory bank stay read-only.
-Never overwrite an existing plan without explicit user permission. This project's
-root-plan workflow takes precedence over generic planning-file layouts and autonomous
-continuation instructions. Existing app conventions and tenant-isolation rules apply.
 
 ## Memory Bank
 

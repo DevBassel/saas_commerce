@@ -3,7 +3,8 @@ import { TenantManagerService } from '../../tenants/services/tenant-manager.serv
 import { Order } from '../../orders/entities/order.entity';
 import { Payment } from '../entities/payment.entity';
 import { PaymentStatus } from '../constants/payment-status.enum';
-import PaymentService from '../payments.service';
+import { OrderPaymentService } from '../services/order-payment.service';
+import { StripeClientService } from '../stripe/stripe-client.service';
 
 const TENANT = 'tenant_acme';
 const META = { orderId: 1, tenant: TENANT, userId: 7 };
@@ -22,27 +23,16 @@ const buildMocks = () => {
       Promise.resolve(entity === Payment ? paymentRepo : orderRepo),
     ),
   };
-  const subscriptionPaymentRepo = {
-    findOne: jest.fn(),
-    update: jest.fn(),
-  };
-  const subscriptions = {
-    assignPlan: jest.fn(),
-    downgradeToFree: jest.fn(),
-  };
-
-  const service = new PaymentService(
+  const service = new OrderPaymentService(
+    {} as never,
     tenantManager as unknown as TenantManagerService,
-    subscriptionPaymentRepo as never,
-    subscriptions as never,
+    { client: {} } as StripeClientService,
   );
   return {
     service,
     paymentRepo,
     orderRepo,
     tenantManager,
-    subscriptionPaymentRepo,
-    subscriptions,
   };
 };
 
@@ -65,7 +55,7 @@ const order = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-describe('PaymentService', () => {
+describe('OrderPaymentService', () => {
   it('resolves repositories with the tenant schema from metadata', async () => {
     const { service, tenantManager, paymentRepo, orderRepo } = buildMocks();
     paymentRepo.findOne.mockResolvedValue(payment());
@@ -85,7 +75,9 @@ describe('PaymentService', () => {
     const tenantManager = {
       getRepository: jest.fn(),
     } as unknown as TenantManagerService;
-    const service = new PaymentService(tenantManager, {} as never, {} as never);
+    const service = new OrderPaymentService({} as never, tenantManager, {
+      client: {},
+    } as StripeClientService);
 
     await expect(
       (

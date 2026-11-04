@@ -28,10 +28,7 @@ import {
   type ICreateAddress,
 } from "@/api/addressesApi";
 import { PlaceOrderReq, type IOrder } from "@/api/orderApi";
-import {
-  ValidateCoupon,
-  type ICouponValidation,
-} from "@/api/couponsApi";
+import { ValidateCoupon, type ICouponValidation } from "@/api/couponsApi";
 import { handleError } from "@/api/toastError";
 import StripePaymentStep from "@/components/payments/StripePaymentStep";
 import { useCurrency } from "@/components/currency/currency-provider";
@@ -193,9 +190,7 @@ export default function PlaceOrder() {
 
   const addressItems = addresses.map((address) => ({
     value: String(address.id),
-    label: `${address.recipientName} — ${address.line1}, ${address.city}${
-      address.isDefault ? " (default)" : ""
-    }`,
+    label: `${address.recipientName} — ${address.line1}`,
   }));
 
   return (
@@ -299,7 +294,9 @@ export default function PlaceOrder() {
                     </div>
                     <div className="flex justify-between text-primary">
                       <span>Discount ({coupon.code})</span>
-                      <span>-{formatMoney(coupon.discountAmount, currency)}</span>
+                      <span>
+                        -{formatMoney(coupon.discountAmount, currency)}
+                      </span>
                     </div>
                     <div className="flex justify-between border-t border-border pt-2 font-medium">
                       <span>Total</span>

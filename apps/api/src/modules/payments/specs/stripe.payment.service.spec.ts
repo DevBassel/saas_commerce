@@ -17,8 +17,12 @@ import { TenantManagerService } from '../../tenants/services/tenant-manager.serv
 import { Payment } from '../entities/payment.entity';
 import { PaymentStatus } from '../constants/payment-status.enum';
 import { PaymentsProviders } from '../constants/payments-providers';
-import PaymentService from '../payments.service';
 import StripePaymentService from '../stripe.payment.service';
+import { StripeClientService } from '../stripe/stripe-client.service';
+import { OrderPaymentService } from '../services/order-payment.service';
+import { SubscriptionPaymentService } from '../services/subscription-payment.service';
+import { StripeWebhookService } from '../webhooks/stripe-webhook.service';
+import { StripeConnectService } from '../services/stripe-connect.service';
 
 jest.mock('stripe', () => {
   class StripeInvalidRequestError extends Error {
@@ -129,30 +133,45 @@ const buildConfig = (
 };
 
 const buildMocks = (config = buildConfig()) => {
+  const findPayment = jest.fn<Promise<unknown>, []>();
+  const findOrder = jest.fn<Promise<unknown>, []>();
   const paymentRepo = {
-    findOne: jest.fn(),
+    findOne: findPayment,
     save: jest.fn((data: unknown) => data),
     update: jest.fn(),
   };
   const orderRepo = {
-    findOne: jest.fn(),
+    findOne: findOrder,
     save: jest.fn((data: unknown) => data),
+    manager: { transaction: jest.fn() },
   };
+  const manager = {
+    findOne: jest.fn((entity: unknown) =>
+      entity === Payment ? paymentRepo.findOne() : orderRepo.findOne(),
+    ),
+    create: jest.fn((_entity: unknown, data: unknown) => data),
+    save: jest.fn((_entity: unknown, data: unknown) => data),
+    update: jest.fn(),
+  };
+  orderRepo.manager.transaction.mockImplementation(
+    (callback: (value: typeof manager) => unknown) => callback(manager),
+  );
   const tenantManager = {
     getRepository: jest.fn((entity: unknown) =>
       Promise.resolve(entity === Payment ? paymentRepo : orderRepo),
     ),
   } as unknown as TenantManagerService;
-  const paymentService = {
+  const orderWebhookHandler = {
     successOrderPayment: jest.fn(),
     cancelOrderPayment: jest.fn(),
     failedOrderPayment: jest.fn(),
     refundedOrderPayment: jest.fn(),
+  };
+  const subscriptionWebhookHandler = {
     successSubscriptionPayment: jest.fn(),
     cancelSubscriptionPayment: jest.fn(),
     failedSubscriptionPayment: jest.fn(),
     refundedSubscriptionPayment: jest.fn(),
-    downgradeSubscriptionToFree: jest.fn(),
   };
   const plansRepo = { findOneBy: jest.fn() };
   const subscriptionRepo = { findOneBy: jest.fn() };
@@ -162,23 +181,48 @@ const buildMocks = (config = buildConfig()) => {
     create: jest.fn((data: unknown) => data),
     save: jest.fn((data: unknown) => data),
   };
-  const service = new StripePaymentService(
+  const subscriptions = {
+    assignPlan: jest.fn(),
+    downgradeToFree: jest.fn(),
+  };
+  const stripeClient = new StripeClientService(config);
+  const orderPayments = new OrderPaymentService(
     config,
     tenantManager,
-    paymentService as unknown as PaymentService,
+    stripeClient,
+  );
+  const subscriptionPayments = new SubscriptionPaymentService(
+    stripeClient,
     plansRepo as never,
     subscriptionRepo as never,
     subscriptionPaymentRepo as never,
+    subscriptions as never,
+  );
+  const webhooks = new StripeWebhookService(
+    config,
+    stripeClient,
+    orderWebhookHandler as unknown as OrderPaymentService,
+    subscriptionWebhookHandler as unknown as SubscriptionPaymentService,
+  );
+  const connect = new StripeConnectService(config, stripeClient);
+  const service = new StripePaymentService(
+    orderPayments,
+    subscriptionPayments,
+    webhooks,
+    connect,
   );
   return {
     service,
     paymentRepo,
     orderRepo,
+    manager,
     tenantManager,
-    paymentService,
+    paymentService: orderWebhookHandler,
+    subscriptionWebhookHandler,
     plansRepo,
     subscriptionRepo,
     subscriptionPaymentRepo,
+    subscriptions,
     config,
   };
 };
@@ -242,8 +286,81 @@ describe('StripePaymentService', () => {
       ).rejects.toBeInstanceOf(ConflictException);
     });
 
-    it('creates a destination-charge payment intent and mirrors PENDING', async () => {
+    it('rejects an order already marked PAID', async () => {
+      const { service, orderRepo } = buildMocks();
+      orderRepo.findOne.mockResolvedValue(
+        orderEntity({ paymentStatus: PaymentStatus.PAID }),
+      );
+
+      await expect(
+        withTenant(tenantEntity(), () =>
+          service.createOrderPaymentIntent({ orderId: 1 }),
+        ),
+      ).rejects.toThrow('Order has already been paid');
+      expect(stripe.paymentIntents.create).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      'requires_payment_method',
+      'requires_confirmation',
+      'requires_action',
+      'processing',
+    ])('reuses an existing %s intent', async (status) => {
+      const { service, orderRepo, paymentRepo, manager } = buildMocks();
+      orderRepo.findOne.mockResolvedValue(orderEntity());
+      paymentRepo.findOne.mockResolvedValue({ paymentRef: 'pi_existing' });
+      stripe.paymentIntents.retrieve.mockResolvedValue({
+        id: 'pi_existing',
+        status,
+        client_secret: 'cs_existing',
+      });
+
+      await expect(
+        withTenant(tenantEntity(), () =>
+          service.createOrderPaymentIntent({ orderId: 1 }),
+        ),
+      ).resolves.toEqual({ clientSecret: 'cs_existing' });
+      expect(stripe.paymentIntents.create).not.toHaveBeenCalled();
+      expect(manager.save).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['succeeded', 'Order has already been paid'],
+      [
+        'canceled',
+        'Previous payment attempt was canceled. A new payment attempt is required.',
+      ],
+    ])('rejects an existing %s intent', async (status, message) => {
       const { service, orderRepo, paymentRepo } = buildMocks();
+      orderRepo.findOne.mockResolvedValue(orderEntity());
+      paymentRepo.findOne.mockResolvedValue({ paymentRef: 'pi_existing' });
+      stripe.paymentIntents.retrieve.mockResolvedValue({
+        id: 'pi_existing',
+        status,
+      });
+
+      await expect(
+        withTenant(tenantEntity(), () =>
+          service.createOrderPaymentIntent({ orderId: 1 }),
+        ),
+      ).rejects.toThrow(message);
+      expect(stripe.paymentIntents.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-positive order amount', async () => {
+      const { service, orderRepo } = buildMocks();
+      orderRepo.findOne.mockResolvedValue(orderEntity({ total: 0 }));
+
+      await expect(
+        withTenant(tenantEntity(), () =>
+          service.createOrderPaymentIntent({ orderId: 1 }),
+        ),
+      ).rejects.toThrow('Invalid order amount');
+      expect(stripe.paymentIntents.create).not.toHaveBeenCalled();
+    });
+
+    it('creates a destination-charge payment intent and mirrors PENDING', async () => {
+      const { service, orderRepo, manager } = buildMocks();
       const order = orderEntity();
       orderRepo.findOne.mockResolvedValue(order);
       stripe.paymentIntents.create.mockResolvedValue({
@@ -256,6 +373,10 @@ describe('StripePaymentService', () => {
       );
 
       expect(result).toEqual({ clientSecret: 'cs_1' });
+      expect(manager.findOne).toHaveBeenNthCalledWith(1, Order, {
+        where: { id: 1 },
+        lock: { mode: 'pessimistic_write' },
+      });
       const params = firstCallArg(stripe.paymentIntents.create);
       expect(params).toMatchObject({
         amount: 2500,
@@ -268,7 +389,12 @@ describe('StripePaymentService', () => {
       );
       expect(params).not.toHaveProperty('application_fee_amount');
 
-      expect(paymentRepo.save).toHaveBeenCalledWith(
+      expect(stripe.paymentIntents.create).toHaveBeenCalledWith(
+        expect.anything(),
+        { idempotencyKey: 'order:1:payment:v1' },
+      );
+      expect(manager.create).toHaveBeenCalledWith(
+        Payment,
         expect.objectContaining({
           order,
           amount: 25,
@@ -278,9 +404,14 @@ describe('StripePaymentService', () => {
           paymentRef: 'pi_1',
         }),
       );
-      expect(orderRepo.save).toHaveBeenCalledWith(
-        expect.objectContaining({ paymentStatus: PaymentStatus.PENDING }),
+      expect(manager.save).toHaveBeenCalledWith(
+        Payment,
+        expect.objectContaining({ paymentRef: 'pi_1' }),
       );
+      expect(manager.update).toHaveBeenCalledWith(Order, 1, {
+        paymentStatus: PaymentStatus.PENDING,
+      });
+      expect(orderRepo.manager.transaction).toHaveBeenCalledTimes(1);
     });
 
     it('adds the application fee only when it is greater than zero', async () => {
@@ -388,6 +519,56 @@ describe('StripePaymentService', () => {
         meta,
         'pi_1',
       );
+    });
+
+    it('dispatches subscription success only to subscription reconciliation', async () => {
+      const { service, paymentService, subscriptionWebhookHandler } =
+        buildMocks();
+      const meta = {
+        kind: 'subscription',
+        subscriptionId: 1,
+        tenantId: 3,
+        planId: 2,
+        billingInterval: 'MONTHLY',
+        tenant: TENANT_SCHEMA,
+      };
+      dispatch('payment_intent.succeeded', {
+        id: 'pi_sub_1',
+        metadata: { data: JSON.stringify(meta) },
+      });
+
+      await service.webHook(webhookReq(Buffer.from('{}')), 'sig');
+
+      expect(
+        subscriptionWebhookHandler.successSubscriptionPayment,
+      ).toHaveBeenCalledWith(meta, 'pi_sub_1');
+      expect(paymentService.successOrderPayment).not.toHaveBeenCalled();
+    });
+
+    it('dispatches subscription failure reason only to subscription reconciliation', async () => {
+      const { service, paymentService, subscriptionWebhookHandler } =
+        buildMocks();
+      dispatch('payment_intent.payment_failed', {
+        id: 'pi_sub_1',
+        last_payment_error: { message: 'declined' },
+        metadata: {
+          data: JSON.stringify({
+            kind: 'subscription',
+            subscriptionId: 1,
+            tenantId: 3,
+            planId: 2,
+            billingInterval: 'MONTHLY',
+            tenant: TENANT_SCHEMA,
+          }),
+        },
+      });
+
+      await service.webHook(webhookReq(Buffer.from('{}')), 'sig');
+
+      expect(
+        subscriptionWebhookHandler.failedSubscriptionPayment,
+      ).toHaveBeenCalledWith('pi_sub_1', 'declined');
+      expect(paymentService.failedOrderPayment).not.toHaveBeenCalled();
     });
 
     it('dispatches payment_intent.canceled to canceledPayment', async () => {
@@ -799,7 +980,7 @@ describe('StripePaymentService', () => {
         service,
         subscriptionRepo,
         subscriptionPaymentRepo,
-        paymentService,
+        subscriptions,
       } = buildMocks();
       subscriptionRepo.findOneBy
         .mockResolvedValueOnce({ id: 1, tenantId: 7 })
@@ -822,9 +1003,7 @@ describe('StripePaymentService', () => {
           refundedAt: expect.any(Date) as Date,
         }),
       );
-      expect(paymentService.downgradeSubscriptionToFree).toHaveBeenCalledWith(
-        1,
-      );
+      expect(subscriptions.downgradeToFree).toHaveBeenCalledWith(1);
       expect(result).toMatchObject({ id: 1, planId: 2 });
     });
 
@@ -833,7 +1012,7 @@ describe('StripePaymentService', () => {
         service,
         subscriptionRepo,
         subscriptionPaymentRepo,
-        paymentService,
+        subscriptions,
       } = buildMocks();
       subscriptionRepo.findOneBy.mockResolvedValue({ id: 1, tenantId: 7 });
       subscriptionPaymentRepo.findOne
@@ -843,9 +1022,7 @@ describe('StripePaymentService', () => {
       await service.cancelOwnSubscription(7);
 
       expect(stripe.refunds.create).not.toHaveBeenCalled();
-      expect(paymentService.downgradeSubscriptionToFree).toHaveBeenCalledWith(
-        1,
-      );
+      expect(subscriptions.downgradeToFree).toHaveBeenCalledWith(1);
     });
 
     it('maps StripeInvalidRequestError to a 400', async () => {

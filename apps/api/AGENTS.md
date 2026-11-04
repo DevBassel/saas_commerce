@@ -270,9 +270,12 @@ rows. There is no `seeder_runs` tracking table and no migration: seeders are saf
 
 ## Payments
 
-Payments are **implemented** in `src/modules/payments/` (controller, service,
-`stripe.payment.service.ts`, module, entity, DTO, constants). The stale comment in
-`payment.entity.ts` calling it a scaffold is out of date.
+Payments are **implemented** in `src/modules/payments/`. `StripePaymentService` remains the exported
+compatibility facade used by controllers, orders, dashboard, and platform services. Focused internal
+providers own the workflows: `OrderPaymentService`, `SubscriptionPaymentService`,
+`StripeWebhookService`, and `StripeConnectService`. `StripeClientService` constructs the module's
+single shared Stripe SDK client. `PaymentsModule` imports `TenantModule` and reuses its
+`TenantManagerService`; it does not create a second tenant DataSource cache.
 
 - Routes: `POST /payments/stripe` (create a PaymentIntent for an order),
   `POST /payments/stripe/subscription` (create a PaymentIntent for a subscription plan; returns
@@ -282,8 +285,9 @@ Payments are **implemented** in `src/modules/payments/` (controller, service,
   (`payments:manage`), `POST /payments/stripe/connect` (`payments:manage`). `PaymentsModule` also
   hosts the platform `POST /platform/tenants/:id/subscription/cancel` (SUPER_ADMIN): it refunds the
   tenant's latest paid `SubscriptionPayment` on the platform account and falls back to the free plan.
-- Stripe is called directly (no `PaymentProvider` seam, no `PAYMENT_PROVIDER` token, no
-  `payments.provider` env). `Stripe` is the only payment provider constant in code.
+- Stripe is called through the shared `StripeClientService` (no `PaymentProvider` seam, no
+  `PAYMENT_PROVIDER` token, no `payments.provider` env). `Stripe` is the only payment provider
+  constant in code.
 - Destination charges use `transfer_data.destination` and an optional `application_fee_amount`
   derived from `STRIPE_APPLICATION_FEE_BPS`. `on_behalf_of` is **not** used.
 - The PaymentIntent is created before the `Payment` row is persisted, so the "persist first, then
@@ -529,8 +533,7 @@ Access config through `ConfigService<IENV>` typed groups and `getOrThrow<IX>('gr
 - `src/...` imports resolve through `tsconfig.json` `baseUrl` (no `paths`) and Jest's
   `moduleNameMapper`. `strict` is off; `strictNullChecks` on, `noImplicitAny` off.
 - ESLint is flat config (`eslint.config.mjs`) with prettier; `lint` auto-fixes, so it mutates files.
-- Quirks to be aware of when editing: `PaymentsModule` provides its **own** `TenantManagerService`
-  instance (a second DataSource cache, not `TenantModule`'s); `R2Module` lists `TenantModule` as a
-  provider rather than importing it; `PaymentsService` writes `canceledAt`/`failedAt` properties that
-  are not entity columns (silent no-ops).
+- Quirks to be aware of when editing: `R2Module` lists `TenantModule` as a provider rather than
+  importing it; `OrderPaymentService` writes `canceledAt`/`failedAt` properties that are not entity
+  columns (silent no-ops).
 - `docs/` does **not** exist in this app; ignore any reference to planning artifacts under it.

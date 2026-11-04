@@ -59,8 +59,15 @@ Browser (store subdomain)                 Browser (admin subdomains)
 - **Transactional coupon consumption:** inside checkout, always use the passed `EntityManager`
   (pessimistic lock on the coupon row), never `tenantManager.getRepository`, or writes escape the
   transaction.
+- **Focused payment services behind a compatibility facade.** `StripePaymentService` remains the
+  exported token used by controllers, orders, dashboard, and platform modules. It delegates to
+  `OrderPaymentService`, `SubscriptionPaymentService`, `StripeWebhookService`, and
+  `StripeConnectService`. `StripeClientService` owns the module's single Stripe SDK instance.
+  `PaymentsModule` imports `TenantModule` and reuses its `TenantManagerService` cache.
 - **PaymentIntent-first:** Stripe PaymentIntent is created before the `Payment` row is persisted,
-  the inverse of the older documented design. Stripe is called directly (no provider seam).
+  the inverse of the older documented design. The current order flow uses a pessimistic order lock,
+  reuses active intents, and creates with `order:{orderId}:payment:v1`; Stripe create/retrieve calls
+  remain inside that transaction as preserved existing behavior.
 - **Public-schema subscriptions, enforced by one service.** Plans/subscriptions/counters are
   public entities managed by Super Admin; every other module checks entitlements through
   `SubscriptionEntitlementsService`. Plan `STORAGE_BYTES` is mirrored into
@@ -95,8 +102,7 @@ Browser (store subdomain)                 Browser (admin subdomains)
 
 ## Known quirks that shape work
 
-- `PaymentsModule` provides its **own** `TenantManagerService` instance (a second DataSource cache).
 - `R2Module` lists `TenantModule` as a provider rather than importing it.
-- `PaymentsService` writes non-column properties (`canceledAt`/`failedAt`) — silent no-ops.
+- `OrderPaymentService` writes non-column properties (`canceledAt`/`failedAt`) — silent no-ops.
 - `super_admin_dash` `authProvider.getIdentity` shape does not match what `UserAvatar`/`UserInfo`
   expect, so avatar initials/identity text render blank.

@@ -22,7 +22,7 @@ describe('Payments DTO Validation', () => {
 
     it('fails when orderId is not a number', async () => {
       const dto = new CreatePaymentDto();
-      dto.orderId = 'not-a-number' as any;
+      dto.orderId = 'not-a-number' as unknown as number;
 
       const errors = await validate(dto);
       expect(errors.some((e) => e.property === 'orderId')).toBe(true);
@@ -89,7 +89,7 @@ describe('Payments DTO Validation', () => {
     it('fails with invalid billingInterval', async () => {
       const dto = new CreateSubDto();
       dto.planId = 1;
-      dto.billingInterval = 'INVALID' as any;
+      dto.billingInterval = 'INVALID' as unknown as BillingInterval;
 
       const errors = await validate(dto);
       expect(errors.some((e) => e.property === 'billingInterval')).toBe(true);

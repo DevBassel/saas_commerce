@@ -35,7 +35,7 @@ const makeRequest = (
     ...overrides,
   }) as RequestWithUser;
 
-const makeRawBodyRequest = (body: any, rawBody: Buffer): Request =>
+const makeRawBodyRequest = (body: unknown, rawBody: Buffer): Request =>
   ({
     body,
     rawBody,
@@ -97,10 +97,7 @@ describe('PaymentsController', () => {
   describe('cancelSubscription', () => {
     it('delegates to StripePaymentService.cancelOwnSubscription with tenant id', async () => {
       const req = makeRequest();
-      const expected = {
-        refunded: true,
-        subscription: { id: 1, status: 'CANCELED' },
-      };
+      const expected = { id: 1, planId: 2, status: 'ACTIVE' };
       stripePaymentService.cancelOwnSubscription.mockResolvedValue(expected);
 
       const result = await controller.cancelSubscription(req);
@@ -124,7 +121,7 @@ describe('PaymentsController', () => {
   describe('handleWebhook', () => {
     it('delegates to StripePaymentService.webHook with raw request and signature', async () => {
       const req = makeRawBodyRequest({}, Buffer.from('{}'));
-      const expected = { received: true };
+      const expected = undefined;
       stripePaymentService.webHook.mockResolvedValue(expected);
 
       const result = await controller.handleWebhook(req, 'sig');
@@ -152,10 +149,7 @@ describe('PaymentsController', () => {
   describe('connect', () => {
     it('delegates to StripePaymentService.connectAccount with request', async () => {
       const req = makeRequest();
-      const expected = {
-        accountId: 'acct_1',
-        onboardingUrl: 'https://stripe.com/onboard',
-      };
+      const expected = { url: 'https://stripe.com/onboard' };
       stripePaymentService.connectAccount.mockResolvedValue(expected);
 
       const result = await controller.connect(req);

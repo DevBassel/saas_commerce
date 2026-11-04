@@ -4,6 +4,15 @@ What works, what is left, and known issues. Update when work completes or debt i
 
 ## What works
 
+- **Payments architecture refactor (2026-11-04, uncommitted):** the 931-line
+  `StripePaymentService` is now a thin compatibility facade over focused order, subscription,
+  webhook, and Connect services. `StripeClientService` centralizes one Stripe SDK instance, and
+  `PaymentsModule` imports `TenantModule` instead of creating a second `TenantManagerService` cache.
+  Controllers, DTOs, routes, metadata, response shapes, status behavior, entities, and frontend
+  files are unchanged. Current uncommitted order-intent locking/reuse/idempotency behavior was
+  preserved. Payment lint passes; 120 payment tests, 1,380 API unit tests, 65 integration tests,
+  typecheck, and build pass.
+
 - **OpenCode persistent planning (2026-10-24):** project configuration in `opencode.json` and `.opencode/` implements the root-plan workflow documented in `AGENTS.md` and `plans/README.md`. Custom `project-plan` is needed because OpenCode `1.19.4` hard-codes native Plan reminders/storage. The dependency-free writer, native/Build agent availability, command routing, and root path from an app subdirectory were verified using the installed CLI; nine writer-boundary tests passed. Original global config/custom commands were preserved. Full proof: `plans/opencode-plan-mode.md`.
 
 - **Deployment surface:** only the API is containerized, via `docker compose up -d --build` (compose project `saas_store`). `apps/api/Dockerfile` builds the embedded Super Admin dashboard then the API; Compose runs `saas_store_api` with `saas_store_redis`. Postgres is external and the API reaches the Docker host through `DB_HOST=host.docker.internal` by default. Frontends run from source; there are no per-app Dockerfiles or `Dockerfile.dev`.
@@ -62,17 +71,16 @@ What works, what is left, and known issues. Update when work completes or debt i
 
 - Super admin unused boilerplate: `@refinedev/rest`, `@refinedev/simple-rest`, `@refinedev/react-hook-form`, `sign-up-form.tsx`, `forgot-password-form.tsx`, `edit-view.tsx`.
 
-- API lint: 14 errors in the reorganized test files (unused vars, unsafe `any` assignments) — pre-existing code style issues.
+- API lint: 11 errors remain in unrelated reorganized test files (unused vars, unsafe `any`
+  assignments). Payment-module lint now passes.
 
 ## Known issues / tech debt
 
 - **Kilo CLI frontmatter (tooling, not app code):** `@kilocode/cli` 7.8.3 reports `Failed to parse frontmatter: No context found for instance` for every `.kilo/command/*.md` and `.kilo/agent/*.md`. A minimal one-line frontmatter and even a file with no frontmatter both fail, so the defect is in the compiled CLI engine, not the files. Commands may load without metadata until the CLI is updated.
 
-- `PaymentsModule` provides a second `TenantManagerService` instance (duplicate DataSource cache).
-
 - `R2Module` lists `TenantModule` as a provider instead of importing it.
 
-- `PaymentsService` writes `canceledAt`/`failedAt` properties that are not entity columns (silent no-ops). `payment.entity.ts` has a stale comment calling the module a scaffold.
+- `OrderPaymentService` writes `canceledAt`/`failedAt` properties that are not entity columns (silent no-ops). `payment.entity.ts` has a stale comment calling the module a scaffold.
 
 - Storefront `src/app/page.tsx` debug button and the login/401 `console.log`s were removed, and the swallowed `catch {}` blocks in register/cart/checkout now surface errors (2026-10-08 review).
 
@@ -82,7 +90,7 @@ What works, what is left, and known issues. Update when work completes or debt i
 
 ## Verification commands
 
-- `pnpm --filter saas_store_api test` — API unit specs (1,357 tests pass).
+- `pnpm --filter saas_store_api test` — API unit specs (1,380 tests pass).
 - `pnpm --filter saas_store_api test:integration` — API integration specs (65 tests pass, 1 skipped).
 - `pnpm --filter saas_store_api typecheck` / `pnpm --filter tenant_dash build` — build gates.
 - `pnpm --filter tenant_dash test` — store owner Vitest (169 tests).

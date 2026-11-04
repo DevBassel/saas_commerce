@@ -17,22 +17,30 @@ flowchart TD
     end
 
     subgraph APP["Application"]
-        CP --> SPS["StripePaymentService<br/>(only code importing the stripe SDK)"]
+        CP --> SPS["StripePaymentService<br/>compatibility facade"]
         CS --> SPS
         CX --> SPS
         ACC --> SPS
         CON --> SPS
         EV --> SPS
-        SPS --> PS["PaymentService<br/>webhook mirror updates"]
-        SPS --> TM["TenantManagerService.getRepository<br/>Payment, Order (tenant schema)"]
-        PS --> TM
-        SPS --> TEN["Tenant (public schema)<br/>stripeAccountId + save on connect"]
+        SPS --> OPS["OrderPaymentService<br/>intent, refund, reconciliation"]
+        SPS --> SUBS["SubscriptionPaymentService<br/>intent, refund, reconciliation"]
+        SPS --> WHS["StripeWebhookService<br/>signature verification + dispatch"]
+        SPS --> SCS["StripeConnectService<br/>accounts, balances, payouts, onboarding"]
+        WHS --> OPS
+        WHS --> SUBS
+        OPS --> TM["TenantManagerService.getRepository<br/>Payment, Order (tenant schema)"]
+        SCS --> TEN["Tenant (public schema)<br/>stripeAccountId + save on connect"]
+        OPS --> CLIENT["StripeClientService<br/>one shared Stripe SDK client"]
+        SUBS --> CLIENT
+        WHS --> CLIENT
+        SCS --> CLIENT
     end
 
     subgraph DATA["Data / external"]
         TM --> TDB[("PostgreSQL tenant schema<br/>payments, orders")]
-        SPS --> PDB[("PostgreSQL public schema<br/>subscription_payments")]
-        SPS --> STRIPE[("Stripe API<br/>PaymentIntent / Refund / Account / Payout")]
+        SUBS --> PDB[("PostgreSQL public schema<br/>subscription_payments")]
+        CLIENT --> STRIPE[("Stripe API<br/>PaymentIntent / Refund / Account / Payout")]
     end
 ```
 
@@ -40,20 +48,26 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    CP["createPayment({ orderId })"]
-        P0["resolve tenant repos (tenant context required)"] --> P1{"order exists?"}
-        P1 -->|"no"| P1E["404 Order not found"]
-        P1 -->|"yes"| P2{"created more than 24h ago?"}
-        P2 -->|"yes"| P2E["400 Payment window has expired"]
-        P2 -->|"no"| P3{"tenant.paymentsPaused?"}
-        P3 -->|"yes"| P3E["409 Payments are paused for this store"]
-        P3 -->|"no"| P4{"tenant.stripeAccountId set?"}
-        P4 -->|"no"| P4E["409 Store is not connected to Stripe"]
-        P4 -->|"yes"| P5["amount = round(order.total 100)<br/>applicationFee = round(amount bps / 10000)"]
-        P5 --> P6["stripe.paymentIntents.create<br/>currency = tenant.currency, payment_method_types [card]<br/>transfer_data.destination = stripeAccountId<br/>application_fee_amount when > 0<br/>metadata.data = JSON {orderId, userId, schemaName}"]
-        P6 --> P7{"StripeInvalidRequestError?"} -->|"yes"| P7E["400 Store cannot accept payments right now"]
-        P7 -->|"no"| P8["save Payment PENDING (paymentRef = PI id)<br/>+ Order.paymentStatus = PENDING (parallel)"]
-        P8 --> P9["return { clientSecret }"]
+    CP["createOrderPaymentIntent({ orderId })"] --> P0["resolve tenant repos (tenant context required)"]
+    P0 --> P1{"tenant.paymentsPaused?"}
+    P1 -->|"yes"| P1E["409 Payments are paused for this store"]
+    P1 -->|"no"| P2{"tenant.stripeAccountId set?"}
+    P2 -->|"no"| P2E["409 Store is not connected to Stripe"]
+    P2 -->|"yes"| P3["start transaction<br/>pessimistic_write lock on Order"]
+    P3 --> P4{"order exists?"}
+    P4 -->|"no"| P4E["404 Order not found"]
+    P4 -->|"yes"| P5{"created more than 24h ago?"}
+    P5 -->|"yes"| P5E["400 Payment window has expired"]
+    P5 -->|"no"| P6{"order already PAID?"}
+    P6 -->|"yes"| P6E["409 Order has already been paid"]
+    P6 -->|"no"| P7{"latest Stripe payment exists?"}
+    P7 -->|"active intent"| P7A["reuse existing clientSecret"]
+    P7 -->|"succeeded / canceled"| P7E["409 conflict"]
+    P7 -->|"none / other"| P8["amount = round(order.total 100)<br/>applicationFee = round(amount bps / 10000)"]
+    P8 --> P9["stripe.paymentIntents.create<br/>idempotencyKey order:{orderId}:payment:v1<br/>destination charge + metadata.data"]
+    P9 --> P10{"StripeInvalidRequestError?"} -->|"yes"| P10E["400 Store cannot accept payments right now"]
+    P10 -->|"no"| P11["transaction manager inserts Payment PENDING<br/>and updates Order.paymentStatus PENDING"]
+    P11 --> P12["return { clientSecret }"]
 ```
 
 ---
@@ -129,7 +143,7 @@ flowchart TD
     M8A --> M9
     M8B --> M9["order: update Payment + Order mirror in parallel;<br/>subscription: update the ledger row<br/>(refundReference, refundedAmount, refundedAt)"]
 
-    subgraph ORDERFLOW["Orders integration — StripePaymentService.refundOrder(order, tenant)"]
+    subgraph ORDERFLOW["Orders integration — StripePaymentService facade → OrderPaymentService.refundOrder"]
         RO1["find latest PAID Payment for the order"] --> RO2{"found?"}
         RO2 -->|"no"| RO3["return null (nothing to refund)"]
         RO2 -->|"yes"| RO4["stripe.refunds.create<br/>reverse_transfer + refund_application_fee<br/>idempotencyKey refund-{payment.id}"]
@@ -145,5 +159,5 @@ Notes:
 - `successSubscriptionPayment` early-returns when the ledger row is already `PAID`, so Stripe webhook retries/redeliveries do not reset the subscription period. A missing `SubscriptionPayment` row (or a `PLAN_INACTIVE` on assign) still throws → non-2xx → Stripe retries.
 - `POST /platform/tenants/:id/subscription/cancel` (`@Platform @Roles([SUPER_ADMIN])`, in `PaymentsModule`) = `StripePaymentService.cancelSubscriptionWithRefund`: it refunds the latest `PAID` `SubscriptionPayment` on the **platform** account (no `reverse_transfer`/`refund_application_fee`; idempotency key `refund-subscription-{paymentId}`), marks the ledger `REFUNDED`, then calls `downgradeToFree`. Idempotent — a repeat finds no `PAID` row and only re-runs the (no-op) free fallback. This mirrors, and does not conflict with, the refund **webhook** reconciliation above.
 - `POST /payments/stripe/subscription/cancel` (`subscriptions:manage`, tenant-scoped, in `PaymentsModule`) = `StripePaymentService.cancelOwnSubscription`: the self-serve counterpart but bounded by `SUBSCRIPTION_REFUND_WINDOW_DAYS` (7) from the latest `PAID` row's `paidAt` (fallback `createdAt`). Only `PAID` rows are considered (an in-flight `PENDING` upgrade never blocks refunding the earlier paid purchase); it reuses the same refund helper so the idempotency key dedupes with a refund webhook. Errors: `404 SUBSCRIPTION_NOT_FOUND`, `409 SUBSCRIPTION_NOT_REFUNDABLE` (no paid purchase), `409 REFUND_WINDOW_EXPIRED`; a repeat after `REFUNDED` is a `200` no-op. `GET /subscription` reports `refundEligible`/`refundDeadline` from the same window (read-time, advisory — this route re-checks).
-- `refundOrder` is called by `OrdersService.cancel` and `ManageOrderService.updateStatus` **before** the DB transaction, so Stripe is never invoked inside a transaction.
-- `PaymentService.cancelOrderPayment` / `failedOrderPayment` write `canceledAt` / `failedAt`; those columns are not declared on the `Payment` (or `Order`) entity today, so treat them as intended state fields rather than persisted ones.
+- `refundOrder` is called by `OrdersService.cancel` and `ManageOrderService.updateStatus` **before** their DB transactions. `createOrderPaymentIntent` retains its current reliability behavior and calls Stripe while its pessimistic order-lock transaction is open.
+- `OrderPaymentService.cancelOrderPayment` / `failedOrderPayment` write `canceledAt` / `failedAt`; those columns are not declared on the `Payment` (or `Order`) entity today, so treat them as intended state fields rather than persisted ones.
