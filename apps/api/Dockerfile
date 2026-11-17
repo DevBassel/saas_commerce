@@ -9,11 +9,14 @@ WORKDIR /app
 COPY package.json ./
 COPY static ./static
 
-# Allow native build scripts (bcrypt, etc.) — mirrors root pnpm-workspace.yaml allowBuilds
-RUN printf 'allowBuilds:\n  "@nestjs/core": true\n  "@parcel/watcher": true\n  "@scarf/scarf": true\n  bcrypt: true\n  unrs-resolver: true\n' > pnpm-workspace.yaml
+# Allow native build scripts, including Sharp's Alpine/musl binaries.
+RUN printf 'allowBuilds:\n  "@nestjs/core": true\n  "@parcel/watcher": true\n  "@scarf/scarf": true\n  bcrypt: true\n  sharp: true\n  unrs-resolver: true\n' > pnpm-workspace.yaml
 
 # Install all deps (including devDependencies for the build step).
 RUN pnpm install --no-frozen-lockfile
+
+# Fail the image build if Sharp/libvips or the WebP encoder is unavailable.
+RUN node -e "require('sharp')({ create: { width: 1, height: 1, channels: 3, background: 'white' } }).webp().toBuffer().then(() => console.log('Sharp WebP encoder available')).catch(error => { console.error(error); process.exit(1); })"
 
 # Copy source & config files
 COPY tsconfig.json tsconfig.build.json nest-cli.json ./

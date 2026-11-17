@@ -7,12 +7,15 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
+import { RoleKey } from 'src/common/constants/RoleKey.enum';
 import { IENV, IStripe } from 'src/common/config/env.interface';
 import { toMajorUnit, toMinorUnit } from 'src/common/utils/money';
+import { RequestWithUser } from '../../auth/interfaces/RequestWithUser.interface';
 import {
   getTenantContext,
   tenantRefFromContext,
 } from '../../auth/tenant-context';
+import { OrderPermissionKey } from '../../orders/constants/order-permissions.enum';
 import { Order } from '../../orders/entities/order.entity';
 import { TenantManagerService } from '../../tenants/services/tenant-manager.service';
 import { resolveTenantScope } from '../../tenants/utils/tenant-scope';
@@ -47,7 +50,10 @@ export class OrderPaymentService {
     return { paymentRepo, orderRepo };
   }
 
-  async createOrderPaymentIntent(createPaymentDto: CreatePaymentDto) {
+  async createOrderPaymentIntent(
+    createPaymentDto: CreatePaymentDto,
+    user: RequestWithUser['user'],
+  ) {
     const { orderId } = createPaymentDto;
     const { orderRepo } = await this.repos();
 
@@ -70,17 +76,21 @@ export class OrderPaymentService {
         lock: { mode: 'pessimistic_write' },
       });
 
-      if (!order) {
+      if (!order) throw new NotFoundException(`Order ${orderId} not found`);
+
+      const canManage =
+        user.permissions?.includes(OrderPermissionKey.MANAGE) ||
+        user.role?.key === RoleKey.STORE_OWNER ||
+        user.role?.key === RoleKey.SUPER_ADMIN;
+      if (!canManage && order.userId !== user.id)
         throw new NotFoundException(`Order ${orderId} not found`);
-      }
 
-      const paymentWindow = 24 * 60 * 60 * 1000;
+      const paymentWindow = 24 * 60 * 60 * 1000; // 1 day
 
-      if (Date.now() - order.createdAt.getTime() > paymentWindow) {
+      if (Date.now() - order.createdAt.getTime() > paymentWindow)
         throw new BadRequestException(
           'Payment window has expired. Orders can only be paid within 24 hours of creation.',
         );
-      }
 
       if (order.paymentStatus === PaymentStatus.PAID)
         throw new ConflictException('Order has already been paid');
@@ -98,9 +108,8 @@ export class OrderPaymentService {
           existingPayment.paymentRef,
         );
 
-        if (existingIntent.status === 'succeeded') {
+        if (existingIntent.status === 'succeeded')
           throw new ConflictException('Order has already been paid');
-        }
 
         if (
           [
@@ -120,11 +129,9 @@ export class OrderPaymentService {
           );
       }
 
+      // =============== New Payment ======================
       const amount = toMinorUnit(order.total);
-
-      if (amount <= 0) {
-        throw new BadRequestException('Invalid order amount');
-      }
+      if (amount <= 0) throw new BadRequestException('Invalid order amount');
 
       const { applicationFeeBps } = this.config.getOrThrow<IStripe>('stripe');
       const applicationFeeAmount = Math.round(
@@ -147,15 +154,14 @@ export class OrderPaymentService {
         },
       };
 
-      if (applicationFeeAmount > 0) {
+      if (applicationFeeAmount > 0)
         params.application_fee_amount = applicationFeeAmount;
-      }
 
       let paymentIntent: Stripe.PaymentIntent;
 
       try {
         paymentIntent = await this.stripe.paymentIntents.create(params, {
-          idempotencyKey: `order:${order.id}:payment:v1`,
+          idempotencyKey: `tenant:${tenant.id}:order:${order.id}:payment:v1`,
         });
       } catch (error) {
         if (error instanceof Stripe.errors.StripeInvalidRequestError) {
@@ -241,56 +247,116 @@ export class OrderPaymentService {
     { orderId, tenant, userId }: paymentMetaData,
     paymentId: string,
   ) {
-    const { paymentRepo, orderRepo } = await this.repos({ schemaName: tenant });
-    const payment = await paymentRepo.findOne({
-      where: { paymentRef: paymentId },
+    const { paymentRepo, orderRepo } = await this.repos({
+      schemaName: tenant,
     });
-    if (!payment) throw new NotFoundException(`Payment ${paymentId} not found`);
-    const order = await orderRepo.findOne({
-      where: { id: orderId, userId },
-    });
-    if (!order) throw new NotFoundException(`Order ${orderId} not found`);
 
-    await Promise.all([
-      paymentRepo.save({
-        ...payment,
+    return paymentRepo.manager.transaction(async (manager) => {
+      const paymentRepository = manager.withRepository(paymentRepo);
+      const orderRepository = manager.withRepository(orderRepo);
+
+      const payment = await paymentRepository.findOne({
+        where: { paymentRef: paymentId },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!payment) {
+        throw new NotFoundException(`Payment ${paymentId} not found`);
+      }
+
+      const order = await orderRepository.findOne({
+        where: { id: orderId, userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!order) {
+        throw new NotFoundException(`Order ${orderId} not found`);
+      }
+
+      // Prevent duplicate or outdated webhook events.
+      if (
+        payment.status === PaymentStatus.PAID ||
+        payment.status === PaymentStatus.REFUNDED ||
+        payment.status === PaymentStatus.PARTIALLY_REFUNDED ||
+        payment.status === PaymentStatus.CANCELED
+      ) {
+        return;
+      }
+
+      const paidAt = new Date();
+
+      paymentRepository.merge(payment, {
         status: PaymentStatus.PAID,
-        paidAt: new Date(),
-      }),
-      orderRepo.save({
-        ...order,
+        paidAt,
+      });
+
+      orderRepository.merge(order, {
         paymentStatus: PaymentStatus.PAID,
-        paidAt: new Date(),
-      }),
-    ]);
+        paidAt,
+      });
+
+      await paymentRepository.save(payment);
+      await orderRepository.save(order);
+
+      return {
+        paymentId: payment.id,
+        orderId: order.id,
+        status: PaymentStatus.PAID,
+      };
+    });
   }
 
   async cancelOrderPayment(
     { orderId, tenant, userId }: paymentMetaData,
     paymentId: string,
   ) {
-    const { paymentRepo, orderRepo } = await this.repos({ schemaName: tenant });
-    const payment = await paymentRepo.findOne({
-      where: { paymentRef: paymentId },
+    const { paymentRepo, orderRepo } = await this.repos({
+      schemaName: tenant,
     });
-    if (!payment) throw new NotFoundException(`Payment ${paymentId} not found`);
-    const order = await orderRepo.findOne({
-      where: { id: orderId, userId },
-    });
-    if (!order) throw new NotFoundException(`Order ${orderId} not found`);
 
-    await Promise.all([
-      paymentRepo.save({
-        ...payment,
+    return paymentRepo.manager.transaction(async (manager) => {
+      const paymentRepository = manager.withRepository(paymentRepo);
+      const orderRepository = manager.withRepository(orderRepo);
+
+      const payment = await paymentRepository.findOne({
+        where: { paymentRef: paymentId },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!payment) {
+        throw new NotFoundException(`Payment ${paymentId} not found`);
+      }
+
+      const order = await orderRepository.findOne({
+        where: { id: orderId, userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!order) {
+        throw new NotFoundException(`Order ${orderId} not found`);
+      }
+
+      const canceledAt = new Date();
+
+      paymentRepository.merge(payment, {
         status: PaymentStatus.CANCELED,
-        canceledAt: new Date(),
-      }),
-      orderRepo.save({
-        ...order,
+        canceledAt,
+      } as Partial<Payment>);
+
+      orderRepository.merge(order, {
         paymentStatus: PaymentStatus.UNPAID,
-        canceledAt: new Date(),
-      }),
-    ]);
+        canceledAt,
+      } as Partial<Order>);
+
+      await paymentRepository.save(payment);
+      await orderRepository.save(order);
+
+      return {
+        paymentId: payment.id,
+        orderId: order.id,
+        status: PaymentStatus.CANCELED,
+      };
+    });
   }
 
   async refundedOrderPayment(
@@ -301,73 +367,124 @@ export class OrderPaymentService {
       refundReference: string | null;
     },
   ) {
-    const { paymentRepo, orderRepo } = await this.repos({ schemaName: tenant });
-    const payment = await paymentRepo.findOne({
-      where: { paymentRef: refund.paymentIntentId },
+    const { paymentRepo, orderRepo } = await this.repos({
+      schemaName: tenant,
     });
-    if (!payment)
-      throw new NotFoundException(
-        `Payment ${refund.paymentIntentId} not found`,
-      );
-    const order = await orderRepo.findOne({
-      where: { id: orderId, userId },
-    });
-    if (!order) throw new NotFoundException(`Order ${orderId} not found`);
 
-    const refundedAmount = toMajorUnit(refund.amountRefunded);
-    const total = Number(payment.amount);
-    const status =
-      refundedAmount <= 0
-        ? PaymentStatus.PAID
-        : refundedAmount >= total
-          ? PaymentStatus.REFUNDED
-          : PaymentStatus.PARTIALLY_REFUNDED;
-    const refundedAt =
-      refundedAmount > 0 ? (payment.refundedAt ?? new Date()) : null;
+    return paymentRepo.manager.transaction(async (manager) => {
+      const paymentRepository = manager.withRepository(paymentRepo);
+      const orderRepository = manager.withRepository(orderRepo);
 
-    await Promise.all([
-      paymentRepo.save({
-        ...payment,
+      const payment = await paymentRepository.findOne({
+        where: { paymentRef: refund.paymentIntentId },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!payment) {
+        throw new NotFoundException(
+          `Payment ${refund.paymentIntentId} not found`,
+        );
+      }
+
+      const order = await orderRepository.findOne({
+        where: { id: orderId, userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!order) {
+        throw new NotFoundException(`Order ${orderId} not found`);
+      }
+
+      const refundedAmount = toMajorUnit(refund.amountRefunded);
+      const total = Number(payment.amount);
+
+      const status =
+        refundedAmount <= 0
+          ? PaymentStatus.PAID
+          : refundedAmount >= total
+            ? PaymentStatus.REFUNDED
+            : PaymentStatus.PARTIALLY_REFUNDED;
+
+      const refundedAt =
+        refundedAmount > 0 ? (payment.refundedAt ?? new Date()) : null;
+
+      paymentRepository.merge(payment, {
         status,
         refundedAmount,
         refundReference:
           refund.refundReference ??
           (refundedAmount > 0 ? payment.refundReference : null),
         refundedAt,
-      }),
-      orderRepo.save({
-        ...order,
+      });
+
+      orderRepository.merge(order, {
         paymentStatus: status,
         refundedAt,
-      }),
-    ]);
+      });
+
+      await paymentRepository.save(payment);
+      await orderRepository.save(order);
+
+      return {
+        paymentId: payment.id,
+        orderId: order.id,
+        status,
+        refundedAmount,
+        refundedAt,
+      };
+    });
   }
 
   async failedOrderPayment(
     { orderId, tenant, userId }: paymentMetaData,
     paymentId: string,
   ) {
-    const { paymentRepo, orderRepo } = await this.repos({ schemaName: tenant });
-    const payment = await paymentRepo.findOne({
-      where: { paymentRef: paymentId },
+    const { paymentRepo, orderRepo } = await this.repos({
+      schemaName: tenant,
     });
-    if (!payment) throw new NotFoundException(`Payment ${paymentId} not found`);
-    const order = await orderRepo.findOne({
-      where: { id: orderId, userId },
-    });
-    if (!order) throw new NotFoundException(`Order ${orderId} not found`);
 
-    await Promise.all([
-      paymentRepo.save({
-        ...payment,
+    return paymentRepo.manager.transaction(async (manager) => {
+      const paymentRepository = manager.withRepository(paymentRepo);
+      const orderRepository = manager.withRepository(orderRepo);
+
+      const payment = await paymentRepository.findOne({
+        where: { paymentRef: paymentId },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!payment) {
+        throw new NotFoundException(`Payment ${paymentId} not found`);
+      }
+
+      const order = await orderRepository.findOne({
+        where: { id: orderId, userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!order) {
+        throw new NotFoundException(`Order ${orderId} not found`);
+      }
+
+      const failedAt = new Date();
+
+      paymentRepository.merge(payment, {
         status: PaymentStatus.FAILED,
-        failedAt: new Date(),
-      }),
-      orderRepo.save({
-        ...order,
+        failedAt,
+      } as Partial<Payment>);
+
+      orderRepository.merge(order, {
         paymentStatus: PaymentStatus.FAILED,
-        failedAt: new Date(),
-      }),
-    ]);
+        failedAt,
+      } as Partial<Order>);
+
+      await paymentRepository.save(payment);
+      await orderRepository.save(order);
+
+      return {
+        paymentId: payment.id,
+        orderId: order.id,
+        status: PaymentStatus.FAILED,
+      };
+    });
   }
 }

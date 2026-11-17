@@ -44,16 +44,22 @@ export class SubscriptionPaymentService {
 
   async createSubscriptionPaymentIntent(createSubDto: CreateSubDto) {
     const tenant = getTenantContext()?.tenant;
+
     if (!tenant) throw new ForbiddenException('Tenant context is required');
 
-    const plan = await this.plansRepo.findOneBy({ id: createSubDto.planId });
+    const plan = await this.plansRepo.findOneBy({
+      id: createSubDto.planId,
+    });
+
     if (!plan)
       throw new NotFoundException(`Plan ${createSubDto.planId} not found`);
+
     if (!plan.active)
       throw new BadRequestException({
         code: 'PLAN_INACTIVE',
         message: 'Plan is inactive',
       });
+
     if (!plan.isPublic)
       throw new BadRequestException({
         code: 'PLAN_NOT_PUBLIC',
@@ -62,19 +68,27 @@ export class SubscriptionPaymentService {
 
     const billingInterval =
       createSubDto.billingInterval ?? BillingInterval.MONTHLY;
+
     const amount =
       billingInterval === BillingInterval.YEARLY
         ? plan.yearlyPrice
         : plan.monthlyPrice;
+
     if (amount <= 0)
       throw new BadRequestException({
         code: 'PLAN_NOT_PURCHASABLE',
         message: 'Plan has no price for the selected interval',
       });
 
+    const minorAmount = toMinorUnit(amount);
+
+    if (minorAmount <= 0)
+      throw new BadRequestException('Invalid subscription amount');
+
     const subscription = await this.subscriptionRepo.findOneBy({
       tenantId: tenant.id,
     });
+
     if (!subscription)
       throw new NotFoundException({
         code: 'SUBSCRIPTION_NOT_FOUND',
@@ -83,37 +97,106 @@ export class SubscriptionPaymentService {
 
     const metadata: subscriptionPaymentMetaData = {
       kind: 'subscription',
-      subscriptionId: subscription.id,
       tenantId: tenant.id,
       planId: plan.id,
       billingInterval,
       tenant: tenant.schemaName,
+      subscriptionId: subscription.id,
     };
 
-    let intent: Stripe.PaymentIntent;
-    try {
-      intent = await this.stripe.paymentIntents.create({
-        amount: toMinorUnit(amount),
-        currency: plan.currency,
-        payment_method_types: ['card'],
-        metadata: { data: JSON.stringify(metadata) },
+    return this.subscriptionRepo.manager.transaction(async (manager) => {
+      // 1. Lock subscription to prevent concurrent payment attempts.
+      const subscription = await manager.findOne(Subscription, {
+        where: { tenantId: tenant.id },
+        lock: { mode: 'pessimistic_write' },
       });
-    } catch (error) {
-      if (error instanceof Stripe.errors.StripeInvalidRequestError) {
-        this.logger.warn(
-          `Stripe subscription intent create failed: ${
-            error.code ?? error.message
-          }`,
-        );
-        throw new BadRequestException(
-          'Subscription payment could not be started',
-        );
-      }
-      throw error;
-    }
 
-    await this.subscriptionPaymentRepo.save(
-      this.subscriptionPaymentRepo.create({
+      if (!subscription)
+        throw new NotFoundException({
+          code: 'SUBSCRIPTION_NOT_FOUND',
+          message: 'Subscription not found',
+        });
+
+      // 2. Find latest Stripe payment attempt.
+      const existingPayment = await manager.findOne(SubscriptionPayment, {
+        where: {
+          subscriptionId: subscription.id,
+          provider: PaymentsProviders.STRIPE,
+        },
+        order: {
+          createdAt: 'DESC',
+        },
+      });
+
+      if (existingPayment?.paymentRef) {
+        const existingIntent = await this.stripe.paymentIntents.retrieve(
+          existingPayment.paymentRef,
+        );
+
+        if (existingIntent.status === 'succeeded')
+          throw new ConflictException(
+            'Subscription payment has already been completed',
+          );
+
+        if (
+          [
+            'requires_payment_method',
+            'requires_confirmation',
+            'requires_action',
+            'processing',
+          ].includes(existingIntent.status)
+        ) {
+          return {
+            clientSecret: existingIntent.client_secret,
+          };
+        }
+
+        if (existingIntent.status === 'canceled')
+          throw new ConflictException(
+            'Previous subscription payment attempt was canceled. A new payment attempt is required.',
+          );
+      }
+
+      // 3. Create PaymentIntent with idempotency key.
+      let intent: Stripe.PaymentIntent;
+
+      try {
+        intent = await this.stripe.paymentIntents.create(
+          {
+            amount: minorAmount,
+            currency: plan.currency,
+            payment_method_types: ['card'],
+            metadata: {
+              data: JSON.stringify({
+                ...metadata,
+                subscriptionId: subscription.id,
+              }),
+            },
+          },
+          {
+            idempotencyKey:
+              `tenant:${tenant.id}:subscription:${subscription.id}:` +
+              `plan:${plan.id}:${billingInterval}:payment:v1`,
+          },
+        );
+      } catch (error) {
+        if (error instanceof Stripe.errors.StripeInvalidRequestError) {
+          this.logger.warn(
+            `Stripe subscription intent create failed: ${
+              error.code ?? error.message
+            }`,
+          );
+
+          throw new BadRequestException(
+            'Subscription payment could not be started',
+          );
+        }
+
+        throw error;
+      }
+
+      // 4. Save payment record.
+      const payment = manager.create(SubscriptionPayment, {
         subscriptionId: subscription.id,
         planId: plan.id,
         billingInterval,
@@ -122,23 +205,32 @@ export class SubscriptionPaymentService {
         amount,
         currency: plan.currency,
         paymentRef: intent.id,
-      }),
-    );
+      });
 
-    return { clientSecret: intent.client_secret };
+      await manager.save(SubscriptionPayment, payment);
+
+      return {
+        clientSecret: intent.client_secret,
+      };
+    });
   }
-
   private async refundSubscriptionPayment(
     payment: SubscriptionPayment,
   ): Promise<void> {
-    if (!payment.paymentRef)
+    if (!payment.paymentRef) {
       throw new BadRequestException('Payment reference is missing');
+    }
 
     let refund: Stripe.Refund;
+
     try {
       refund = await this.stripe.refunds.create(
-        { payment_intent: payment.paymentRef },
-        { idempotencyKey: `refund-subscription-${payment.id}` },
+        {
+          payment_intent: payment.paymentRef,
+        },
+        {
+          idempotencyKey: `refund-subscription-${payment.id}`,
+        },
       );
     } catch (error) {
       if (error instanceof Stripe.errors.StripeInvalidRequestError) {
@@ -147,20 +239,46 @@ export class SubscriptionPaymentService {
             payment.id
           }: ${error.code ?? error.message}`,
         );
+
         throw new BadRequestException('Refund could not be processed');
       }
+
       throw error;
     }
 
-    await this.subscriptionPaymentRepo.update(
-      { id: payment.id },
-      {
+    if (refund.status !== 'succeeded') {
+      this.logger.warn(
+        `Subscription refund ${refund.id} has status: ${refund.status}`,
+      );
+
+      return;
+    }
+
+    const refundedAt = new Date();
+
+    await this.subscriptionPaymentRepo.manager.transaction(async (manager) => {
+      const repository = manager.withRepository(this.subscriptionPaymentRepo);
+
+      const currentPayment = await repository.findOne({
+        where: { id: payment.id },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!currentPayment) {
+        throw new NotFoundException(
+          `Subscription payment ${payment.id} not found`,
+        );
+      }
+
+      repository.merge(currentPayment, {
         status: PaymentStatus.REFUNDED,
-        refundedAmount: payment.amount,
+        refundedAmount: toMajorUnit(refund.amount),
         refundReference: refund.id,
-        refundedAt: new Date(),
-      },
-    );
+        refundedAt,
+      });
+
+      await repository.save(currentPayment);
+    });
   }
 
   async cancelSubscriptionWithRefund(tenantId: number) {

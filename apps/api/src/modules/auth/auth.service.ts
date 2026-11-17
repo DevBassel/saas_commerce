@@ -45,11 +45,16 @@ export class AuthService {
 
   async register(userData: CreateUserDto) {
     const tenant = this.requireTenant();
+    const { resendCooldownSeconds } = this.config.getOrThrow<IOtp>('otp');
     await this.userService.create(userData, RoleKey.CUSTOMER, tenant);
 
     await this.dispatchVerificationOtp(userData.email, tenant);
 
-    return { success: true, msg: 'register success' };
+    return {
+      success: true,
+      msg: 'register success',
+      resendCooldownSeconds,
+    };
   }
 
   private async dispatchVerificationOtp(

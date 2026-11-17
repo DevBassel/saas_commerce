@@ -15,6 +15,7 @@ const remotePatterns: NonNullable<
   {
     protocol: "https",
     hostname: "pub-cd48f39d564544edbef113f433562d43.r2.dev",
+    pathname: "/**",
   },
 ];
 
@@ -28,7 +29,10 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: path.join(__dirname, "../../"),
   images: {
     remotePatterns,
+    qualities: [60, 75],
+    minimumCacheTTL: 3600,
   },
+  allowedDevOrigins: ["remarks-girls-remix-valley.trycloudflare.com"],
 };
 
 export default nextConfig;

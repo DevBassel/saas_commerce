@@ -5,6 +5,10 @@ import { authProvider, decodeJwt } from "./auth";
 import { tokenStorage } from "@/api/client";
 import { authApi } from "@/api/auth.api";
 import { resetClientState } from "@/lib/client-reset";
+import {
+  readVerificationContext,
+  writeVerificationContext,
+} from "@/lib/verification-context";
 
 vi.mock("@/api/auth.api", () => ({
   authApi: {
@@ -128,11 +132,20 @@ describe("authProvider.check", () => {
 
 describe("authProvider.login", () => {
   beforeEach(() => {
+    vi.unstubAllEnvs();
     localStorage.clear();
+    sessionStorage.clear();
+    window.history.replaceState(null, "", "/");
     vi.mocked(authApi.loginTenant).mockReset();
   });
 
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    window.history.replaceState(null, "", "/");
+  });
+
   it("stores the session and redirects home when the email is verified", async () => {
+    writeVerificationContext("stale@example.com", 30);
     vi.mocked(authApi.loginTenant).mockResolvedValue({
       id: 1,
       email: "a@b.c",
@@ -147,9 +160,11 @@ describe("authProvider.login", () => {
 
     expect(tokenStorage.getAccessToken()).toBe("access");
     expect(tokenStorage.getEmail()).toBe("a@b.c");
+    expect(readVerificationContext()).toBeNull();
   });
 
   it("keeps no session and routes to verification when unverified", async () => {
+    tokenStorage.setSession("stale-access", "stale-refresh", "stale@b.c");
     vi.mocked(authApi.loginTenant).mockResolvedValue({
       id: 1,
       email: "a@b.c",
@@ -158,17 +173,28 @@ describe("authProvider.login", () => {
       refresh_token: "refresh",
     });
 
-    await expect(
-      authProvider.login({ email: "a@b.c", password: "pw" }),
-    ).resolves.toMatchObject({
+    const result = await authProvider.login({ email: "a@b.c", password: "pw" });
+
+    expect(result).toMatchObject({
       success: true,
-      redirectTo: "/verify-email?email=a%40b.c",
+      redirectTo: "/verify-email",
     });
+    expect(result.redirectTo).not.toContain("email=");
 
     expect(tokenStorage.getAccessToken()).toBeNull();
+    expect(tokenStorage.getRefreshToken()).toBeNull();
+    expect(tokenStorage.getEmail()).toBeNull();
+    expect(readVerificationContext()).toMatchObject({
+      email: "a@b.c",
+      tenantSlug: null,
+      resendAvailableAt: expect.any(Number),
+    });
   });
 
   it("routes to verification on a 401 EMAIL_NOT_VERIFIED", async () => {
+    vi.stubEnv("VITE_ALLOW_SUBDOMAIN", "false");
+    window.history.replaceState(null, "", "/?tenant=acme");
+    tokenStorage.setSession("stale-access", "stale-refresh", "stale@b.c");
     vi.mocked(authApi.loginTenant).mockRejectedValue({
       isAxiosError: true,
       response: {
@@ -177,11 +203,20 @@ describe("authProvider.login", () => {
       },
     });
 
-    await expect(
-      authProvider.login({ email: "a@b.c", password: "pw" }),
-    ).resolves.toMatchObject({
+    const result = await authProvider.login({ email: "a@b.c", password: "pw" });
+
+    expect(result).toMatchObject({
       success: true,
-      redirectTo: "/verify-email?email=a%40b.c",
+      redirectTo: "/verify-email?tenant=acme",
+    });
+    expect(result.redirectTo).not.toContain("email=");
+    expect(tokenStorage.getAccessToken()).toBeNull();
+    expect(tokenStorage.getRefreshToken()).toBeNull();
+    expect(tokenStorage.getEmail()).toBeNull();
+    expect(readVerificationContext()).toMatchObject({
+      email: "a@b.c",
+      tenantSlug: "acme",
+      resendAvailableAt: expect.any(Number),
     });
   });
 

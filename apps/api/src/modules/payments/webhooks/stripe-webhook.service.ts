@@ -116,7 +116,7 @@ export class StripeWebhookService {
     intent: Stripe.PaymentIntent,
     data: paymentMetaData,
     refundReference: string | null = null,
-  ): Promise<void> {
+  ) {
     switch (event.type) {
       case 'payment_intent.succeeded':
         return await this.orderPayments.successOrderPayment(data, intent.id);

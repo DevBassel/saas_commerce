@@ -91,7 +91,6 @@
     "build": "tsc && refine build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "start": "refine start",
     "refine": "refine"
   },
   "browserslist": {

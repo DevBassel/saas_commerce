@@ -142,7 +142,10 @@ describe('EmailOtpService.request', () => {
       tenant: TENANT,
     });
 
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({
+      success: true,
+      resendCooldownSeconds: otpConfig.resendCooldownSeconds,
+    });
     expect(h.emailService.sendOtpEmail).not.toHaveBeenCalled();
     expect(h.txRepo.insert).not.toHaveBeenCalled();
   });
@@ -158,7 +161,10 @@ describe('EmailOtpService.request', () => {
       tenant: TENANT,
     });
 
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({
+      success: true,
+      resendCooldownSeconds: otpConfig.resendCooldownSeconds,
+    });
     expect(h.txRepo.update).toHaveBeenCalledTimes(1);
     const updateArgs = h.txRepo.update.mock.calls[0] as unknown as [
       Record<string, unknown>,
@@ -181,6 +187,26 @@ describe('EmailOtpService.request', () => {
     expect(sent.purpose).toBe(OtpPurpose.EMAIL_VERIFICATION);
   });
 
+  it('returns the configured cooldown when email delivery fails', async () => {
+    const h = buildHarness();
+    h.userRepo.findOneBy.mockResolvedValue(makeUser());
+    h.challengeRepo.findOne.mockResolvedValue(null);
+    h.emailService.sendOtpEmail.mockRejectedValue(new Error('delivery failed'));
+
+    const result = await h.service.request({
+      email: 'jane@test.dev',
+      purpose: OtpPurpose.EMAIL_VERIFICATION,
+      tenant: TENANT,
+    });
+
+    expect(result).toEqual({
+      success: true,
+      resendCooldownSeconds: otpConfig.resendCooldownSeconds,
+    });
+    expect(h.txRepo.insert).toHaveBeenCalledTimes(1);
+    expect(h.emailService.sendOtpEmail).toHaveBeenCalledTimes(1);
+  });
+
   it('suppresses a resend inside the cooldown window', async () => {
     const h = buildHarness();
     h.userRepo.findOneBy.mockResolvedValue(makeUser());
@@ -188,12 +214,16 @@ describe('EmailOtpService.request', () => {
       makeChallenge({ lastSentAt: new Date() }),
     );
 
-    await h.service.request({
+    const result = await h.service.request({
       email: 'jane@test.dev',
       purpose: OtpPurpose.EMAIL_VERIFICATION,
       tenant: TENANT,
     });
 
+    expect(result).toEqual({
+      success: true,
+      resendCooldownSeconds: otpConfig.resendCooldownSeconds,
+    });
     expect(h.txRepo.insert).not.toHaveBeenCalled();
     expect(h.emailService.sendOtpEmail).not.toHaveBeenCalled();
   });
@@ -203,13 +233,36 @@ describe('EmailOtpService.request', () => {
     h.userRepo.findOneBy.mockResolvedValue(makeUser());
     h.challengeRepo.count.mockResolvedValue(otpConfig.maxRequests);
 
-    await h.service.request({
+    const result = await h.service.request({
       email: 'jane@test.dev',
       purpose: OtpPurpose.EMAIL_VERIFICATION,
       tenant: TENANT,
     });
 
+    expect(result).toEqual({
+      success: true,
+      resendCooldownSeconds: otpConfig.resendCooldownSeconds,
+    });
     expect(h.txRepo.insert).not.toHaveBeenCalled();
+    expect(h.emailService.sendOtpEmail).not.toHaveBeenCalled();
+  });
+
+  it('returns the configured cooldown when a concurrent request wins', async () => {
+    const h = buildHarness();
+    h.userRepo.findOneBy.mockResolvedValue(makeUser());
+    const manager = h.challengeRepo.manager as { transaction: jest.Mock };
+    manager.transaction.mockRejectedValue({ code: '23505' });
+
+    const result = await h.service.request({
+      email: 'jane@test.dev',
+      purpose: OtpPurpose.EMAIL_VERIFICATION,
+      tenant: TENANT,
+    });
+
+    expect(result).toEqual({
+      success: true,
+      resendCooldownSeconds: otpConfig.resendCooldownSeconds,
+    });
     expect(h.emailService.sendOtpEmail).not.toHaveBeenCalled();
   });
 });

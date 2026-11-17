@@ -9,6 +9,10 @@ import {
   withTenantParam,
 } from "@/api/tenant";
 import { resetClientState } from "@/lib/client-reset";
+import {
+  clearVerificationContext,
+  writeVerificationContext,
+} from "@/lib/verification-context";
 
 type JwtPayload = {
   type?: string;
@@ -64,14 +68,15 @@ export const authProvider: AuthProvider = {
       });
 
       if (!session.verified) {
+        tokenStorage.clear();
+        writeVerificationContext(loginEmail, 0);
         return {
           success: true,
-          redirectTo: withTenant(
-            `/verify-email?email=${encodeURIComponent(loginEmail)}`
-          ),
+          redirectTo: withTenant("/verify-email"),
         };
       }
 
+      clearVerificationContext();
       tokenStorage.setSession(
         session.access_token,
         session.refresh_token,
@@ -86,11 +91,11 @@ export const authProvider: AuthProvider = {
       const apiError = toApiError(error);
 
       if (apiError.code === "EMAIL_NOT_VERIFIED") {
+        tokenStorage.clear();
+        writeVerificationContext(loginEmail, 0);
         return {
           success: true,
-          redirectTo: withTenant(
-            `/verify-email?email=${encodeURIComponent(loginEmail)}`
-          ),
+          redirectTo: withTenant("/verify-email"),
         };
       }
 

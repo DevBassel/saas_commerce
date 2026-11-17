@@ -9,6 +9,8 @@ import { BillingInterval } from '../../subscriptions/constants/billing-interval.
 import { Tenant } from '../../tenants/entities/tenant.entity';
 import { PaymentStatus } from '../constants/payment-status.enum';
 import { PaymentsProviders } from '../constants/payments-providers';
+import { SubscriptionPayment } from '../entities/subscription-payment.entity';
+import { Subscription } from '../entities/subscription.entity';
 import { SubscriptionPaymentService } from '../services/subscription-payment.service';
 
 const TENANT_SCHEMA = 'tenant_acme';
@@ -21,21 +23,56 @@ const tenant = {
 const withTenant = <T>(fn: () => T): T =>
   tenantStorage.run({ tenant, tenantSchema: TENANT_SCHEMA }, fn);
 
+const firstIntentCreateParams = (
+  mock: jest.Mock,
+): { metadata: { data: string } } => {
+  const calls = mock.mock.calls as unknown as Array<
+    [{ metadata: { data: string } }]
+  >;
+  return calls[0][0];
+};
+
 const buildMocks = () => {
   const stripe = {
     paymentIntents: {
-      create: jest.fn<Promise<unknown>, [Stripe.PaymentIntentCreateParams]>(),
+      create: jest.fn(),
+      retrieve: jest.fn(),
     },
     refunds: { create: jest.fn() },
   };
   const plansRepo = { findOneBy: jest.fn() };
-  const subscriptionRepo = { findOneBy: jest.fn() };
+  const subscriptionRepo = {
+    findOneBy: jest.fn(),
+    manager: { transaction: jest.fn() },
+  };
   const subscriptionPaymentRepo = {
     findOne: jest.fn(),
-    create: jest.fn((value: unknown) => value),
-    save: jest.fn((value: unknown) => value),
     update: jest.fn(),
+    save: jest.fn((data: unknown) => data),
+    merge: jest.fn((entity: unknown, data: unknown) => {
+      Object.assign(entity as object, data as object);
+      return entity;
+    }),
+    manager: { transaction: jest.fn() },
   };
+  const manager = {
+    findOne: jest.fn((entity: unknown): unknown =>
+      entity === Subscription
+        ? subscriptionRepo.findOneBy()
+        : subscriptionPaymentRepo.findOne(),
+    ),
+    create: jest.fn((_entity: unknown, value: unknown) => value),
+    save: jest.fn((_entity: unknown, value: unknown) => value),
+    withRepository: jest.fn((repo: unknown) =>
+      repo === subscriptionPaymentRepo ? subscriptionPaymentRepo : subscriptionRepo,
+    ),
+  };
+  subscriptionRepo.manager.transaction.mockImplementation(
+    (callback: (value: typeof manager) => unknown) => callback(manager),
+  );
+  subscriptionPaymentRepo.manager.transaction.mockImplementation(
+    (callback: (value: typeof manager) => unknown) => callback(manager),
+  );
   const subscriptions = {
     assignPlan: jest.fn(),
     downgradeToFree: jest.fn(),
@@ -54,6 +91,7 @@ const buildMocks = () => {
     plansRepo,
     subscriptionRepo,
     subscriptionPaymentRepo,
+    manager,
     subscriptions,
   };
 };
@@ -82,6 +120,12 @@ const payment = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const paidPayment = (overrides: Record<string, unknown> = {}) =>
+  payment({
+    status: PaymentStatus.PAID,
+    ...overrides,
+  });
+
 describe('SubscriptionPaymentService', () => {
   beforeEach(() => jest.clearAllMocks());
 
@@ -95,13 +139,8 @@ describe('SubscriptionPaymentService', () => {
     });
 
     it('creates a monthly platform intent and PENDING ledger row', async () => {
-      const {
-        service,
-        stripe,
-        plansRepo,
-        subscriptionRepo,
-        subscriptionPaymentRepo,
-      } = buildMocks();
+      const { service, stripe, plansRepo, subscriptionRepo, manager } =
+        buildMocks();
       plansRepo.findOneBy.mockResolvedValue(plan());
       subscriptionRepo.findOneBy.mockResolvedValue({ id: 1, tenantId: 3 });
       stripe.paymentIntents.create.mockResolvedValue({
@@ -114,22 +153,43 @@ describe('SubscriptionPaymentService', () => {
       );
 
       expect(result).toEqual({ clientSecret: 'cs_sub_1' });
-      expect(stripe.paymentIntents.create).toHaveBeenCalledWith({
-        amount: 2900,
-        currency: 'usd',
-        payment_method_types: ['card'],
-        metadata: {
-          data: JSON.stringify({
-            kind: 'subscription',
-            subscriptionId: 1,
-            tenantId: 3,
-            planId: 2,
-            billingInterval: BillingInterval.MONTHLY,
-            tenant: TENANT_SCHEMA,
-          }),
+      expect(stripe.paymentIntents.create).toHaveBeenCalledWith(
+        {
+          amount: 2900,
+          currency: 'usd',
+          payment_method_types: ['card'],
+          metadata: {
+            data: expect.any(String) as string,
+          },
         },
+        {
+          idempotencyKey: 'tenant:3:subscription:1:plan:2:MONTHLY:payment:v1',
+        },
+      );
+      const monthlyParams = firstIntentCreateParams(
+        stripe.paymentIntents.create,
+      );
+      expect(JSON.parse(monthlyParams.metadata.data) as unknown).toEqual({
+        kind: 'subscription',
+        subscriptionId: 1,
+        tenantId: 3,
+        planId: 2,
+        billingInterval: BillingInterval.MONTHLY,
+        tenant: TENANT_SCHEMA,
       });
-      expect(subscriptionPaymentRepo.create).toHaveBeenCalledWith({
+      expect(subscriptionRepo.manager.transaction).toHaveBeenCalledTimes(1);
+      expect(manager.findOne).toHaveBeenNthCalledWith(1, Subscription, {
+        where: { tenantId: 3 },
+        lock: { mode: 'pessimistic_write' },
+      });
+      expect(manager.findOne).toHaveBeenNthCalledWith(2, SubscriptionPayment, {
+        where: {
+          subscriptionId: 1,
+          provider: PaymentsProviders.STRIPE,
+        },
+        order: { createdAt: 'DESC' },
+      });
+      expect(manager.create).toHaveBeenCalledWith(SubscriptionPayment, {
         subscriptionId: 1,
         planId: 2,
         billingInterval: BillingInterval.MONTHLY,
@@ -139,6 +199,10 @@ describe('SubscriptionPaymentService', () => {
         currency: 'usd',
         paymentRef: 'pi_sub_1',
       });
+      expect(manager.save).toHaveBeenCalledWith(
+        SubscriptionPayment,
+        expect.objectContaining({ paymentRef: 'pi_sub_1' }),
+      );
     });
 
     it('uses yearly price and metadata when requested', async () => {
@@ -161,17 +225,112 @@ describe('SubscriptionPaymentService', () => {
         expect.objectContaining({
           amount: 29000,
           metadata: {
-            data: JSON.stringify({
-              kind: 'subscription',
-              subscriptionId: 1,
-              tenantId: 3,
-              planId: 2,
-              billingInterval: BillingInterval.YEARLY,
-              tenant: TENANT_SCHEMA,
-            }),
+            data: expect.any(String) as string,
           },
         }),
+        {
+          idempotencyKey: 'tenant:3:subscription:1:plan:2:YEARLY:payment:v1',
+        },
       );
+      const yearlyParams = firstIntentCreateParams(
+        stripe.paymentIntents.create,
+      );
+      expect(JSON.parse(yearlyParams.metadata.data) as unknown).toEqual({
+        kind: 'subscription',
+        subscriptionId: 1,
+        tenantId: 3,
+        planId: 2,
+        billingInterval: BillingInterval.YEARLY,
+        tenant: TENANT_SCHEMA,
+      });
+    });
+
+    it.each([
+      'requires_payment_method',
+      'requires_confirmation',
+      'requires_action',
+      'processing',
+    ])('reuses an existing %s intent', async (status) => {
+      const {
+        service,
+        stripe,
+        plansRepo,
+        subscriptionRepo,
+        subscriptionPaymentRepo,
+        manager,
+      } = buildMocks();
+      plansRepo.findOneBy.mockResolvedValue(plan());
+      subscriptionRepo.findOneBy.mockResolvedValue({ id: 1, tenantId: 3 });
+      subscriptionPaymentRepo.findOne.mockResolvedValue({
+        paymentRef: 'pi_existing',
+      });
+      stripe.paymentIntents.retrieve.mockResolvedValue({
+        status,
+        client_secret: 'cs_existing',
+      });
+
+      await expect(
+        withTenant(() =>
+          service.createSubscriptionPaymentIntent({ planId: 2 }),
+        ),
+      ).resolves.toEqual({ clientSecret: 'cs_existing' });
+      expect(stripe.paymentIntents.create).not.toHaveBeenCalled();
+      expect(manager.save).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['succeeded', 'Subscription payment has already been completed'],
+      [
+        'canceled',
+        'Previous subscription payment attempt was canceled. A new payment attempt is required.',
+      ],
+    ])('rejects an existing %s intent', async (status, message) => {
+      const {
+        service,
+        stripe,
+        plansRepo,
+        subscriptionRepo,
+        subscriptionPaymentRepo,
+      } = buildMocks();
+      plansRepo.findOneBy.mockResolvedValue(plan());
+      subscriptionRepo.findOneBy.mockResolvedValue({ id: 1, tenantId: 3 });
+      subscriptionPaymentRepo.findOne.mockResolvedValue({
+        paymentRef: 'pi_existing',
+      });
+      stripe.paymentIntents.retrieve.mockResolvedValue({ status });
+
+      await expect(
+        withTenant(() =>
+          service.createSubscriptionPaymentIntent({ planId: 2 }),
+        ),
+      ).rejects.toThrow(message);
+      expect(stripe.paymentIntents.create).not.toHaveBeenCalled();
+    });
+
+    it('maps Stripe invalid-request errors and preserves other errors', async () => {
+      const { service, stripe, plansRepo, subscriptionRepo } = buildMocks();
+      plansRepo.findOneBy.mockResolvedValue(plan());
+      subscriptionRepo.findOneBy.mockResolvedValue({ id: 1, tenantId: 3 });
+      stripe.paymentIntents.create.mockRejectedValueOnce(
+        new Stripe.errors.StripeInvalidRequestError({
+          type: 'invalid_request_error',
+          message: 'invalid',
+        } as never),
+      );
+
+      await expect(
+        withTenant(() =>
+          service.createSubscriptionPaymentIntent({ planId: 2 }),
+        ),
+      ).rejects.toThrow('Subscription payment could not be started');
+
+      const networkError = new Error('network');
+      stripe.paymentIntents.create.mockRejectedValueOnce(networkError);
+      await expect(
+        withTenant(() =>
+          service.createSubscriptionPaymentIntent({ planId: 2 }),
+        ),
+      ).rejects.toBe(networkError);
     });
 
     it('preserves plan validation errors', async () => {
@@ -218,6 +377,23 @@ describe('SubscriptionPaymentService', () => {
       ).rejects.toMatchObject({
         response: { code: 'SUBSCRIPTION_NOT_FOUND' },
       });
+    });
+
+    it('fails closed if the subscription disappears before it can be locked', async () => {
+      const { service, stripe, plansRepo, subscriptionRepo } = buildMocks();
+      plansRepo.findOneBy.mockResolvedValue(plan());
+      subscriptionRepo.findOneBy
+        .mockResolvedValueOnce({ id: 1, tenantId: 3 })
+        .mockResolvedValueOnce(null);
+
+      await expect(
+        withTenant(() =>
+          service.createSubscriptionPaymentIntent({ planId: 2 }),
+        ),
+      ).rejects.toMatchObject({
+        response: { code: 'SUBSCRIPTION_NOT_FOUND' },
+      });
+      expect(stripe.paymentIntents.create).not.toHaveBeenCalled();
     });
   });
 
@@ -334,6 +510,131 @@ describe('SubscriptionPaymentService', () => {
       await expect(service.cancelOwnSubscription(3)).rejects.toBeInstanceOf(
         BadRequestException,
       );
+    });
+  });
+
+  describe('tenant cancellation', () => {
+    it('throws when the tenant has no subscription', async () => {
+      const { service, subscriptionRepo } = buildMocks();
+      subscriptionRepo.findOneBy.mockResolvedValue(null);
+
+      await expect(service.cancelOwnSubscription(3)).rejects.toMatchObject({
+        response: { code: 'SUBSCRIPTION_NOT_FOUND' },
+      });
+    });
+
+    it('rejects when there is no paid purchase', async () => {
+      const { service, stripe, subscriptionRepo, subscriptionPaymentRepo } =
+        buildMocks();
+      subscriptionRepo.findOneBy.mockResolvedValue({ id: 1, tenantId: 3 });
+      subscriptionPaymentRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.cancelOwnSubscription(3)).rejects.toMatchObject({
+        response: { code: 'SUBSCRIPTION_NOT_REFUNDABLE' },
+      });
+      expect(stripe.refunds.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects once the refund window has passed', async () => {
+      const { service, stripe, subscriptionRepo, subscriptionPaymentRepo } =
+        buildMocks();
+      subscriptionRepo.findOneBy.mockResolvedValue({ id: 1, tenantId: 3 });
+      subscriptionPaymentRepo.findOne.mockResolvedValue(
+        paidPayment({ paidAt: new Date(Date.now() - 8 * 86_400_000) }),
+      );
+
+      await expect(service.cancelOwnSubscription(3)).rejects.toMatchObject({
+        response: { code: 'REFUND_WINDOW_EXPIRED' },
+      });
+      expect(stripe.refunds.create).not.toHaveBeenCalled();
+    });
+
+    it('uses createdAt when paidAt is missing', async () => {
+      const { service, subscriptionRepo, subscriptionPaymentRepo } =
+        buildMocks();
+      subscriptionRepo.findOneBy.mockResolvedValue({ id: 1, tenantId: 3 });
+      subscriptionPaymentRepo.findOne.mockResolvedValue(
+        paidPayment({
+          paidAt: null,
+          createdAt: new Date(Date.now() - 8 * 86_400_000),
+        }),
+      );
+
+      await expect(service.cancelOwnSubscription(3)).rejects.toMatchObject({
+        response: { code: 'REFUND_WINDOW_EXPIRED' },
+      });
+    });
+
+    it('refunds, downgrades, and returns the subscription', async () => {
+      const {
+        service,
+        stripe,
+        subscriptionRepo,
+        subscriptionPaymentRepo,
+        subscriptions,
+      } = buildMocks();
+      subscriptionRepo.findOneBy
+        .mockResolvedValueOnce({ id: 1, tenantId: 3 })
+        .mockResolvedValueOnce({ id: 1, tenantId: 3, planId: 2 });
+      subscriptionPaymentRepo.findOne.mockResolvedValue(paidPayment());
+      stripe.refunds.create.mockResolvedValue({ id: 're_sub_1', status: 'succeeded', amount: 2900 });
+
+      await expect(service.cancelOwnSubscription(3)).resolves.toEqual({
+        id: 1,
+        tenantId: 3,
+        planId: 2,
+      });
+      expect(stripe.refunds.create).toHaveBeenCalledWith(
+        { payment_intent: 'pi_sub_1' },
+        { idempotencyKey: 'refund-subscription-10' },
+      );
+      expect(subscriptionPaymentRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 10,
+          status: PaymentStatus.REFUNDED,
+          refundedAmount: 29,
+          refundReference: 're_sub_1',
+          refundedAt: expect.any(Date) as Date,
+        }),
+      );
+      expect(subscriptions.downgradeToFree).toHaveBeenCalledWith(1);
+    });
+
+    it('is idempotent when the purchase was already refunded', async () => {
+      const {
+        service,
+        stripe,
+        subscriptionRepo,
+        subscriptionPaymentRepo,
+        subscriptions,
+      } = buildMocks();
+      subscriptionRepo.findOneBy.mockResolvedValue({ id: 1, tenantId: 3 });
+      subscriptionPaymentRepo.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(paidPayment({ status: PaymentStatus.REFUNDED }));
+
+      await service.cancelOwnSubscription(3);
+
+      expect(stripe.refunds.create).not.toHaveBeenCalled();
+      expect(subscriptions.downgradeToFree).toHaveBeenCalledWith(1);
+    });
+
+    it('maps Stripe invalid-request errors to BadRequestException', async () => {
+      const { service, stripe, subscriptionRepo, subscriptionPaymentRepo } =
+        buildMocks();
+      subscriptionRepo.findOneBy.mockResolvedValue({ id: 1, tenantId: 3 });
+      subscriptionPaymentRepo.findOne.mockResolvedValue(paidPayment());
+      stripe.refunds.create.mockRejectedValue(
+        new Stripe.errors.StripeInvalidRequestError({
+          type: 'invalid_request_error',
+          message: 'nope',
+        } as never),
+      );
+
+      await expect(service.cancelOwnSubscription(3)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(subscriptionPaymentRepo.update).not.toHaveBeenCalled();
     });
   });
 });

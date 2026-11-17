@@ -80,4 +80,5 @@ export class SubscriptionPayment extends BaseEntity {
 
   @UpdateDateColumn()
   updatedAt: Date;
+  idempotencyKey: string | undefined;
 }

@@ -51,6 +51,7 @@ export type EmailProvider = 'smtp' | 'log' | 'memory';
 
 export interface IEmail {
   provider: EmailProvider;
+  service: string;
   fromAddress: string;
   fromName: string;
   smtp: {

@@ -31,6 +31,7 @@ type ShowViewHeaderProps = PropsWithChildren<{
   wrapperClassName?: string;
   headerClassName?: string;
   hideEdit?: boolean;
+  hideRefresh?: boolean;
 }>;
 
 export const ShowViewHeader = ({
@@ -39,6 +40,7 @@ export const ShowViewHeader = ({
   wrapperClassName,
   headerClassName,
   hideEdit,
+  hideRefresh,
 }: ShowViewHeaderProps) => {
   const back = useBack();
 
@@ -84,11 +86,13 @@ export const ShowViewHeader = ({
         </div>
 
         <div className="flex items-center gap-2">
-          <RefreshButton
-            variant="outline"
-            recordItemId={recordItemId}
-            resource={resourceName}
-          />
+          {!hideRefresh && (
+            <RefreshButton
+              variant="outline"
+              recordItemId={recordItemId}
+              resource={resourceName}
+            />
+          )}
           {hideEdit ? null : (
             <EditButton
               variant="outline"

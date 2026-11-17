@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type SyntheticEvent } from "react";
-import { getSession, signIn } from "next-auth/react";
+import { getSession, signIn, signOut } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import {
   TenantLink as Link,
@@ -20,6 +20,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  clearVerificationContext,
+  writeVerificationContext,
+} from "@/lib/auth/verification-context";
 import { Store } from "lucide-react";
 
 /**
@@ -79,6 +83,8 @@ export default function LoginForm() {
         // The backend can still reject an unverified login outright
         // (OTP_REQUIRE_EMAIL_VERIFIED); send the user straight to verification.
         if (result.error.includes("EMAIL_NOT_VERIFIED")) {
+          await signOut({ redirect: false });
+          writeVerificationContext(email, 0);
           router.push(verifyUrl);
           return;
         }
@@ -90,10 +96,12 @@ export default function LoginForm() {
       // unverified account must confirm its email before using the storefront.
       const session = await getSession();
       if (session?.user?.verified === false) {
+        writeVerificationContext(email, 0);
         router.push(verifyUrl);
         return;
       }
 
+      clearVerificationContext();
       router.push(callbackUrl);
     } catch {
       setError("An unexpected error occurred. Please try again.");

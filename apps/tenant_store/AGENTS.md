@@ -170,12 +170,15 @@ is never used for routing or fetching here.
 - `src/api/otpApi.ts` wraps the tenant-scoped API routes: `requestOtp(email, purpose)` →
   `POST /auth/email-otp/request`, `verifyEmailOtp(email, code)` → `POST /auth/email-otp/verify`
   (`EMAIL_VERIFICATION`), and `confirmPasswordReset(email, code, newPassword)` →
-  `POST /auth/password-reset/confirm`. `x-tenant-slug` is attached by `apiClient`; these routes are
-  tenant-scoped, so they only work on a tenant subdomain.
+  `POST /auth/password-reset/confirm`. `x-tenant-slug` is attached by `apiClient`; the request
+  response includes the configured `resendCooldownSeconds` on every generic anti-enumeration path.
 - The code is entered with the shadcn/`input-otp` component (`src/components/ui/input-otp.tsx`,
   `input-otp` dependency); it has one slot per digit (6).
 - Flows: `POST /auth/register` auto-sends a verification OTP, so `/register` routes to
-  `/verify-email?email=…`; that page verifies or resends. `/forgot-password` requests a
+  `/verify-email` without putting the email in the URL. `src/lib/auth/verification-context.ts`
+  stores the pending email, tenant slug, and absolute resend deadline per tab in `sessionStorage`;
+  the verification page prefers the NextAuth session email, resumes the API-driven countdown after
+  reload, and clears the context after verification. `/forgot-password` still requests a
   `PASSWORD_RESET` code and routes to `/reset-password?email=…`, which confirms it. All three pages
   are public in `src/proxy.ts`. Request endpoints always return 200 (anti-enumeration).
 - `src/lib/auth.ts` `authorize` rethrows the backend error `code` (e.g. `EMAIL_NOT_VERIFIED`), and

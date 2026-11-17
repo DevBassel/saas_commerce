@@ -13,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { TenantLink as Link, useTenantRouter } from "@/lib/tenant/nav";
+import { writeVerificationContext } from "@/lib/auth/verification-context";
 import { Store } from "lucide-react";
 import { toast } from "sonner";
 import { handleError } from "@/api/toastError";
@@ -28,9 +29,10 @@ export default function Register() {
       password: String(formData.get("password") ?? ""),
     };
     try {
-      await registerRequest(data);
+      const response = await registerRequest(data);
+      writeVerificationContext(data.email, response.resendCooldownSeconds);
       toast.success("Account created. Check your email for a verification code.");
-      router.push(`/verify-email?email=${encodeURIComponent(data.email)}`);
+      router.push("/verify-email");
     } catch (error) {
       handleError(error);
     }

@@ -24,8 +24,14 @@ import { SubscriptionPermissionKey } from '../subscriptions/constants/subscripti
 export default class PaymentsController {
   constructor(private readonly stripePaymentService: StripePaymentService) {}
   @Post('stripe')
-  createOrderPaymentIntent(@Body() createPaymentDto: CreatePaymentDto) {
-    return this.stripePaymentService.createOrderPaymentIntent(createPaymentDto);
+  createOrderPaymentIntent(
+    @Body() createPaymentDto: CreatePaymentDto,
+    @Req() req: RequestWithUser,
+  ) {
+    return this.stripePaymentService.createOrderPaymentIntent(
+      createPaymentDto,
+      req.user,
+    );
   }
 
   @Post('/stripe/subscription')

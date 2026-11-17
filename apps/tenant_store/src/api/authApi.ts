@@ -8,8 +8,16 @@ export interface IRegister {
   password: string;
 }
 
-export async function registerRequest(data: IRegister) {
-  const res = await apiClient.post("/auth/register", data);
+export interface RegisterResponse {
+  success: boolean;
+  msg: string;
+  resendCooldownSeconds: number;
+}
+
+export async function registerRequest(
+  data: IRegister,
+): Promise<RegisterResponse> {
+  const res = await apiClient.post<RegisterResponse>("/auth/register", data);
   return res.data;
 }
 

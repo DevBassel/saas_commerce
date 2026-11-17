@@ -60,16 +60,17 @@ describe('PaymentsController', () => {
   });
 
   describe('createOrderPaymentIntent', () => {
-    it('delegates to StripePaymentService.createOrderPaymentIntent with dto', async () => {
+    it('delegates with the dto and authenticated user', async () => {
       const dto: CreatePaymentDto = { orderId: 1 };
       const expected = { clientSecret: 'pi_1_secret' };
+      const req = makeRequest();
       stripePaymentService.createOrderPaymentIntent.mockResolvedValue(expected);
 
-      const result = await controller.createOrderPaymentIntent(dto);
+      const result = await controller.createOrderPaymentIntent(dto, req);
 
       expect(
         stripePaymentService.createOrderPaymentIntent,
-      ).toHaveBeenCalledWith(dto);
+      ).toHaveBeenCalledWith(dto, req.user);
       expect(result).toEqual(expected);
     });
   });

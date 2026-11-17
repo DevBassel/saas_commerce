@@ -5,6 +5,7 @@ export type OtpPurpose = "EMAIL_VERIFICATION" | "PASSWORD_RESET";
 
 export interface RequestOtpResponse {
   success: boolean;
+  resendCooldownSeconds: number;
 }
 
 export interface VerifyEmailResponse {

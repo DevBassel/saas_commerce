@@ -30,7 +30,10 @@ const jwtConfig = {
   audience: 'saas_store',
 };
 
-const otpConfig = { requireEmailVerified: false };
+const otpConfig = {
+  requireEmailVerified: false,
+  resendCooldownSeconds: 60,
+};
 
 const jwt = new JwtService();
 const config = {
@@ -72,7 +75,10 @@ const buildMocks = () => {
     ensureFreeSubscription: jest.fn().mockResolvedValue(undefined),
   };
   const emailOtp = {
-    request: jest.fn().mockResolvedValue({ success: true }),
+    request: jest.fn().mockResolvedValue({
+      success: true,
+      resendCooldownSeconds: otpConfig.resendCooldownSeconds,
+    }),
     verify: jest.fn(),
   };
   return { userService, tenantService, provisioner, subscriptions, emailOtp };
@@ -224,7 +230,11 @@ describe('AuthService', () => {
         () => service.register(dto as never),
       );
 
-      expect(result).toEqual({ success: true, msg: 'register success' });
+      expect(result).toEqual({
+        success: true,
+        msg: 'register success',
+        resendCooldownSeconds: otpConfig.resendCooldownSeconds,
+      });
       expect(mocks.userService.create).toHaveBeenCalledWith(
         dto,
         RoleKey.CUSTOMER,
@@ -532,8 +542,8 @@ describe('AuthService email OTP flows', () => {
   });
 
   describe('register', () => {
-    it('dispatches an EMAIL_VERIFICATION OTP after creating the user', async () => {
-      await tenantStorage.run(TENANT_CTX, () =>
+    it('dispatches an EMAIL_VERIFICATION OTP and returns the configured cooldown', async () => {
+      const result = await tenantStorage.run(TENANT_CTX, () =>
         service.register({
           name: 'A',
           email: 'a@test.dev',
@@ -545,6 +555,11 @@ describe('AuthService email OTP flows', () => {
         email: 'a@test.dev',
         purpose: OtpPurpose.EMAIL_VERIFICATION,
         tenant: tenantEntity,
+      });
+      expect(result).toEqual({
+        success: true,
+        msg: 'register success',
+        resendCooldownSeconds: otpConfig.resendCooldownSeconds,
       });
     });
 
@@ -559,7 +574,11 @@ describe('AuthService email OTP flows', () => {
         }),
       );
 
-      expect(result).toEqual({ success: true, msg: 'register success' });
+      expect(result).toEqual({
+        success: true,
+        msg: 'register success',
+        resendCooldownSeconds: otpConfig.resendCooldownSeconds,
+      });
     });
   });
 

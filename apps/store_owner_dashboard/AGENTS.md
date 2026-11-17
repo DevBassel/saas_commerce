@@ -80,7 +80,8 @@ no middleware), so the tenant is resolved in the browser and attached by `apiCli
   session; logout clears storage and returns to `/login`.
 - Token storage keys (`src/api/constants.ts`) are load-bearing — never rename them:
   `tenant-access-token`, `tenant-email`, `tenant-refresh-token`. All live in `localStorage` via
-  `tokenStorage` in `src/api/client.ts`; there is no `sessionStorage`.
+  `tokenStorage` in `src/api/client.ts`. Pending email verification is separate and uses the
+  per-tab `sessionStorage` key `email-verification-context`.
 - `check` decodes the access JWT (must be `type: access` or absent, numeric `exp` in the future) and
   compares the host tenant to the JWT tenant claim. On an invalid access token with a refresh token
   present it calls the single-flight `refreshSession`.
@@ -154,16 +155,19 @@ Self-serve checkout is **enabled** via Stripe Elements (re-introducing the purch
 - `src/api/otp.api.ts` wraps the tenant-scoped OTP routes: `requestOtp(email, purpose)` →
   `POST auth/email-otp/request`, `verifyEmailOtp(email, code)` → `POST auth/email-otp/verify`
   (`EMAIL_VERIFICATION`), and `confirmPasswordReset(email, code, newPassword)` →
-  `POST auth/password-reset/confirm`. `x-tenant-slug` is attached by `apiClient`, so these only work
-  on a tenant subdomain.
+  `POST auth/password-reset/confirm`. `x-tenant-slug` is attached by `apiClient`; OTP request
+  responses include the configured `resendCooldownSeconds` on every generic response path.
 - `authProvider.login` treats an unverified email as a redirect: a successful login with
   `verified === false`, or a `401 { code: 'EMAIL_NOT_VERIFIED' }`, returns
-  `{ success: true, redirectTo: '/verify-email?email=…' }` and stores **no** session, so the
-  `EmailVerifiedGuard` never blocks the dashboard.
+  `{ success: true, redirectTo: '/verify-email' }` and stores **no** session. Before redirecting it
+  saves the tenant-bound email in `src/lib/verification-context.ts`; the per-tab context never puts
+  the email in the URL and is cleared after a verified login or successful verification.
 - Pages `VerifyEmail`, `ForgotPassword`, `ResetPassword` (forms in
   `src/components/refine-ui/form/`) are public; the sign-in form links to `/forgot-password`. The
   code is entered with the vendored `input-otp` component (`src/components/ui/input-otp.tsx`,
-  `input-otp` dependency), shared via `otp-field.tsx`.
+  `input-otp` dependency), shared via `otp-field.tsx`. Resend timing uses the absolute deadline in
+  the verification context and the cooldown returned by the API, so reloads and background tabs do
+  not drift. Password-reset URL behavior is unchanged.
 - `ApiError` (`src/api/client.ts`) now carries the optional `code` from `{ code, message }` bodies;
   OTP/password-reset routes are in `AUTH_ENDPOINTS` so their `401`s never trigger a token refresh.
 

@@ -34,7 +34,7 @@ const secretRule = (label: string): joi.StringSchema =>
 const optionalSecretRule = (label: string): joi.StringSchema =>
   joi
     .string()
-    .min(32)
+    .min(16)
     .allow('')
     .optional()
     .custom((value: string, helpers) => {
@@ -51,7 +51,7 @@ const optionalSecretRule = (label: string): joi.StringSchema =>
       return value;
     })
     .messages({
-      'string.min': `"${label}" must be at least 32 characters when set`,
+      'string.min': `"${label}" must be at least 16 characters when set`,
       'any.invalid': `"${label}" must not contain a placeholder value in production`,
     });
 
@@ -190,6 +190,7 @@ export const EnvSchema = joi.object({
   // Email delivery
   EMAIL_PROVIDER: joi.string().valid('smtp', 'log', 'memory').default('smtp'),
   EMAIL_FROM_ADDRESS: joi.string().email().required(),
+  EMAIL_SERVICE: joi.string().default('gmail'),
   EMAIL_FROM_NAME: joi.string().optional().allow(''),
   SMTP_HOST: joi.string().when('EMAIL_PROVIDER', {
     is: 'smtp',

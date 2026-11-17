@@ -10,7 +10,7 @@ export default function CatalogGrid({ products }: { products: IProduct[] }) {
   if (!products.length) return null;
 
   return (
-    <div className="grid grid-cols-2 gap-4 md:grid-cols-3 md:gap-6 lg:grid-cols-2 xl:grid-cols-3">
+    <div className="grid grid-cols-2 gap-4 md:grid-cols-4 md:gap-6 lg:grid-cols-6 ">
       {products.map((product) => (
         <ProductItem key={product.id} {...product} />
       ))}

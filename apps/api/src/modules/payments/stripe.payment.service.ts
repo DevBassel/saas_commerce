@@ -25,8 +25,11 @@ export default class StripePaymentService {
     return this.orderPayments.repos(tenant);
   }
 
-  createOrderPaymentIntent(createPaymentDto: CreatePaymentDto) {
-    return this.orderPayments.createOrderPaymentIntent(createPaymentDto);
+  createOrderPaymentIntent(
+    createPaymentDto: CreatePaymentDto,
+    user: RequestWithUser['user'],
+  ) {
+    return this.orderPayments.createOrderPaymentIntent(createPaymentDto, user);
   }
 
   createSubscriptionPaymentIntent(createSubDto: CreateSubDto) {

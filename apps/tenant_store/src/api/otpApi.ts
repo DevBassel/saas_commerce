@@ -5,6 +5,7 @@ export type OtpPurpose = "EMAIL_VERIFICATION" | "PASSWORD_RESET";
 
 export interface RequestOtpResponse {
   success: boolean;
+  resendCooldownSeconds: number;
 }
 
 export interface VerifyEmailResponse {
@@ -20,10 +21,13 @@ export async function requestOtp(
   email: string,
   purpose: OtpPurpose,
 ): Promise<RequestOtpResponse> {
-  const res = await apiClient.post("/auth/email-otp/request", {
-    email,
-    purpose,
-  });
+  const res = await apiClient.post<RequestOtpResponse>(
+    "/auth/email-otp/request",
+    {
+      email,
+      purpose,
+    },
+  );
   return res.data;
 }
 

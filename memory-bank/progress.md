@@ -4,14 +4,38 @@ What works, what is left, and known issues. Update when work completes or debt i
 
 ## What works
 
-- **Payments architecture refactor (2026-11-04, uncommitted):** the 931-line
+- **Email verification context and resend timer (2026-11-11, uncommitted):** OTP request and customer
+  registration responses include the configured `resendCooldownSeconds` without exposing whether a
+  user or active challenge exists. Both frontends removed email from `/verify-email` URLs and use a
+  tenant-bound, per-tab `email-verification-context` in `sessionStorage` with an absolute resend
+  deadline. Storefront verification prefers the NextAuth session email; store-owner verification
+  uses the stored context. Reloads resume the API-driven countdown, successful verification and
+  verified login clear stale context, and password-reset URLs remain unchanged. Verification:
+  focused API Jest 44 tests, API typecheck, dashboard 174 tests/lint/typecheck/build, and storefront
+  lint/typecheck/build pass; dashboard lint retains five pre-existing warnings.
+
+- **Storefront Cloudflare tunnel configuration (2026-11-10):** corrected the missing/malformed
+  root-domain setting in `apps/tenant_store/.env.local` and `.env.example`, plus the adjacent
+  configuration comment. Existing routing and API/authentication settings were preserved.
+  The tunnel-host assertion failed before the fix; four routing assertions pass with each
+  environment file afterward. Live tunnel `GET /` returns HTTP 200 without the invalid-host error.
+  Specific-tenant catalog/authentication flows and a production build were not exercised.
+  Resolution contract: `apps/tenant_store/AGENTS.md` -> Tenant resolution.
+
+- **Payments architecture, hardening, and test ownership (2026-11-07, uncommitted):** the 931-line
   `StripePaymentService` is now a thin compatibility facade over focused order, subscription,
   webhook, and Connect services. `StripeClientService` centralizes one Stripe SDK instance, and
   `PaymentsModule` imports `TenantModule` instead of creating a second `TenantManagerService` cache.
-  Controllers, DTOs, routes, metadata, response shapes, status behavior, entities, and frontend
-  files are unchanged. Current uncommitted order-intent locking/reuse/idempotency behavior was
-  preserved. Payment lint passes; 120 payment tests, 1,380 API unit tests, 65 integration tests,
-  typecheck, and build pass.
+  Public controller behavior, DTOs, routes, metadata, response shapes, status behavior, entities,
+  and frontend files are unchanged.
+  **Phase 1 (P0) security and idempotency hardening applied:** fixed cross-tenant Stripe idempotency
+  key collision by prefixing with unique tenant ID (`tenant:${tenant.id}:order:${order.id}:payment:v1`),
+  enforced order ownership validation (BOLA prevention) in `createOrderPaymentIntent` with manager
+  permission bypass, and added tenant-scoped subscription-intent idempotency plus transaction-locked
+  active-intent reuse.
+  Unit tests now mirror service ownership: the facade spec tests delegation only, with direct order,
+  subscription, webhook, and Connect suites. Payment tests: 9 suites, 144 tests pass. Full API unit
+  tests: 108 suites, 1,404 tests pass; payment ESLint and API typecheck pass.
 
 - **OpenCode persistent planning (2026-10-24):** project configuration in `opencode.json` and `.opencode/` implements the root-plan workflow documented in `AGENTS.md` and `plans/README.md`. Custom `project-plan` is needed because OpenCode `1.19.4` hard-codes native Plan reminders/storage. The dependency-free writer, native/Build agent availability, command routing, and root path from an app subdirectory were verified using the installed CLI; nine writer-boundary tests passed. Original global config/custom commands were preserved. Full proof: `plans/opencode-plan-mode.md`.
 
@@ -19,7 +43,7 @@ What works, what is left, and known issues. Update when work completes or debt i
 
 - **API** (`saas_store_api`): schema-per-tenant isolation, tenant resolution + guards, JWT auth with rotation, RBAC (45 seeded permissions), products/categories/cart/orders/addresses/coupons, implemented Stripe payments (PaymentIntent, webhook, Connect), R2 storage with quotas, platform endpoints, dashboard endpoints, currency requests, and SaaS subscription plans (limits/features, Super-Admin assignment + platform reads for a tenant's subscription and usage, tenant read-only APIs, enforcement in user/coupon/product/order flows, plus an opt-in HTTP-layer `SubscriptionGuard` on annotated routes). Tenant subscription routes are **read-only**; plans are assigned by Super Admin. Recurring self-serve subscription billing was removed (2026-10-09): no `StripeBillingService`, no checkout/cancel/resume routes, no billing webhook handling, and no `stripe*` columns on `Subscription`. A one-off purchase flow was re-added the same day: `POST /payments/stripe/subscription` (`subscriptions:manage`, STORE_OWNER only) creates a platform-account Stripe PaymentIntent for a public/active plan and writes a `PENDING` `SubscriptionPayment`; the webhook split then assigns the plan on `payment_intent.succeeded` (`kind === 'subscription'` → `handleSubscriptionEvents` → ledger `PAID` + `SubscriptionService.assignPlan`), with `CANCELED`/`FAILED` ledger transitions and a full refund falling back to the free plan. Super Admin can also `POST /platform/tenants/:id/subscription/cancel` to cancel and refund the latest paid purchase in one call (implemented in `PaymentsModule`). Tenants have a self-serve counterpart — `POST /payments/stripe/subscription/cancel` (`subscriptions:manage`) refunds the latest PAID purchase within a 7-day window (`SUBSCRIPTION_REFUND_WINDOW_DAYS`, from `paidAt`/`createdAt`) and downgrades to free; `GET /subscription` reports additive `refundEligible`/`refundDeadline`. Seeded plans carry `monthlyPrice`/`yearlyPrice`/`currency`. **Test suite: 104 unit suites (1,357 tests) + 4 integration suites (65 tests) pass. Typecheck and build pass.**
 
-- **Email OTP** (`apps/api/src/modules/email-otp/` + `src/modules/email/`): tenant-scoped OTP with an `otp_challenges` tenant entity, HMAC-SHA256 code hashing, resend cooldown/per-window cap/attempt limits, pessimistic-lock consume, and an `EMAIL_TRANSPORT` seam (`nodemailer` SMTP / log / memory; new `nodemailer` dependency). Routes `POST /auth/email-otp/{request,verify}` and `POST /auth/password-reset/confirm`; register dispatches `EMAIL_VERIFICATION`; login can be gated by `OTP_REQUIRE_EMAIL_VERIFIED`. Platform OTP and login MFA are deferred. Global `EmailVerifiedGuard` requires a verified email on all authenticated tenant routes (`403 EMAIL_NOT_VERIFIED`); `@AllowUnverifiedEmail()` opts out (logout).
+- **Email OTP** (`apps/api/src/modules/email-otp/` + `src/modules/email/`): tenant-scoped OTP with an `otp_challenges` tenant entity, HMAC-SHA256 code hashing, resend cooldown/per-window cap/attempt limits, pessimistic-lock consume, and an `EMAIL_TRANSPORT` seam (`nodemailer` SMTP / log / memory; new `nodemailer` dependency). Routes `POST /auth/email-otp/{request,verify}` and `POST /auth/password-reset/confirm`; request and registration responses return the configured `resendCooldownSeconds` on all generic/success paths; register dispatches `EMAIL_VERIFICATION`; login can be gated by `OTP_REQUIRE_EMAIL_VERIFIED`. Platform OTP and login MFA are deferred. Global `EmailVerifiedGuard` requires a verified email on all authenticated tenant routes (`403 EMAIL_NOT_VERIFIED`); `@AllowUnverifiedEmail()` opts out (logout).
 
 - **API caching** (`apps/api/src/common/cache`): a Redis-backed cache on six reads (`GET /products`, `/products/:id`, `/categories`, `/categories/:id`, `/subscription/plans`, `/platform/subscription-plans`) with post-write invalidation, forced `Cache-Control: no-store`, `X-Cache`, and a single-flight namespace store. Redis is the only driver (`REDIS_URL` required): namespace key sets, namespace versions, and cross-instance invalidation via pub/sub. `DB_STATEMENT_TIMEOUT_MS` bounds each PostgreSQL statement, and `GET /health` reports `cache: { enabled, driver, connected }`. The endpoint-priority admission-control experiment was removed; the stock `ThrottlerGuard` is back. Fingerprints now hash a versioned (`v3:`) type-preserving JSON-like canonical form with sorted keys/arrays, so delimiter-containing search values cannot collide with other query parameters (2026-10-24). A 2026-10-25 cleanup removed unused store entry metadata, the unused single-key delete operation, and redundant policy names. Health `PING` now waits for Redis readiness within the connect timeout, and local invalidation scans the bounded in-flight map directly, fixing an older-flight cleanup race. **API lint/typecheck and seven focused suites passed (130 tests, including four against live Redis).**
 
@@ -47,7 +71,7 @@ What works, what is left, and known issues. Update when work completes or debt i
 
 - **Storefront** (`tenant_store`): host-decided platform vs tenant contexts (`classifyHost` in `src/lib/tenant/host.ts`), with an optional apex `?tenant=<slug>` fallback when the build-time `NEXT_PUBLIC_ALLOW_SUBDOMAIN=false` (proxy `resolveTenantSlug`; a trusted `x-tenant-slug` request header is injected and client navigation keeps the param), two route groups with two root layouts, platform landing/plans/register-store on the apex (`/` rewritten to `/home`) and the subdomain storefront for tenants, NextAuth credentials login with the refresh token kept server-side only, tenant-keyed store-info cache, catalog by numeric id, cart, checkout, Stripe payment step, order history/cancel/return, refresh proxy, route `loading`/`error` boundaries, product `notFound()` + `generateMetadata`, and a hard 404 for unknown store subdomains. See `activeContext.md` for the host-routing change and the earlier architecture-review remediation (P0-1/P0-2, P1-3/P1-4/P1-5, P2-3..P2-6, P2-9, P3-3..P3-6). Catalog caching (P1-1/P1-2), `PlaceOrder` split (P2-2), full SEO (P2-7) and shared API types (P2-8) remain. Server-side catalog search/filtering for `/products` is now wired (2026-10-24, see above).
 
-- **Storefront email OTP** (`apps/tenant_store`): `otpApi.ts` plus public `/verify-email`, `/forgot-password`, `/reset-password` pages (shadcn `input-otp` code entry). Register routes to verify; any `EMAIL_NOT_VERIFIED` (login, proxy before render for protected paths, or the apiClient interceptor) redirects to `/verify-email`, which reads the email from the session.
+- **Storefront email OTP** (`apps/tenant_store`): `otpApi.ts` plus public `/verify-email`, `/forgot-password`, `/reset-password` pages (shadcn `input-otp` code entry). Register and unverified login route to `/verify-email` without an email query; verification prefers the NextAuth session and falls back to tenant-bound per-tab context, with an API-driven absolute resend deadline. Password-reset continues to use `/reset-password?email=…`.
 
 - **Test file reorganization (2026-10-26, uncommitted):** All API unit test files moved from co-located `*.spec.ts` into `specs/` subdirectories mirroring the module structure (e.g., `src/common/cache/specs/`, `src/modules/products/specs/`, `src/modules/auth/specs/`). Integration tests live under `specs/integration/`. Jest config unchanged; all 1,357 unit tests and 65 integration tests pass. Typecheck and build pass.
 
@@ -90,10 +114,11 @@ What works, what is left, and known issues. Update when work completes or debt i
 
 ## Verification commands
 
-- `pnpm --filter saas_store_api test` — API unit specs (1,380 tests pass).
+- `pnpm --filter saas_store_api test` — API unit specs (1,404 tests pass).
 - `pnpm --filter saas_store_api test:integration` — API integration specs (65 tests pass, 1 skipped).
 - `pnpm --filter saas_store_api typecheck` / `pnpm --filter tenant_dash build` — build gates.
-- `pnpm --filter tenant_dash test` — store owner Vitest (169 tests).
+- `pnpm --filter tenant_dash test` — store owner Vitest (174 tests; set the canonical localhost
+  `VITE_API_URL` when a developer environment file points elsewhere).
 - `pnpm --filter super_admin_dash build` then `pnpm --filter saas_store_api build` — embeds the platform dashboard in `apps/api/static`; run the API and check `/platform` plus `/api/v1/health`.
 - `docker compose up -d redis` (Postgres is external) then `pnpm --filter saas_store_api dev` for manual API checks.
 - `pnpm --filter tenant_store build` — storefront production build (now passes with Turbopack).

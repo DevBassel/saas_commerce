@@ -55,9 +55,15 @@ export class EmailOtpService {
     private readonly config: ConfigService<IENV>,
   ) {}
 
-  async request(input: RequestOtpInput): Promise<{ success: true }> {
+  async request(
+    input: RequestOtpInput,
+  ): Promise<{ success: true; resendCooldownSeconds: number }> {
     const target = resolveTenantScope(input.tenant);
     const otp = this.config.getOrThrow<IOtp>('otp');
+    const response = {
+      success: true as const,
+      resendCooldownSeconds: otp.resendCooldownSeconds,
+    };
 
     const [challengeRepo, userRepo] = await Promise.all([
       this.tenantManager.getRepository(OtpChallenge, target),
@@ -66,7 +72,7 @@ export class EmailOtpService {
 
     const user = await userRepo.findOneBy({ email: input.email });
     // Anti-enumeration: unknown emails get the same generic response and no send.
-    if (!user) return { success: true };
+    if (!user) return response;
 
     const now = new Date();
 
@@ -80,7 +86,7 @@ export class EmailOtpService {
         createdAt: MoreThanOrEqual(windowStart),
       },
     });
-    if (windowCount >= otp.maxRequests) return { success: true };
+    if (windowCount >= otp.maxRequests) return response;
 
     const active = await challengeRepo.findOne({
       where: { userId: user.id, purpose: input.purpose },
@@ -91,7 +97,7 @@ export class EmailOtpService {
       now.getTime() - active.lastSentAt.getTime() <
         otp.resendCooldownSeconds * 1000
     ) {
-      return { success: true };
+      return response;
     }
 
     const id = randomUUID();
@@ -129,7 +135,7 @@ export class EmailOtpService {
       if (!isUniqueViolation(error)) throw error;
     }
 
-    if (!created) return { success: true };
+    if (!created) return response;
 
     try {
       await this.emailService.sendOtpEmail({
@@ -145,7 +151,7 @@ export class EmailOtpService {
       );
     }
 
-    return { success: true };
+    return response;
   }
 
   async verify(input: VerifyOtpInput): Promise<VerifiedOtp> {

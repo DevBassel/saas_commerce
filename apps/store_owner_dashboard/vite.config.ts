@@ -9,10 +9,18 @@ export default defineConfig({
   server: {
     port: 5174,
     strictPort: true,
+    allowedHosts: [
+      "kate-immunology-img-bedroom.trycloudflare.com",
+      ".trycloudflare.com",
+    ],
   },
   preview: {
     port: 5174,
     strictPort: true,
+    allowedHosts: [
+      "kate-immunology-img-bedroom.trycloudflare.com",
+      ".trycloudflare.com",
+    ],
   },
   resolve: {
     alias: {

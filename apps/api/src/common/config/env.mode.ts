@@ -111,6 +111,7 @@ export const buildEnv = (): IENV => ({
   email: {
     provider: (process.env.EMAIL_PROVIDER || 'smtp') as EmailProvider,
     fromAddress: process.env.EMAIL_FROM_ADDRESS!,
+    service: process.env.EMAIL_SERVICE!,
     fromName: process.env.EMAIL_FROM_NAME || process.env.APP_NAME || '',
     smtp: {
       host: process.env.SMTP_HOST || undefined,

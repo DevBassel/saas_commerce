@@ -153,6 +153,7 @@ const OverviewTab = ({
 }) => {
   const { open } = useNotification();
   const [busy, setBusy] = useState<"payments" | "payouts" | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [pending, setPending] = useState<{
     kind: "payments" | "payouts";
     nextPaused: boolean;
@@ -160,6 +161,18 @@ const OverviewTab = ({
 
   const tenantId = overview.tenant.id;
   const connected = overview.account.connected;
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await onRefetch();
+      open?.({ type: "success", message: "Refreshed" });
+    } catch (error) {
+      open?.({ type: "error", message: toApiError(error).message });
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const pendingNoun = pending?.kind === "payments" ? "Payments" : "Payouts";
   const pendingAction = pending?.nextPaused ? "Pause" : "Resume";
@@ -221,6 +234,10 @@ const OverviewTab = ({
                   : "This store has not connected a Stripe account yet."}
               </CardDescription>
             </div>
+            <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
+              <RefreshCcw className={cn("h-4 w-4", { "animate-spin": refreshing })} />
+              Refresh
+            </Button>
           </div>
         </CardHeader>
         <Separator />
@@ -366,6 +383,7 @@ const PayoutsTab = ({
 }) => {
   const [items, setItems] = useState<PlatformPayout[]>([]);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
+  const [refreshing, setRefreshing] = useState(false);
 
   const { query } = useCustom<PlatformPayoutsResponse>({
     url: `${PAYMENTS_RESOURCE}/${tenantId}/payouts`,
@@ -380,14 +398,19 @@ const PayoutsTab = ({
 
   const page = query.data?.data;
 
+  // When on page 1 (no cursor), replace items with fresh data on every successful fetch
   useEffect(() => {
     if (!page) return;
-    setItems((previous) => {
-      const seen = new Set(previous.map((item) => item.id));
-      const next = page.data.filter((item) => !seen.has(item.id));
-      return next.length > 0 ? [...previous, ...next] : previous;
-    });
-  }, [page]);
+    if (cursor === undefined) {
+      setItems(page.data);
+    } else {
+      setItems((previous) => {
+        const seen = new Set(previous.map((item) => item.id));
+        const next = page.data.filter((item) => !seen.has(item.id));
+        return next.length > 0 ? [...previous, ...next] : previous;
+      });
+    }
+  }, [page, cursor]);
 
   if (!connected) {
     return (
@@ -420,10 +443,14 @@ const PayoutsTab = ({
     );
   }
 
-  const handleRefresh = () => {
-    setItems([]);
-    if (cursor === undefined) void query.refetch();
-    else setCursor(undefined);
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setCursor(undefined);
+    try {
+      await query.refetch();
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   return (
@@ -432,11 +459,11 @@ const PayoutsTab = ({
         <Button
           variant="outline"
           size="sm"
-          disabled={query.isFetching}
+          disabled={query.isFetching || refreshing}
           onClick={handleRefresh}
         >
           <RefreshCcw
-            className={cn("h-4 w-4", { "animate-spin": query.isFetching })}
+            className={cn("h-4 w-4", { "animate-spin": query.isFetching || refreshing })}
           />
           Refresh
         </Button>
@@ -679,6 +706,7 @@ const OrderHistoryTree = ({ charges }: { charges: PlatformCharge[] }) => (
 
 const ChargesTab = ({ tenantId }: { tenantId: number }) => {
   const [page, setPage] = useState(1);
+  const [refreshing, setRefreshing] = useState(false);
 
   const { query } = useCustom<PlatformChargesResponse>({
     url: `${PAYMENTS_RESOURCE}/${tenantId}/charges`,
@@ -692,6 +720,15 @@ const ChargesTab = ({ tenantId }: { tenantId: number }) => {
   const pageCount = Math.max(Math.ceil(total / CHARGE_PAGE_SIZE), 1);
 
   const orderGroups = useMemo(() => groupChargesByOrder(charges), [charges]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await query.refetch();
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   if (query.isLoading) return <LoadingRows />;
 
@@ -710,12 +747,26 @@ const ChargesTab = ({ tenantId }: { tenantId: number }) => {
       <InfoCard
         title="No charges yet"
         description="This store has no local payment records."
+        action={<RetryAction onRetry={() => void query.refetch()} />}
       />
     );
   }
 
   return (
     <div className={cn("flex", "flex-col", "gap-4")}>
+      <div className={cn("flex", "justify-end")}>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={query.isFetching || refreshing}
+          onClick={handleRefresh}
+        >
+          <RefreshCcw
+            className={cn("h-4 w-4", { "animate-spin": query.isFetching || refreshing })}
+          />
+          Refresh
+        </Button>
+      </div>
       <Accordion
         type="multiple"
         className={cn("overflow-hidden", "rounded-md", "border")}
@@ -835,7 +886,7 @@ export const PaymentsShow = () => {
 
   return (
     <ShowView>
-      <ShowViewHeader title={overview?.tenant.name} hideEdit />
+      <ShowViewHeader title={overview?.tenant.name} hideEdit hideRefresh />
       {query.isLoading ? (
         <Card>
           <CardHeader>
