@@ -85,8 +85,10 @@ export const OrdersShow = () => {
         <div className={cn("grid", "gap-4", "lg:grid-cols-[2fr_1.5fr]")}>
           <Card>
             <CardHeader>
-              <CardTitle className={cn("flex", "items-center", "gap-2")}>
-                {record.orderNumber}
+              <CardTitle className={cn("flex", "flex-wrap", "items-center", "gap-2")}>
+                <span className="min-w-0 [overflow-wrap:anywhere]">
+                  {record.orderNumber}
+                </span>
                 <OrderStatusBadge status={record.status} />
                 <OrderStatusActions order={record} />
               </CardTitle>
@@ -153,7 +155,8 @@ export const OrdersShow = () => {
                         key={item.id}
                         className={cn(
                           "flex",
-                          "items-center",
+                          "flex-wrap",
+                          "items-start",
                           "gap-4",
                           "py-3",
                         )}
@@ -169,6 +172,7 @@ export const OrdersShow = () => {
                               "w-12",
                               "rounded",
                               "object-cover",
+                              "shrink-0",
                             )}
                           />
                         ) : (
@@ -178,23 +182,36 @@ export const OrdersShow = () => {
                               "w-12",
                               "rounded",
                               "bg-muted",
+                              "shrink-0",
                             )}
                           />
                         )}
-                        <div className={cn("flex", "flex-1", "flex-col")}>
+                        <div className={cn("flex", "min-w-0", "flex-1", "flex-col")}>
                           <Link
                             to={`/products/show/${item.productId}`}
-                            className="text-sm font-medium"
+                            className="text-sm font-medium [overflow-wrap:anywhere]"
                           >
                             {item.name}
                           </Link>
                           <span
-                            className={cn("text-xs", "text-muted-foreground")}
+                            className={cn(
+                              "text-xs",
+                              "text-muted-foreground",
+                              "[overflow-wrap:anywhere]",
+                            )}
                           >
                             {item.sku}
                           </span>
                         </div>
-                        <div className={cn("text-right", "text-sm")}>
+                        <div
+                          className={cn(
+                            "basis-full",
+                            "text-right",
+                            "text-sm",
+                            "sm:basis-auto",
+                            "sm:shrink-0",
+                          )}
+                        >
                           <span className="text-muted-foreground">
                             {formatMoney(item.unitPrice, currencyCode)} × {item.quantity}
                           </span>

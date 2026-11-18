@@ -121,7 +121,7 @@ export const OrderStatusActions = ({ order }: { order: Order }) => {
   };
 
   return (
-    <div>
+    <div className="w-full basis-full sm:w-auto sm:basis-auto">
       <Select
         value=""
         onValueChange={handleAction}

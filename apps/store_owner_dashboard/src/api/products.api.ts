@@ -1,17 +1,21 @@
+import type { AxiosProgressEvent } from "axios";
+
 import { apiClient } from "./client";
 import type { Product } from "@/types/product";
 
 export const productsApi = {
   uploadImages: async (
     productId: number,
-    files: File[]
+    files: File[],
+    onUploadProgress?: (progressEvent: AxiosProgressEvent) => void,
   ): Promise<Product> => {
     const formData = new FormData();
     files.forEach((file) => formData.append("files", file));
 
     const response = await apiClient.post<Product>(
       `products/${productId}/images`,
-      formData
+      formData,
+      { onUploadProgress },
     );
     return response.data;
   },

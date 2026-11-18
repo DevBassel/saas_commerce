@@ -72,7 +72,7 @@ type MenuItemProps = {
 };
 
 function SidebarItem({ item, selectedKey }: MenuItemProps) {
-  const { open } = useShadcnSidebar();
+  const { open, isMobile, setOpenMobile } = useShadcnSidebar();
   const Link = useLink();
   const hasChildren = !!item.children && item.children.length > 0;
 
@@ -91,7 +91,12 @@ function SidebarItem({ item, selectedKey }: MenuItemProps) {
         isActive={item.key === selectedKey}
         tooltip={getDisplayName(item)}
       >
-        <Link to={item.route || ""}>
+        <Link
+          to={item.route || ""}
+          onClick={() => {
+            if (isMobile) setOpenMobile(false);
+          }}
+        >
           <ItemIcon icon={item.meta?.icon ?? item.icon} />
           <span>{getDisplayName(item)}</span>
         </Link>
@@ -124,6 +129,7 @@ function SidebarItemGroup({ item, selectedKey }: MenuItemProps) {
 function SidebarItemCollapsible({ item, selectedKey }: MenuItemProps) {
   const { children } = item;
   const Link = useLink();
+  const { isMobile, setOpenMobile } = useShadcnSidebar();
 
   return (
     <Collapsible className={cn("group/collapsible")}>
@@ -150,7 +156,12 @@ function SidebarItemCollapsible({ item, selectedKey }: MenuItemProps) {
                   asChild
                   isActive={child.key === selectedKey}
                 >
-                  <Link to={child.route || ""}>
+                  <Link
+                    to={child.route || ""}
+                    onClick={() => {
+                      if (isMobile) setOpenMobile(false);
+                    }}
+                  >
                     <ItemIcon icon={child.meta?.icon ?? child.icon} />
                     <span>{getDisplayName(child)}</span>
                   </Link>
@@ -167,6 +178,7 @@ function SidebarItemCollapsible({ item, selectedKey }: MenuItemProps) {
 function SidebarItemDropdown({ item, selectedKey }: MenuItemProps) {
   const { children } = item;
   const Link = useLink();
+  const { isMobile, setOpenMobile } = useShadcnSidebar();
 
   return (
     <ShadcnSidebarMenuItem>
@@ -183,6 +195,9 @@ function SidebarItemDropdown({ item, selectedKey }: MenuItemProps) {
             <DropdownMenuItem key={child.key || child.name} asChild>
               <Link
                 to={child.route || ""}
+                onClick={() => {
+                  if (isMobile) setOpenMobile(false);
+                }}
                 className={cn("flex w-full items-center gap-2", {
                   "bg-accent text-accent-foreground": child.key === selectedKey,
                 })}

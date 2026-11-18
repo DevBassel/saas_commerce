@@ -61,7 +61,7 @@ export const ForgotPasswordForm = () => {
 
   return (
     <AuthShell>
-      <Card className="sm:w-114">
+      <Card className="w-full sm:w-114">
         <CardHeader className="items-center gap-2 text-center">
           <span className="mb-1 flex size-11 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
             <KeyRound className="size-6" />

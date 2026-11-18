@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn, formatBytes, storagePercent } from "@/lib/utils";
+import { Database, HardDrive, LucideIcon } from "lucide-react";
+import { Tooltip } from "@radix-ui/react-tooltip";
 
 const SIZE = 96;
 const STROKE_WIDTH = 8;
@@ -14,11 +16,13 @@ const StorageRing = ({
   usedBytes,
   capacityBytes,
   mounted,
+  Icon,
 }: {
   label: string;
   usedBytes: number;
   capacityBytes: number;
   mounted: boolean;
+  Icon: LucideIcon;
 }) => {
   const percent = storagePercent(usedBytes, capacityBytes);
   const strokeDashoffset = mounted
@@ -59,12 +63,9 @@ const StorageRing = ({
             )}
           />
         </svg>
-        <span className="absolute text-xl font-bold">
-          {Math.round(percent)}%
-        </span>
+        <Icon className="absolute text-md font-bold" />
       </div>
       <div className="text-center text-sm">
-        <div className="font-medium">{label}</div>
         <div className="text-muted-foreground">
           <span className="font-bold text-foreground">
             {formatBytes(usedBytes)}
@@ -99,12 +100,7 @@ export const StorageCard = ({
   }, []);
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
-          Storage
-        </CardTitle>
-      </CardHeader>
+    <Card className="col-span-2">
       <CardContent>
         {isLoading ? (
           <div className="flex flex-wrap items-center justify-center gap-6">
@@ -112,7 +108,7 @@ export const StorageCard = ({
             <Skeleton className="h-24 w-24 rounded-full" />
           </div>
         ) : isError ? (
-          <div className="text-2xl font-bold">—</div>
+          <div className="text-xl font-bold">—</div>
         ) : (
           <div className="flex flex-wrap items-center justify-center gap-6">
             <StorageRing
@@ -120,12 +116,14 @@ export const StorageCard = ({
               usedBytes={usedBytes}
               capacityBytes={capacityBytes}
               mounted={mounted}
+              Icon={HardDrive}
             />
             <StorageRing
               label="Database"
               usedBytes={schemaSizeBytes}
               capacityBytes={schemaCapacityBytes}
               mounted={mounted}
+              Icon={Database}
             />
           </div>
         )}

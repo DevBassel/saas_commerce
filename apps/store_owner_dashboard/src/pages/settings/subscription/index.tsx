@@ -94,7 +94,18 @@ const UsageRow = ({
         "p-3",
       )}
     >
-      <div className={cn("flex", "items-center", "justify-between", "gap-2")}>
+      <div
+        className={cn(
+          "flex",
+          "flex-col",
+          "items-start",
+          "gap-1",
+          "sm:flex-row",
+          "sm:items-center",
+          "sm:justify-between",
+          "sm:gap-2",
+        )}
+      >
         <span className={cn("text-sm", "font-medium")}>{label}</span>
         <span className={cn("text-sm", "text-muted-foreground")}>
           {formatUsed(value.used, type)} / {formatLimitValue(value.limit, type)}
@@ -425,7 +436,14 @@ export const SubscriptionSettings = () => {
                   <Button
                     type="button"
                     variant="destructive"
-                    className={cn("self-start")}
+                    className={cn(
+                      "h-auto",
+                      "w-full",
+                      "whitespace-normal",
+                      "text-center",
+                      "sm:w-auto",
+                      "sm:self-start",
+                    )}
                     onClick={() => setCancelOpen(true)}
                   >
                     Cancel subscription &amp; request refund
@@ -500,7 +518,11 @@ export const SubscriptionSettings = () => {
                     {plans.map((plan) => {
                       const isCurrent = effectivePlan?.id === plan.id;
                       return (
-                        <TabsTrigger key={plan.id} value={String(plan.id)}>
+                        <TabsTrigger
+                          key={plan.id}
+                          value={String(plan.id)}
+                          className="h-auto basis-full whitespace-normal sm:basis-0"
+                        >
                           {plan.name}
                           {isCurrent ? (
                             <Badge variant="secondary">Current</Badge>
@@ -543,10 +565,18 @@ export const SubscriptionSettings = () => {
                                 "flex",
                                 "items-center",
                                 "justify-between",
+                                "flex-wrap",
                                 "gap-2",
                               )}
                             >
-                              <span className={cn("text-lg", "font-semibold")}>
+                              <span
+                                className={cn(
+                                  "min-w-0",
+                                  "text-lg",
+                                  "font-semibold",
+                                  "[overflow-wrap:anywhere]",
+                                )}
+                              >
                                 {plan.name}
                               </span>
                               {isCurrent ? <Badge>Current plan</Badge> : null}

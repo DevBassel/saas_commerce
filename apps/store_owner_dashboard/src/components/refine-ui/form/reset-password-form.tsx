@@ -75,7 +75,7 @@ export const ResetPasswordForm = () => {
   if (!email) {
     return (
       <AuthShell>
-        <Card className="sm:w-114">
+        <Card className="w-full sm:w-114">
           <CardHeader className="items-center gap-2 text-center">
             <span className="mb-1 flex size-11 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
               <ShieldCheck className="size-6" />
@@ -97,13 +97,13 @@ export const ResetPasswordForm = () => {
 
   return (
     <AuthShell>
-      <Card className="sm:w-114">
+      <Card className="w-full sm:w-114">
         <CardHeader className="items-center gap-2 text-center">
           <span className="mb-1 flex size-11 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
             <ShieldCheck className="size-6" />
           </span>
           <CardTitle className="text-xl">Choose a new password</CardTitle>
-          <CardDescription>
+          <CardDescription className="[overflow-wrap:anywhere]">
             Enter the code sent to {email} and pick a new password.
           </CardDescription>
         </CardHeader>

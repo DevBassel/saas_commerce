@@ -19,6 +19,7 @@ export function Layout({ children }: PropsWithChildren) {
             "mx-auto",
             "relative",
             "w-full",
+            "min-w-0",
             "flex",
             "flex-col",
             "flex-1",

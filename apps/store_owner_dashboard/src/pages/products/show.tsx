@@ -67,8 +67,10 @@ export const ProductsShow = () => {
         <div className={cn("grid", "gap-6", "lg:grid-cols-[2fr_1fr]")}>
           <Card>
             <CardHeader>
-              <CardTitle className={cn("flex", "items-center", "gap-2")}>
-                {record.name}
+              <CardTitle className={cn("flex", "flex-wrap", "items-center", "gap-2")}>
+                <span className="min-w-0 [overflow-wrap:anywhere]">
+                  {record.name}
+                </span>
                 <ActiveBadge active={record.isActive} />
               </CardTitle>
             </CardHeader>

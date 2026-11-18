@@ -91,6 +91,7 @@ export const CancelSubscriptionDialog = ({
             variant="destructive"
             onClick={() => void handleConfirm()}
             disabled={submitting}
+            className="h-auto w-full whitespace-normal text-center sm:w-auto"
           >
             {submitting ? (
               <>

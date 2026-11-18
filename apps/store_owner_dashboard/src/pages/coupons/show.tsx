@@ -65,8 +65,10 @@ export const CouponsShow = () => {
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle className={cn("flex", "items-center", "gap-2")}>
-              {record.code}
+            <CardTitle className={cn("flex", "flex-wrap", "items-center", "gap-2")}>
+              <span className="min-w-0 [overflow-wrap:anywhere]">
+                {record.code}
+              </span>
               <ActiveBadge active={record.isActive} />
             </CardTitle>
           </CardHeader>

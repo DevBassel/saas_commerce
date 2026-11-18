@@ -120,7 +120,7 @@ export const VerifyEmailForm = () => {
   if (!email) {
     return (
       <AuthShell>
-        <Card className="sm:w-114">
+        <Card className="w-full sm:w-114">
           <CardHeader className="items-center gap-2 text-center">
             <span className="mb-1 flex size-11 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
               <MailCheck className="size-6" />
@@ -142,13 +142,15 @@ export const VerifyEmailForm = () => {
 
   return (
     <AuthShell>
-      <Card className="sm:w-114">
+      <Card className="w-full sm:w-114">
         <CardHeader className="items-center gap-2 text-center">
           <span className="mb-1 flex size-11 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
             <MailCheck className="size-6" />
           </span>
           <CardTitle className="text-xl">Verify your email</CardTitle>
-          <CardDescription>Enter the code we sent to {email}.</CardDescription>
+          <CardDescription className="[overflow-wrap:anywhere]">
+            Enter the code we sent to {email}.
+          </CardDescription>
         </CardHeader>
 
         <form onSubmit={handleSubmit}>

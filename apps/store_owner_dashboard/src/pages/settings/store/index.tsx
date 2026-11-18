@@ -257,18 +257,29 @@ export const StoreSettings = () => {
                     <div
                       className={cn(
                         "flex",
-                        "items-center",
+                        "flex-col",
+                        "items-start",
                         "justify-between",
-                        "gap-4",
+                        "gap-2",
                         "py-3",
+                        "sm:flex-row",
+                        "sm:items-center",
+                        "sm:gap-4",
                       )}
                     >
-                      <div className={cn("flex", "flex-col", "gap-1")}>
+                      <div
+                        className={cn(
+                          "flex",
+                          "min-w-0",
+                          "flex-col",
+                          "gap-1",
+                        )}
+                      >
                         <span className="text-sm font-medium">
                           {request.currentCurrency.toUpperCase()} →{" "}
                           {request.requestedCurrency.toUpperCase()}
                         </span>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
                           {formatDate(request.createdAt)}
                           {request.reviewNote
                             ? ` · ${request.reviewNote}`

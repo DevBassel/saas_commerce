@@ -60,8 +60,10 @@ export const UsersShow = () => {
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle className={cn("flex", "items-center", "gap-2")}>
-              {record.name}
+            <CardTitle className={cn("flex", "flex-wrap", "items-center", "gap-2")}>
+              <span className="min-w-0 [overflow-wrap:anywhere]">
+                {record.name}
+              </span>
               {record.emailVerified ? (
                 <Badge variant="secondary">Verified</Badge>
               ) : (

@@ -39,7 +39,7 @@ export const OtpField = ({
         <InputOTPSlot index={1} />
         <InputOTPSlot index={2} />
       </InputOTPGroup>
-      <InputOTPSeparator />
+      <InputOTPSeparator className="hidden sm:block" />
       <InputOTPGroup>
         <InputOTPSlot index={3} />
         <InputOTPSlot index={4} />

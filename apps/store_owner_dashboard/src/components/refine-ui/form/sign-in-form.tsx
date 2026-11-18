@@ -55,7 +55,8 @@ export const SignInForm = () => {
         "flex-col",
         "items-center",
         "justify-center",
-        "px-6",
+        "px-4",
+        "sm:px-6",
         "py-8",
         "min-h-svh",
       )}
@@ -70,7 +71,7 @@ export const SignInForm = () => {
         )}
       </div>
 
-      <Card className={cn("sm:w-114", "p-12", "mt-6")}>
+      <Card className={cn("w-full", "p-6", "mt-6", "sm:w-114", "sm:p-12")}>
         <CardHeader className={cn("px-0")}>
           <CardTitle
             className={cn("text-primary", "text-3xl", "font-semibold")}

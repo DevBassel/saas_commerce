@@ -13,7 +13,9 @@ export const DetailRow = ({
     <span className={cn("text-xs", "uppercase", "text-muted-foreground")}>
       {label}
     </span>
-    <span className="text-sm font-medium">{value}</span>
+    <span className="min-w-0 text-sm font-medium [overflow-wrap:anywhere]">
+      {value}
+    </span>
   </div>
 );
 

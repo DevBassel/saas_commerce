@@ -225,7 +225,7 @@ export const UserPermissionsCard = ({ user }: { user: User }) => {
               <h3 className={cn("text-md", "text-primary", "font-bold")}>
                 {group.prefix}
               </h3>
-              <div className={"grid grid-cols-2  gap-2"}>
+              <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
                 {group.items.map((permission) => {
                   const isDirect = directIds.has(permission.id);
                   const isInherited =
@@ -246,16 +246,20 @@ export const UserPermissionsCard = ({ user }: { user: User }) => {
                       key={permission.id}
                       className={cn(
                         "flex",
-                        "items-center",
+                        "flex-col",
+                        "items-stretch",
                         "justify-between",
-                        "gap-4",
+                        "gap-2",
                         "rounded-md",
                         "border",
                         "px-3",
                         "py-2",
+                        "sm:flex-row",
+                        "sm:items-center",
+                        "sm:gap-4",
                       )}
                     >
-                      <div className={cn("flex", "items-center", "gap-3")}>
+                      <div className={cn("flex", "min-w-0", "items-center", "gap-3")}>
                         <ActionIcon
                           aria-hidden="true"
                           className={cn(
@@ -265,18 +269,30 @@ export const UserPermissionsCard = ({ user }: { user: User }) => {
                             "text-muted-foreground",
                           )}
                         />
-                        <div className={cn("flex", "flex-col")}>
-                          <span className="text-sm font-medium">
+                        <div className={cn("flex", "min-w-0", "flex-col")}>
+                          <span className="text-sm font-medium [overflow-wrap:anywhere]">
                             {permission.name}
                           </span>
                           <span
-                            className={cn("text-xs", "text-muted-foreground")}
+                            className={cn(
+                              "text-xs",
+                              "text-muted-foreground",
+                              "[overflow-wrap:anywhere]",
+                            )}
                           >
                             {permission.key}
                           </span>
                         </div>
                       </div>
-                      <div className={cn("flex", "items-center", "gap-2")}>
+                      <div
+                        className={cn(
+                          "flex",
+                          "flex-wrap",
+                          "items-center",
+                          "justify-end",
+                          "gap-2",
+                        )}
+                      >
                         {isInherited ? (
                           <Badge variant="secondary">From role</Badge>
                         ) : null}

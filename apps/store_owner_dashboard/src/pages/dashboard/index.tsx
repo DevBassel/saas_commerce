@@ -19,6 +19,7 @@ import { formatMoney, useTenantCurrency } from "@/lib/currency";
 import { cn } from "@/lib/utils";
 import type { Balance, DashboardStats } from "@/types/dashboard";
 import type { Order } from "@/types/order";
+import { StatCard } from "@/components/dashboard/StatCard";
 
 const formatDate = (value?: string | null) =>
   value ? new Date(value).toLocaleString() : "—";
@@ -34,36 +35,6 @@ const formatBalance = (
 };
 
 const RECENT_ORDERS_LIMIT = 5;
-
-const StatCard = ({
-  title,
-  value,
-  icon: Icon,
-  isLoading,
-  isError,
-}: {
-  title: string;
-  value: string;
-  icon: React.ComponentType<{ className?: string }>;
-  isLoading: boolean;
-  isError: boolean;
-}) => (
-  <Card>
-    <CardHeader className="flex flex-row items-center justify-between pb-2">
-      <CardTitle className="text-sm font-medium text-muted-foreground">
-        {title}
-      </CardTitle>
-      <Icon className="h-4 w-4 text-muted-foreground" />
-    </CardHeader>
-    <CardContent>
-      {isLoading ? (
-        <Skeleton className="h-8 w-16" />
-      ) : (
-        <div className="text-2xl font-bold">{isError ? "—" : value}</div>
-      )}
-    </CardContent>
-  </Card>
-);
 
 export const Dashboard = () => {
   const ordersQuery = useList<Order>({
@@ -84,7 +55,7 @@ export const Dashboard = () => {
 
   return (
     <div className="flex flex-col gap-6 p-4">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Orders"
           value={String(stats?.totalOrders ?? 0)}
@@ -119,6 +90,7 @@ export const Dashboard = () => {
           icon={HourglassIcon}
           isLoading={statsQuery.query.isLoading}
           isError={statsQuery.query.isError}
+          className="h-fit"
         />
         <StatCard
           title="Customers"
@@ -126,6 +98,7 @@ export const Dashboard = () => {
           icon={UsersIcon}
           isLoading={statsQuery.query.isLoading}
           isError={statsQuery.query.isError}
+          className="h-fit"
         />
         <StorageCard
           usedBytes={stats?.storageUsedBytes ?? 0}
@@ -167,22 +140,41 @@ export const Dashboard = () => {
                   to={`/orders/show/${order.id}`}
                   className={cn(
                     "flex",
-                    "items-center",
+                    "flex-col",
+                    "items-start",
                     "justify-between",
-                    "gap-4",
+                    "gap-2",
                     "py-3",
+                    "sm:flex-row",
+                    "sm:items-center",
+                    "sm:gap-4",
                   )}
                 >
-                  <div className={cn("flex", "flex-col")}>
+                  <div className={cn("flex", "min-w-0", "flex-col")}>
                     <span className="text-sm font-medium">
                       {order.orderNumber}
                     </span>
-                    <span className={cn("text-xs", "text-muted-foreground")}>
+                    <span
+                      className={cn(
+                        "text-xs",
+                        "text-muted-foreground",
+                        "[overflow-wrap:anywhere]",
+                      )}
+                    >
                       {order.userId == null ? "Deleted user" : order.user.name}{" "}
                       · {formatDate(order.createdAt)}
                     </span>
                   </div>
-                  <div className={cn("flex", "items-center", "gap-3")}>
+                  <div
+                    className={cn(
+                      "flex",
+                      "w-full",
+                      "items-center",
+                      "justify-between",
+                      "gap-3",
+                      "sm:w-auto",
+                    )}
+                  >
                     <OrderStatusBadge status={order.status} />
                     <span className="text-sm font-semibold">
                       {formatMoney(order.total, currencyCode)}

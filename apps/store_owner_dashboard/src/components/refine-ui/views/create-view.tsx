@@ -62,15 +62,19 @@ export const CreateViewHeader = ({
         className={cn(
           "flex",
           "gap-1",
-          "items-center",
-          "-ml-2.5",
+          "min-w-0",
+          "items-start",
+          "sm:-ml-2.5",
+          "sm:items-center",
           headerClassName,
         )}
       >
-        <Button variant="ghost" size="icon" onClick={back}>
+        <Button className="shrink-0" variant="ghost" size="icon" onClick={back}>
           <ArrowLeftIcon className="h-4 w-4" />
         </Button>
-        <h2 className="text-2xl font-bold">{title}</h2>
+        <h2 className="min-w-0 break-words text-xl font-bold sm:text-2xl">
+          {title}
+        </h2>
       </div>
     </div>
   );

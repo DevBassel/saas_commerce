@@ -81,7 +81,8 @@ function MobileHeader() {
 
       <div
         className={cn(
-          "whitespace-nowrap",
+          "min-w-0",
+          "flex-1",
           "flex",
           "flex-row",
           "h-full",
@@ -90,15 +91,12 @@ function MobileHeader() {
           "gap-2",
           "transition-discrete",
           "duration-200",
-          {
-            "pl-3": !open,
-            "pl-5": open,
-          }
         )}
       >
-        <div>{title.icon}</div>
+        <div className="shrink-0">{title.icon}</div>
         <h2
           className={cn(
+            "truncate",
             "text-sm",
             "font-bold",
             "transition-opacity",
@@ -113,7 +111,10 @@ function MobileHeader() {
         </h2>
       </div>
 
-      <ThemeToggle className={cn("h-8", "w-8")} />
+      <div className="flex shrink-0 items-center gap-1">
+        <ThemeToggle className={cn("h-8", "w-8")} />
+        <UserDropdown />
+      </div>
     </header>
   );
 }

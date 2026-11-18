@@ -43,17 +43,37 @@ export function UndoableNotification({
         "shadow-xl",
         "border",
         "border-border",
-        "min-w-[320px]",
-        "max-w-md"
+        "w-[calc(100vw-2rem)]",
+        "min-w-0",
+        "max-w-md",
+        "sm:w-auto",
+        "sm:min-w-[320px]",
       )}
     >
-      <div className={cn("flex", "items-center", "justify-between")}>
-        <div className={cn("flex-1", "mr-4")}>
+      <div
+        className={cn(
+          "flex",
+          "flex-col",
+          "items-stretch",
+          "gap-3",
+          "sm:flex-row",
+          "sm:items-center",
+          "sm:justify-between",
+        )}
+      >
+        <div className={cn("min-w-0", "flex-1", "sm:mr-4")}>
           <div className={cn("font-medium", "text-foreground", "text-sm")}>
             {message}
           </div>
           {description && (
-            <div className={cn("text-muted-foreground", "text-sm", "mt-1")}>
+            <div
+              className={cn(
+                "text-muted-foreground",
+                "text-sm",
+                "mt-1",
+                "[overflow-wrap:anywhere]",
+              )}
+            >
               {description}
             </div>
           )}
@@ -71,7 +91,8 @@ export function UndoableNotification({
             "py-2",
             "text-sm",
             "font-medium",
-            "rounded-md"
+            "rounded-md",
+            "self-end",
           )}
         >
           {t("buttons.undo", "Undo")}

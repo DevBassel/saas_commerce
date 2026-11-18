@@ -11,7 +11,8 @@ export const AuthShell = ({ children }: { children: ReactNode }) => {
         "flex-col",
         "items-center",
         "justify-center",
-        "px-6",
+        "px-4",
+        "sm:px-6",
         "py-8",
         "min-h-svh",
       )}
