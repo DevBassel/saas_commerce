@@ -75,6 +75,12 @@ export class SubscriptionPayment extends BaseEntity {
   @Column({ type: 'timestamp', nullable: true })
   refundedAt: Date | null;
 
+  @Column({ type: 'timestamp', nullable: true })
+  planAppliedAt: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  refundDowngradedAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

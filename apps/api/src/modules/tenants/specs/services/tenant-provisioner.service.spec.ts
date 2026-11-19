@@ -3,6 +3,7 @@ import { TenantProvisionerService } from '../../services/tenant-provisioner.serv
 import { TenantManagerService } from '../../services/tenant-manager.service';
 import { Tenant } from '../../entities/tenant.entity';
 import { TENANT_ROLE_KEYS, seedRbac } from '../../../seeding/helpers/rbac.seed';
+import { TenantMigrationService } from '../../services/tenant-migration.service';
 
 jest.mock('../../../seeding/helpers/rbac.seed', () => {
   const actual = jest.requireActual<
@@ -21,14 +22,17 @@ const tenant = {
 
 const buildMocks = () => {
   const ds = { marker: 'tenant-ds' } as unknown as DataSource;
-  const query = jest.fn().mockResolvedValue(undefined);
-  const publicDataSource = { query } as unknown as DataSource;
   const getDataSource = jest.fn().mockResolvedValue(ds);
   const manager = { getDataSource } as unknown as TenantManagerService;
+  const migrate = jest.fn().mockResolvedValue({
+    schemaName: tenant.schemaName,
+    executedMigrations: [],
+  });
+  const migrations = { migrate } as unknown as TenantMigrationService;
 
-  const service = new TenantProvisionerService(manager, publicDataSource);
+  const service = new TenantProvisionerService(manager, migrations);
 
-  return { service, manager, publicDataSource, query, getDataSource, ds };
+  return { service, manager, migrations, migrate, getDataSource, ds };
 };
 
 describe('TenantProvisionerService', () => {
@@ -36,27 +40,26 @@ describe('TenantProvisionerService', () => {
     jest.clearAllMocks();
   });
 
-  it('creates the schema with IF NOT EXISTS using the sanitized name', async () => {
-    const { service, query } = buildMocks();
+  it('runs tenant migrations before opening the runtime datasource', async () => {
+    const { service, migrate, getDataSource } = buildMocks();
 
     await service.provision(tenant);
 
-    expect(query).toHaveBeenCalledWith(
-      'CREATE SCHEMA IF NOT EXISTS "tenant_acme"',
+    expect(migrate).toHaveBeenCalledWith('tenant_acme');
+    expect(migrate.mock.invocationCallOrder[0]).toBeLessThan(
+      getDataSource.mock.invocationCallOrder[0],
     );
   });
 
   it('sanitizes the schema name before issuing the SQL', async () => {
-    const { service, query, getDataSource } = buildMocks();
+    const { service, migrate, getDataSource } = buildMocks();
 
     await service.provision({
       slug: 'acme',
       schemaName: 'Tenant-Acme!',
     } as Tenant);
 
-    expect(query).toHaveBeenCalledWith(
-      'CREATE SCHEMA IF NOT EXISTS "tenant_acme_"',
-    );
+    expect(migrate).toHaveBeenCalledWith('tenant_acme_');
     expect(getDataSource).toHaveBeenCalledWith({
       schemaName: 'tenant_acme_',
     });
@@ -90,12 +93,12 @@ describe('TenantProvisionerService', () => {
   });
 
   it('is idempotent for an already-provisioned tenant', async () => {
-    const { service, query, getDataSource } = buildMocks();
+    const { service, migrate, getDataSource } = buildMocks();
 
     await service.provision(tenant);
     await expect(service.provision(tenant)).resolves.toBeDefined();
 
-    expect(query).toHaveBeenCalledTimes(2);
+    expect(migrate).toHaveBeenCalledTimes(2);
     expect(getDataSource).toHaveBeenCalledTimes(2);
     expect(seedRbacMock).toHaveBeenCalledTimes(2);
   });

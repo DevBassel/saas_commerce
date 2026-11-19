@@ -42,6 +42,10 @@ export default class StripePaymentService {
     return this.webhooks.webHook(req, sig);
   }
 
+  reconcileWebhookEvents(limit?: number) {
+    return this.webhooks.reconcileEvents(limit);
+  }
+
   refundOrder(order: Order, tenant?: TenantRef) {
     return this.orderPayments.refundOrder(order, tenant);
   }

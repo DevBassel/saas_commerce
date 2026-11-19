@@ -13,6 +13,7 @@ import { OrderPaymentService } from './services/order-payment.service';
 import { SubscriptionPaymentService } from './services/subscription-payment.service';
 import { StripeWebhookService } from './webhooks/stripe-webhook.service';
 import { StripeConnectService } from './services/stripe-connect.service';
+import { StripeWebhookEvent } from './entities/stripe-webhook-event.entity';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { StripeConnectService } from './services/stripe-connect.service';
       Subscription,
       SubscriptionPayment,
       SubscriptionPlan,
+      StripeWebhookEvent,
     ]),
     TenantModule,
     SubscriptionsModule,

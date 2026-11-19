@@ -1,9 +1,9 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource, EntityTarget, ObjectLiteral, Repository } from 'typeorm';
-import { buildDataSourceOptions } from 'src/common/config/data-source.factory';
-import { IDB, IENV, IAPP } from 'src/common/config/env.interface';
-import { TENANT_ENTITIES } from '../utils/tenant-entities';
+import { IENV } from 'src/common/config/env.interface';
+import { buildTenantDataSourceOptions } from 'src/database/data-source-options';
+import { TenantMigrationDataSource } from 'src/database/tenant-migration.data-source';
 import { TenantRef } from '../utils/tenant.utils';
 
 const TENANT_CACHE_CAP = 100;
@@ -52,6 +52,12 @@ export class TenantManagerService implements OnModuleDestroy {
     return ds.getRepository(entity);
   }
 
+  createMigrationDataSource(tenant: TenantRef): DataSource {
+    return new TenantMigrationDataSource(
+      buildTenantDataSourceOptions(this.config, tenant.schemaName, 1),
+    );
+  }
+
   async release(tenant: TenantRef): Promise<void> {
     const key = tenant.schemaName;
     const ds = this.cache.get(key);
@@ -68,17 +74,10 @@ export class TenantManagerService implements OnModuleDestroy {
     this.cache.clear();
   }
 
-  private createDataSource(tenant: TenantRef): DataSource {
-    const { tenantPoolSize, synchronize, syncTenants } =
-      this.config.getOrThrow<IDB>('db');
-    const { env } = this.config.getOrThrow<IAPP>('app');
-    const options = buildDataSourceOptions(this.config, {
-      schema: tenant.schemaName,
-      entities: TENANT_ENTITIES,
-      synchronize: synchronize && (env !== 'production' || syncTenants),
-      poolSize: tenantPoolSize,
-    });
-    return new DataSource(options);
+  private createDataSource(tenant: TenantRef, poolSize?: number): DataSource {
+    return new DataSource(
+      buildTenantDataSourceOptions(this.config, tenant.schemaName, poolSize),
+    );
   }
 
   private async evictIfNeeded(): Promise<void> {

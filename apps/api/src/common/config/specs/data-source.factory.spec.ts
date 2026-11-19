@@ -3,7 +3,7 @@ import { PostgresConnectionOptions } from 'typeorm/driver/postgres/PostgresConne
 import {
   buildDataSourceOptions,
   DataSourceOverrides,
-} from '../data-source.factory';
+} from '../../../database/data-source.factory';
 import { IDB, IENV } from '../env.interface';
 
 jest.mock('../../logger/typeorm-daily.logger', () => ({
@@ -67,7 +67,7 @@ describe('buildDataSourceOptions', () => {
       database: 'saas_store',
       ssl: false,
       logging: true,
-      synchronize: true,
+      synchronize: false,
     });
   });
 
@@ -102,18 +102,11 @@ describe('buildDataSourceOptions', () => {
     expect(build({ poolSize: 0 })).not.toHaveProperty('poolSize');
   });
 
-  it('always takes synchronize from db and ignores the override', () => {
-    const enabled = build(
-      { synchronize: false },
-      makeConfig({ synchronize: true }),
-    );
-    const disabled = build(
-      { synchronize: true },
-      makeConfig({ synchronize: false }),
-    );
+  it('always disables synchronization and automatic migrations', () => {
+    const options = build({}, makeConfig({ synchronize: true }));
 
-    expect(enabled.synchronize).toBe(true);
-    expect(disabled.synchronize).toBe(false);
+    expect(options.synchronize).toBe(false);
+    expect(options.migrationsRun).toBe(false);
   });
 
   it('passes the db ssl and logging flags through unchanged', () => {

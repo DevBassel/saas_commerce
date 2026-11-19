@@ -164,8 +164,15 @@ export class SubscriptionService {
   async assignPlan(
     tenantId: number,
     dto: AssignSubscriptionDto,
+    manager?: EntityManager,
   ): Promise<Subscription> {
-    const plan = await this.planRepo.findOne({
+    const plans = manager
+      ? manager.getRepository(SubscriptionPlan)
+      : this.planRepo;
+    const subscriptions = manager
+      ? manager.getRepository(Subscription)
+      : this.subscriptionRepo;
+    const plan = await plans.findOne({
       where: { id: dto.planId },
       relations: PLAN_RELATIONS,
     });
@@ -180,7 +187,12 @@ export class SubscriptionService {
         message: 'Plan is inactive',
       });
 
-    const existing = await this.subscriptionRepo.findOneBy({ tenantId });
+    const existing = manager
+      ? await subscriptions.findOne({
+          where: { tenantId },
+          lock: { mode: 'pessimistic_write' },
+        })
+      : await subscriptions.findOneBy({ tenantId });
     if (!plan.isPublic && existing?.planId !== plan.id)
       throw new BadRequestException({
         code: 'PLAN_NOT_PUBLIC',
@@ -204,8 +216,8 @@ export class SubscriptionService {
       ? SubscriptionStatus.TRIALING
       : SubscriptionStatus.ACTIVE;
 
-    const saved = await this.subscriptionRepo.save(
-      this.subscriptionRepo.create({
+    const saved = await subscriptions.save(
+      subscriptions.create({
         ...(existing ?? {}),
         tenantId,
         planId: plan.id,
@@ -218,7 +230,14 @@ export class SubscriptionService {
       }),
     );
 
-    await this.syncStorageCapacity(tenantId, plan);
+    await this.syncStorageCapacity(tenantId, plan, manager);
+    if (manager)
+      return (
+        (await subscriptions.findOne({
+          where: { tenantId },
+          relations: SUBSCRIPTION_RELATIONS,
+        })) ?? saved
+      );
     return this.getByTenantId(tenantId).then((row) => row ?? saved);
   }
 
@@ -256,28 +275,44 @@ export class SubscriptionService {
    * plan row) is left untouched, so repeated/duplicate refund webhook events
    * do not reset the period.
    */
-  async downgradeToFree(subscriptionId: number): Promise<Subscription | null> {
-    const existing = await this.subscriptionRepo.findOneBy({
+  async downgradeToFree(
+    subscriptionId: number,
+    manager?: EntityManager,
+  ): Promise<Subscription | null> {
+    const subscriptions = manager
+      ? manager.getRepository(Subscription)
+      : this.subscriptionRepo;
+    const plans = manager
+      ? manager.getRepository(SubscriptionPlan)
+      : this.planRepo;
+    const existing = await subscriptions.findOneBy({
       id: subscriptionId,
     });
     if (!existing) return null;
 
-    const free = await this.planRepo.findOneBy({ slug: FREE_PLAN_SLUG });
+    const free = await plans.findOneBy({ slug: FREE_PLAN_SLUG });
     if (!free || existing.planId === free.id) return existing;
 
-    return this.assignPlan(existing.tenantId, { planId: free.id });
+    return this.assignPlan(existing.tenantId, { planId: free.id }, manager);
   }
 
   /** Mirrors the plan's STORAGE_BYTES limit into `Tenant.storageCapacityBytes`. */
   async syncStorageCapacity(
     tenantId: number,
     plan?: SubscriptionPlan,
+    manager?: EntityManager,
   ): Promise<void> {
+    const subscriptions = manager
+      ? manager.getRepository(Subscription)
+      : this.subscriptionRepo;
+    const plans = manager
+      ? manager.getRepository(SubscriptionPlan)
+      : this.planRepo;
     let target: SubscriptionPlan | null | undefined = plan;
     if (!target) {
-      const subscription = await this.subscriptionRepo.findOneBy({ tenantId });
+      const subscription = await subscriptions.findOneBy({ tenantId });
       if (!subscription) return;
-      target = await this.planRepo.findOne({
+      target = await plans.findOne({
         where: { id: subscription.planId },
         relations: { limits: true },
       });
@@ -290,6 +325,14 @@ export class SubscriptionService {
       storageLimit?.value != null
         ? BigInt(storageLimit.value)
         : UNLIMITED_STORAGE_BYTES;
+    if (manager) {
+      await manager.update(
+        Tenant,
+        { id: tenantId },
+        { storageCapacityBytes: capacity },
+      );
+      return;
+    }
     await this.tenantService.setStorageCapacity(tenantId, capacity);
   }
 

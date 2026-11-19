@@ -273,15 +273,28 @@ export class OrderPaymentService {
         throw new NotFoundException(`Order ${orderId} not found`);
       }
 
-      // Prevent duplicate or outdated webhook events.
+      // Preserve terminal status while repairing success timestamps when a
+      // refund event arrived before Stripe delivered payment_intent.succeeded.
       if (
         payment.status === PaymentStatus.PAID ||
         payment.status === PaymentStatus.REFUNDED ||
-        payment.status === PaymentStatus.PARTIALLY_REFUNDED ||
-        payment.status === PaymentStatus.CANCELED
+        payment.status === PaymentStatus.PARTIALLY_REFUNDED
       ) {
+        const paidAt = payment.paidAt ?? order.paidAt ?? new Date();
+        if (!payment.paidAt) {
+          paymentRepository.merge(payment, { paidAt });
+          await paymentRepository.save(payment);
+        }
+        if (!order.paidAt || order.paymentStatus !== payment.status) {
+          orderRepository.merge(order, {
+            paymentStatus: payment.status,
+            paidAt,
+          });
+          await orderRepository.save(order);
+        }
         return;
       }
+      if (payment.status === PaymentStatus.CANCELED) return;
 
       const paidAt = new Date();
 
@@ -335,6 +348,14 @@ export class OrderPaymentService {
       if (!order) {
         throw new NotFoundException(`Order ${orderId} not found`);
       }
+
+      if (
+        payment.status === PaymentStatus.PAID ||
+        payment.status === PaymentStatus.REFUNDED ||
+        payment.status === PaymentStatus.PARTIALLY_REFUNDED ||
+        payment.status === PaymentStatus.CANCELED
+      )
+        return;
 
       const canceledAt = new Date();
 
@@ -464,6 +485,14 @@ export class OrderPaymentService {
       if (!order) {
         throw new NotFoundException(`Order ${orderId} not found`);
       }
+
+      if (
+        payment.status === PaymentStatus.PAID ||
+        payment.status === PaymentStatus.REFUNDED ||
+        payment.status === PaymentStatus.PARTIALLY_REFUNDED ||
+        payment.status === PaymentStatus.CANCELED
+      )
+        return;
 
       const failedAt = new Date();
 

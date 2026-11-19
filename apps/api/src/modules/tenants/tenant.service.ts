@@ -15,6 +15,7 @@ import { User } from '../users/entities/user.entity';
 import { TenantStatus } from './enums/tenantStatus.enum';
 import { ConfigService } from '@nestjs/config';
 import { IDB, IENV } from 'src/common/config/env.interface';
+import { TenantMigrationService } from './services/tenant-migration.service';
 
 @Injectable()
 export class TenantService {
@@ -27,6 +28,7 @@ export class TenantService {
     @InjectDataSource()
     private readonly dataSource: DataSource,
     private readonly config: ConfigService<IENV>,
+    private readonly tenantMigrations: TenantMigrationService,
   ) {}
 
   findAll(): Promise<Tenant[]> {
@@ -145,6 +147,7 @@ export class TenantService {
         slug: dto.slug,
         schemaName,
         subdomain,
+        status: TenantStatus.INACTIVE,
         storageCapacityBytes: BigInt(
           this.config.getOrThrow<IDB>('db').tenantStorageCapacityBytes,
         ),
@@ -155,6 +158,11 @@ export class TenantService {
 
   async setOwnerUserId(id: number, ownerUserId: number): Promise<void> {
     await this.tenantRepo.update({ id }, { ownerUserId });
+  }
+
+  async activate(id: number): Promise<void> {
+    const tenant = await this.findById(id);
+    await this.migrateAndActivate(tenant);
   }
 
   async setStorageCapacity(id: number, capacityBytes: bigint): Promise<void> {
@@ -177,11 +185,16 @@ export class TenantService {
       await this.tenantManager.release({ schemaName: tenant.schemaName });
       return 'Tenant deactivated successfully';
     } else {
-      await this.tenantRepo.update(id, {
-        status: TenantStatus.ACTIVE,
-      });
+      await this.migrateAndActivate(tenant);
       return 'Tenant activated successfully';
     }
+  }
+
+  private async migrateAndActivate(tenant: Tenant): Promise<void> {
+    await this.tenantMigrations.migrate(tenant.schemaName);
+    await this.tenantRepo.update(tenant.id, {
+      status: TenantStatus.ACTIVE,
+    });
   }
   async adjustStorageUsedBytes(
     schemaName: string,

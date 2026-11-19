@@ -25,7 +25,19 @@
     "seed": "ts-node -r tsconfig-paths/register test/seed.ts",
     "seed:platform": "ts-node -r tsconfig-paths/register test/seed.ts --platform",
     "seed:tenants": "ts-node -r tsconfig-paths/register test/seed.ts --tenants",
-    "seed:all": "ts-node -r tsconfig-paths/register test/seed.ts --all"
+    "seed:all": "ts-node -r tsconfig-paths/register test/seed.ts --all",
+    "typeorm": "ts-node --project tsconfig.typeorm.json --transpile-only -r tsconfig-paths/register ./node_modules/typeorm/cli.js",
+    "migration:generate:platform": "pnpm typeorm migration:generate src/database/migrations/platform/Generated -d src/database/platform.data-source.ts",
+    "migration:generate:tenant": "pnpm typeorm migration:generate src/database/migrations/tenant/Generated -d src/database/tenant.data-source.ts",
+    "migration:show:platform": "pnpm typeorm migration:show -d src/database/platform.data-source.ts",
+    "migration:show:tenant": "pnpm typeorm migration:show -d src/database/tenant.data-source.ts",
+    "migration:run": "ts-node -r tsconfig-paths/register src/database/migrate.ts --scope all",
+    "migration:run:platform": "ts-node -r tsconfig-paths/register src/database/migrate.ts --scope platform",
+    "migration:run:tenants": "ts-node -r tsconfig-paths/register src/database/migrate.ts --scope tenants",
+    "migration:run:prod": "node dist/database/migrate.js --scope all",
+    "migration:verify": "ts-node -r tsconfig-paths/register test/verify-typeorm-migrations.ts",
+    "migrate:stripe-webhooks": "ts-node -r tsconfig-paths/register test/migrate-stripe-webhook-events.ts",
+    "reconcile:stripe-webhooks": "ts-node -r tsconfig-paths/register test/reconcile-stripe-webhooks.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1131.0",
@@ -43,6 +55,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "compression": "^1.8.2",
+    "dotenv": "^17.4.2",
     "helmet": "^8.3.0",
     "ioredis": "^6.0.0",
     "joi": "^18.2.3",

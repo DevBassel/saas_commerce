@@ -172,6 +172,7 @@ const payment = (overrides: Record<string, unknown> = {}) => ({
   refundedAmount: 0,
   refundReference: null,
   refundedAt: null,
+  paidAt: null,
   status: PaymentStatus.PENDING,
   ...overrides,
 });
@@ -671,6 +672,31 @@ describe('OrderPaymentService', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
       expect(orderRepo.save).not.toHaveBeenCalled();
     });
+
+    it('repairs paid timestamps without overwriting refund status', async () => {
+      const { service, paymentRepo, orderRepo } = buildMocks();
+      paymentRepo.findOne.mockResolvedValue(
+        payment({ status: PaymentStatus.REFUNDED, paidAt: null }),
+      );
+      orderRepo.findOne.mockResolvedValue(
+        order({ paymentStatus: PaymentStatus.REFUNDED, paidAt: null }),
+      );
+
+      await service.successOrderPayment(META, 'pi_1');
+
+      expect(paymentRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: PaymentStatus.REFUNDED,
+          paidAt: expect.any(Date) as Date,
+        }),
+      );
+      expect(orderRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          paymentStatus: PaymentStatus.REFUNDED,
+          paidAt: expect.any(Date) as Date,
+        }),
+      );
+    });
   });
 
   describe('canceledPayment', () => {
@@ -714,6 +740,21 @@ describe('OrderPaymentService', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
       expect(orderRepo.save).not.toHaveBeenCalled();
     });
+
+    it('does not let a late cancel overwrite a PAID payment', async () => {
+      const { service, paymentRepo, orderRepo } = buildMocks();
+      paymentRepo.findOne.mockResolvedValue(
+        payment({ status: PaymentStatus.PAID }),
+      );
+      orderRepo.findOne.mockResolvedValue(
+        order({ paymentStatus: PaymentStatus.PAID }),
+      );
+
+      await service.cancelOrderPayment(META, 'pi_1');
+
+      expect(paymentRepo.save).not.toHaveBeenCalled();
+      expect(orderRepo.save).not.toHaveBeenCalled();
+    });
   });
 
   describe('failedPayment', () => {
@@ -755,6 +796,21 @@ describe('OrderPaymentService', () => {
       await expect(
         service.failedOrderPayment(META, 'pi_1'),
       ).rejects.toBeInstanceOf(NotFoundException);
+      expect(orderRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('does not let a late failure overwrite a PAID payment', async () => {
+      const { service, paymentRepo, orderRepo } = buildMocks();
+      paymentRepo.findOne.mockResolvedValue(
+        payment({ status: PaymentStatus.PAID }),
+      );
+      orderRepo.findOne.mockResolvedValue(
+        order({ paymentStatus: PaymentStatus.PAID }),
+      );
+
+      await service.failedOrderPayment(META, 'pi_1');
+
+      expect(paymentRepo.save).not.toHaveBeenCalled();
       expect(orderRepo.save).not.toHaveBeenCalled();
     });
   });

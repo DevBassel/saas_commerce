@@ -53,7 +53,7 @@ npx ts-node -r tsconfig-paths/register test/seed-load-test.ts  # seeds >=10 tena
   and the public-schema TypeORM DataSource.
   `PUBLIC_ENTITIES = [Tenant, User, Role, Permission, CurrencyChangeRequest, SubscriptionPlan,
   SubscriptionPlanLimit, SubscriptionPlanFeature, Subscription, SubscriptionPayment,
-  TenantUsageCounter]`.
+  TenantUsageCounter, StripeWebhookEvent]`.
 - `src/common/` — `config/` (env schema, typed groups, `cors.util.ts`, `data-source.factory.ts`),
   `logger/` (pino to rotating file, TypeORM daily logger), `storage/` (`R2Service` on
   `@aws-sdk/client-s3`), `health/` (`GET health`), `cache/`, `http/` (route templates),
@@ -181,6 +181,9 @@ Public schema:
   `SubscriptionPayment` (`subscription_payments`, FK `subscriptionId` `ON DELETE CASCADE`, non-FK
   `planId`/`billingInterval` snapshot; a public ledger mirroring tenant `Payment`), and
   `TenantUsageCounter` (`tenant_usage_counters`, unique `(tenantId, metric, periodStart)`).
+- `StripeWebhookEvent` (`stripe_webhook_events`): public durable inbox with unique `stripeEventId`,
+  Stripe creation time/resource ordering, JSON payload, attempts, retry time, errors, and
+  `PENDING | PROCESSING | PROCESSED | FAILED` status.
 
 Tenant schema (`TENANT_ENTITIES`):
 
@@ -306,8 +309,13 @@ single shared Stripe SDK client. `PaymentsModule` imports `TenantModule` and reu
   (no paid purchase), `409 REFUND_WINDOW_EXPIRED`. An already-refunded repeat is a `200` no-op
   (idempotent with the `charge.refunded` webhook path below).
 - Webhook handling covers `payment_intent.*`, `charge.refunded`, and `refund.*`. `webHook` verifies
-  the raw-body signature (handlers read `RawBodyRequest.rawBody`), then classifies each event by
-  parsing `metadata.data.kind` and dispatches to one of two handlers:
+  the raw-body signature (handlers read `RawBodyRequest.rawBody`), persists the Stripe event in the
+  public inbox, then processes it under a database transaction and a per-resource advisory lock.
+  The unique Stripe event id makes redelivery a no-op after success. Per-resource serialization and
+  terminal-state guards prevent late failure/cancel events from regressing paid/refunded state.
+  Refund events reconcile Stripe's current cumulative amount. Failures record exponential retry metadata; run
+  `pnpm --filter saas_store_api reconcile:stripe-webhooks` to retry due/stale rows from stored JSON.
+  Processing classifies each event by parsing `metadata.data.kind` and dispatches to one of two handlers:
   - `handleOrderPaymentEvents` — order intents (metadata has no `kind`); updates the tenant
     `Payment`/`Order` exactly as before (byte-identical path).
   - `handleSubscriptionEvents` — subscription intents (`kind === 'subscription'`);
@@ -322,6 +330,9 @@ single shared Stripe SDK client. `PaymentsModule` imports `TenantModule` and reu
     idempotent). `successSubscriptionPayment` early-returns when the ledger row is already `PAID`, so
     Stripe redeliveries do not reset the subscription period.
 - Only `publishableKey` is ever returned; secrets are never serialized or logged.
+- Production with schema synchronization disabled must run
+  `pnpm --filter saas_store_api migrate:stripe-webhooks` before accepting webhooks. The migration is
+  idempotent and creates the public inbox plus its unique and reconciliation indexes.
 - Permission keys depend on the shared union: `payments:create|read|manage` (CUSTOMER get
   create+read, ADMIN all three, STORE_OWNER/SUPER_ADMIN inherit all keys).
 

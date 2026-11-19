@@ -42,6 +42,7 @@ const buildMocks = () => {
   };
   const plansRepo = { findOneBy: jest.fn() };
   const subscriptionRepo = {
+    findOne: jest.fn(),
     findOneBy: jest.fn(),
     manager: { transaction: jest.fn() },
   };
@@ -64,7 +65,14 @@ const buildMocks = () => {
     create: jest.fn((_entity: unknown, value: unknown) => value),
     save: jest.fn((_entity: unknown, value: unknown) => value),
     withRepository: jest.fn((repo: unknown) =>
-      repo === subscriptionPaymentRepo ? subscriptionPaymentRepo : subscriptionRepo,
+      repo === subscriptionPaymentRepo
+        ? subscriptionPaymentRepo
+        : subscriptionRepo,
+    ),
+    getRepository: jest.fn((entity: unknown) =>
+      entity === SubscriptionPayment
+        ? subscriptionPaymentRepo
+        : subscriptionRepo,
     ),
   };
   subscriptionRepo.manager.transaction.mockImplementation(
@@ -109,10 +117,14 @@ const plan = (overrides: Record<string, unknown> = {}) => ({
 const payment = (overrides: Record<string, unknown> = {}) => ({
   id: 10,
   subscriptionId: 1,
+  planId: 2,
+  billingInterval: BillingInterval.MONTHLY,
   paymentRef: 'pi_sub_1',
   amount: 29,
   status: PaymentStatus.PENDING,
   refundedAmount: 0,
+  planAppliedAt: null,
+  refundDowngradedAt: null,
   refundReference: null,
   refundedAt: null,
   createdAt: new Date(),
@@ -420,7 +432,11 @@ describe('SubscriptionPaymentService', () => {
       });
       expect(subscriptionPaymentRepo.update).toHaveBeenCalledWith(
         { id: 10 },
-        { status: PaymentStatus.PAID, paidAt: expect.any(Date) as Date },
+        {
+          status: PaymentStatus.PAID,
+          paidAt: expect.any(Date) as Date,
+          planAppliedAt: expect.any(Date) as Date,
+        },
       );
       expect(subscriptions.assignPlan.mock.invocationCallOrder[0]).toBeLessThan(
         subscriptionPaymentRepo.update.mock.invocationCallOrder[0],
@@ -430,12 +446,85 @@ describe('SubscriptionPaymentService', () => {
     it('does nothing when success is redelivered for a PAID row', async () => {
       const { service, subscriptionPaymentRepo, subscriptions } = buildMocks();
       subscriptionPaymentRepo.findOne.mockResolvedValue(
-        payment({ status: PaymentStatus.PAID }),
+        payment({ status: PaymentStatus.PAID, planAppliedAt: new Date() }),
       );
 
       await service.successSubscriptionPayment({} as never, 'pi_sub_1');
 
       expect(subscriptions.assignPlan).not.toHaveBeenCalled();
+      expect(subscriptionPaymentRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('repairs a PAID row whose plan was not applied', async () => {
+      const { service, subscriptionPaymentRepo, subscriptions } = buildMocks();
+      subscriptionPaymentRepo.findOne.mockResolvedValue(
+        payment({ status: PaymentStatus.PAID, planAppliedAt: null }),
+      );
+
+      await service.successSubscriptionPayment(
+        {
+          kind: 'subscription',
+          subscriptionId: 1,
+          tenantId: 3,
+          planId: 2,
+          billingInterval: BillingInterval.MONTHLY,
+          tenant: TENANT_SCHEMA,
+        },
+        'pi_sub_1',
+      );
+
+      expect(subscriptions.assignPlan).toHaveBeenCalled();
+      expect(subscriptionPaymentRepo.update).toHaveBeenCalledWith(
+        { id: 10 },
+        expect.objectContaining({
+          status: PaymentStatus.PAID,
+          planAppliedAt: expect.any(Date) as Date,
+        }),
+      );
+    });
+
+    it('uses the webhook transaction manager for subscription writes', async () => {
+      const { service, subscriptionPaymentRepo, subscriptions, manager } =
+        buildMocks();
+      subscriptionPaymentRepo.findOne.mockResolvedValue(payment());
+
+      await service.successSubscriptionPayment(
+        {
+          kind: 'subscription',
+          subscriptionId: 1,
+          tenantId: 3,
+          planId: 2,
+          billingInterval: BillingInterval.MONTHLY,
+          tenant: TENANT_SCHEMA,
+        },
+        'pi_sub_1',
+        manager as never,
+      );
+
+      expect(manager.getRepository).toHaveBeenCalledWith(SubscriptionPayment);
+      expect(subscriptionPaymentRepo.findOne).toHaveBeenCalledWith({
+        where: { paymentRef: 'pi_sub_1' },
+        lock: { mode: 'pessimistic_write' },
+      });
+      expect(subscriptions.assignPlan).toHaveBeenCalledWith(
+        3,
+        {
+          planId: 2,
+          billingInterval: BillingInterval.MONTHLY,
+        },
+        manager,
+      );
+    });
+
+    it('does not let late failure or cancel events overwrite PAID', async () => {
+      const { service, subscriptionPaymentRepo } = buildMocks();
+      subscriptionPaymentRepo.findOne.mockResolvedValue(
+        payment({ status: PaymentStatus.PAID }),
+      );
+
+      await service.failedSubscriptionPayment('pi_sub_1', 'late failure');
+      await service.cancelSubscriptionPayment('pi_sub_1');
+
       expect(subscriptionPaymentRepo.update).not.toHaveBeenCalled();
     });
 
@@ -458,8 +547,18 @@ describe('SubscriptionPaymentService', () => {
     });
 
     it('downgrades only after a full refund', async () => {
-      const { service, subscriptionPaymentRepo, subscriptions } = buildMocks();
+      const {
+        service,
+        subscriptionRepo,
+        subscriptionPaymentRepo,
+        subscriptions,
+      } = buildMocks();
       subscriptionPaymentRepo.findOne.mockResolvedValue(payment());
+      subscriptionRepo.findOneBy.mockResolvedValue({
+        id: 1,
+        tenantId: 3,
+        planId: 2,
+      });
 
       await service.refundedSubscriptionPayment('pi_sub_1', {
         amountRefunded: 1000,
@@ -476,6 +575,96 @@ describe('SubscriptionPaymentService', () => {
         refundReference: 're_full',
       });
       expect(subscriptions.downgradeToFree).toHaveBeenCalledWith(1);
+    });
+
+    it('does not downgrade a newer subscription plan', async () => {
+      const {
+        service,
+        subscriptionRepo,
+        subscriptionPaymentRepo,
+        subscriptions,
+      } = buildMocks();
+      subscriptionPaymentRepo.findOne.mockResolvedValue(payment());
+      subscriptionRepo.findOneBy.mockResolvedValue({
+        id: 1,
+        tenantId: 3,
+        planId: 99,
+      });
+
+      await service.refundedSubscriptionPayment('pi_sub_1', {
+        amountRefunded: 2900,
+        refundReference: 're_full',
+      });
+
+      expect(subscriptions.downgradeToFree).not.toHaveBeenCalled();
+    });
+
+    it('locks the subscription before a transactional refund downgrade', async () => {
+      const {
+        service,
+        subscriptionRepo,
+        subscriptionPaymentRepo,
+        subscriptions,
+        manager,
+      } = buildMocks();
+      subscriptionPaymentRepo.findOne.mockResolvedValue(payment());
+      subscriptionRepo.findOne.mockResolvedValue({
+        id: 1,
+        tenantId: 3,
+        planId: 2,
+      });
+
+      await service.refundedSubscriptionPayment(
+        'pi_sub_1',
+        {
+          amountRefunded: 2900,
+          refundReference: 're_full',
+        },
+        manager as never,
+      );
+
+      expect(subscriptionRepo.findOne).toHaveBeenCalledWith({
+        where: { id: 1 },
+        lock: { mode: 'pessimistic_write' },
+      });
+      expect(subscriptions.downgradeToFree).toHaveBeenCalledWith(1, manager);
+    });
+
+    it('restores only the free plan created by an earlier full refund', async () => {
+      const {
+        service,
+        plansRepo,
+        subscriptionRepo,
+        subscriptionPaymentRepo,
+        subscriptions,
+      } = buildMocks();
+      subscriptionPaymentRepo.findOne.mockResolvedValue(
+        payment({
+          status: PaymentStatus.REFUNDED,
+          planAppliedAt: new Date(),
+          refundDowngradedAt: new Date(),
+        }),
+      );
+      subscriptionRepo.findOneBy.mockResolvedValue({
+        id: 1,
+        tenantId: 3,
+        planId: 1,
+      });
+      plansRepo.findOneBy.mockResolvedValue({ id: 1, slug: 'free' });
+
+      await service.refundedSubscriptionPayment('pi_sub_1', {
+        amountRefunded: 1000,
+        refundReference: 're_reversed',
+      });
+
+      expect(subscriptions.assignPlan).toHaveBeenCalledWith(3, {
+        planId: 2,
+        billingInterval: BillingInterval.MONTHLY,
+      });
+      expect(subscriptionPaymentRepo.update).toHaveBeenCalledWith(
+        { id: 10 },
+        { refundDowngradedAt: null },
+      );
     });
   });
 
@@ -577,7 +766,11 @@ describe('SubscriptionPaymentService', () => {
         .mockResolvedValueOnce({ id: 1, tenantId: 3 })
         .mockResolvedValueOnce({ id: 1, tenantId: 3, planId: 2 });
       subscriptionPaymentRepo.findOne.mockResolvedValue(paidPayment());
-      stripe.refunds.create.mockResolvedValue({ id: 're_sub_1', status: 'succeeded', amount: 2900 });
+      stripe.refunds.create.mockResolvedValue({
+        id: 're_sub_1',
+        status: 'succeeded',
+        amount: 2900,
+      });
 
       await expect(service.cancelOwnSubscription(3)).resolves.toEqual({
         id: 1,

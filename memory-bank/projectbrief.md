@@ -1,47 +1,34 @@
-# Project Brief — saas_commerce
+# Project Brief
 
-Foundation document for the Memory Bank. Read this first, then the other bank files.
-Durable rules live in `AGENTS.md` files; this brief records *what the project is*.
+## Purpose
 
-## What it is
+SaaS Commerce is a private pnpm monorepo for a multi-tenant commerce platform. Its declared scope is a schema-isolated API, platform administration, tenant administration, and a customer storefront (`project-description.md:1-11`; `package.json:1-16`). Treat `project-description.md` as product/portfolio intent; current source and package manifests are the implementation authority.
 
-A multi-tenant SaaS commerce platform delivered as a single pnpm + Turborepo monorepo: one
-NestJS API, two Refine/Vite admin consoles, and one Next.js customer storefront. Each tenant
-gets an isolated PostgreSQL schema (`tenant_<slug>`) and can run its own storefront on a
-subdomain.
+## Implemented system boundary
 
-## Applications
+- **API:** a NestJS application composes auth, tenant/platform, catalog, cart, order, coupon, payment, storefront, subscription, and seeding modules (`apps/api/src/app.module.ts:56-74`).
+- **Platform console:** the Super Admin SPA exposes tenant, payment, currency-request, and subscription-plan operations (`apps/super_admin_dashboard/src/App.tsx:134-177`).
+- **Tenant console:** the Store Owner SPA exposes catalog, coupons, orders, users, payments, store settings, and subscription settings (`apps/store_owner_dashboard/src/App.tsx:111-175`).
+- **Public experience:** the Next.js app separates platform/apex and tenant storefront contexts in its request proxy and root layouts (`apps/tenant_store/src/proxy.ts:132-250`; `apps/tenant_store/src/app/(tenant)/layout.tsx:47-95`; `apps/tenant_store/src/app/(platform)/layout.tsx:31-86`).
 
-| Path | Package | Stack | Dev port | Auth scope |
-| --- | --- | --- | --- | --- |
-| `apps/api` | `saas_store_api` | NestJS 10, TypeORM 0.3, PostgreSQL 16 | 4000 | tenant + platform |
-| `apps/store_owner_dashboard` | `tenant_dash` | Refine v5, Vite 6, React 19 | 5174 | tenant |
-| `apps/super_admin_dashboard` | `super_admin_dash` | Refine v5, Vite 6, React 19 | 5173 | platform |
-| `apps/tenant_store` | `tenant_store` | Next.js 16 App Router, React 19 | 3000 | tenant (customer) |
+## Core architectural outcomes
 
-## Core features
+- Tenant data uses schema-specific TypeORM data sources and a bounded, deduplicated data-source cache (`apps/api/src/modules/tenants/services/tenant-manager.service.ts:9-45`; `apps/api/src/modules/tenants/services/tenant-manager.service.ts:71-96`).
+- Public-schema and tenant-schema entity registrations are intentionally separate (`apps/api/src/core.module.ts:27-42`; `apps/api/src/modules/tenants/utils/tenant-entities.ts:18-34`).
+- The API is the authorization and entitlement boundary; its global guards run before controller work (`apps/api/src/app.module.ts:75-100`).
+- Customer and tenant-admin clients preserve tenant context, while the platform console remains platform-scoped (`apps/tenant_store/src/proxy.ts:33-46`; `apps/store_owner_dashboard/src/api/client.ts:61-75`; `apps/super_admin_dashboard/src/api/client.ts:51-62`).
 
-- Schema-per-tenant isolation with header/subdomain resolution and a pooled per-schema
-  DataSource manager (`apps/api/AGENTS.md` → Multi-tenancy).
-- Stateless JWT auth with rotating refresh tokens, hierarchical RBAC, and direct user grants.
-- Product catalog, categories, cart, orders, addresses, and coupons.
-- Stripe payments with destination charges and Connect onboarding.
-- Cloudflare R2 storage with per-tenant quotas.
-- Platform-level subscription plans (Free/Starter/Growth/Pro/Enterprise) with limits/features,
-  Super-Admin assignment, tenant read-only usage, and server-side enforcement. The platform console
-  provides plan CRUD and a per-tenant subscription panel (change plan/interval, cancel/reactivate,
-  live usage).
-- Super-admin tenant provisioning, lifecycle, payments oversight, and currency requests.
+## Evidence boundaries and unknowns
 
-## Scope boundaries
+- Cross-app contract authority is **unknown**: every app-level `AGENTS.md` points to a root `AGENTS.md`, but that root file is absent (`apps/api/AGENTS.md:6-7`; `apps/store_owner_dashboard/AGENTS.md:6-6`; `apps/super_admin_dashboard/AGENTS.md:7-7`; `apps/tenant_store/AGENTS.md:6-6`).
+- A root `compose.yaml` is absent. The canonical root Compose entry point is therefore **unknown**; the only inspected Compose topology is `apps/docker-compose.yml` (`apps/docker-compose.yml:1-48`).
+- Production hosting, SLOs, release cadence, and formal product acceptance criteria are **unknown**.
 
-- `packages/*` is a declared workspace glob but intentionally **empty** (only `.gitkeep`).
-- No migrations system; tenant schemas are created from entity metadata (`DB_SYNCHRONIZE_TENANTS`).
-- `super_admin_dash` and `tenant_store` intentionally have **no** test task — do not add one.
-- `apps/api/docs/` does not exist; ignore references to it.
+## Operating references
 
-## Source of truth
+Do not restate app-specific rules here. Use the authoritative app documents:
 
-- Cross-cutting contracts: `AGENTS.md` (root).
-- Per-app rules and pitfalls: each app's `AGENTS.md`.
-- Full detail: `project-description.md`, `README.md`.
+- [API architecture and commands](../apps/api/AGENTS.md#commands)
+- [Store Owner Dashboard](../apps/store_owner_dashboard/AGENTS.md#commands)
+- [Super Admin Dashboard](../apps/super_admin_dashboard/AGENTS.md#commands)
+- [Tenant Store](../apps/tenant_store/AGENTS.md#commands)

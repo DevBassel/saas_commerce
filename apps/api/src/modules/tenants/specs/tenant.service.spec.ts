@@ -12,6 +12,7 @@ import { TenantStatus } from '../enums/tenantStatus.enum';
 import { TenantManagerService } from '../services/tenant-manager.service';
 import { User } from '../../users/entities/user.entity';
 import { IENV } from 'src/common/config/env.interface';
+import { TenantMigrationService } from '../services/tenant-migration.service';
 
 const buildMocks = () => {
   const manager = {
@@ -55,12 +56,21 @@ const buildMocks = () => {
     ),
   };
   const config = configMocks as unknown as ConfigService<IENV>;
+  const tenantMigrationMocks = {
+    migrate: jest.fn().mockResolvedValue({
+      schemaName: 'tenant_test',
+      executedMigrations: [],
+    }),
+  };
+  const tenantMigrations =
+    tenantMigrationMocks as unknown as TenantMigrationService;
 
   const service = new TenantService(
     tenantRepo,
     tenantManager,
     dataSource,
     config,
+    tenantMigrations,
   );
 
   return {
@@ -73,6 +83,7 @@ const buildMocks = () => {
     ownerRepo,
     dataSourceMocks,
     configMocks,
+    tenantMigrationMocks,
   };
 };
 
@@ -246,6 +257,7 @@ describe('TenantService.create', () => {
         name: 'My Store',
         slug: 'My-Shop',
         schemaName: 'tenant_my_shop',
+        status: TenantStatus.INACTIVE,
       }),
     );
     expect(tenantRepoMocks.save).toHaveBeenCalledTimes(1);
@@ -340,18 +352,39 @@ describe('TenantService.toggleActiveTenant', () => {
   });
 
   it('reactivates an inactive tenant without releasing the datasource', async () => {
-    const { service, tenantRepoMocks, tenantManagerMocks } = buildMocks();
+    const {
+      service,
+      tenantRepoMocks,
+      tenantManagerMocks,
+      tenantMigrationMocks,
+    } = buildMocks();
     tenantRepoMocks.findOneBy.mockResolvedValue(
       tenantRow({ id: 7, status: TenantStatus.INACTIVE }),
     );
 
     const result = await service.toggleActiveTenant(7);
 
+    expect(tenantMigrationMocks.migrate).toHaveBeenCalledWith('tenant_test');
     expect(tenantRepoMocks.update).toHaveBeenCalledWith(7, {
       status: TenantStatus.ACTIVE,
     });
     expect(tenantManagerMocks.release).not.toHaveBeenCalled();
     expect(result).toBe('Tenant activated successfully');
+  });
+
+  it('does not reactivate an inactive tenant when migration fails', async () => {
+    const { service, tenantRepoMocks, tenantMigrationMocks } = buildMocks();
+    tenantRepoMocks.findOneBy.mockResolvedValue(
+      tenantRow({ id: 7, status: TenantStatus.INACTIVE }),
+    );
+    tenantMigrationMocks.migrate.mockRejectedValue(
+      new Error('migration failed'),
+    );
+
+    await expect(service.toggleActiveTenant(7)).rejects.toThrow(
+      'migration failed',
+    );
+    expect(tenantRepoMocks.update).not.toHaveBeenCalled();
   });
 
   it('propagates not-found when the tenant does not exist', async () => {

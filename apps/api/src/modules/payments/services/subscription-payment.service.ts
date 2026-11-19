@@ -8,11 +8,14 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import Stripe from 'stripe';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { toMajorUnit, toMinorUnit } from 'src/common/utils/money';
 import { getTenantContext } from '../../auth/tenant-context';
 import { BillingInterval } from '../../subscriptions/constants/billing-interval.enum';
-import { SUBSCRIPTION_REFUND_WINDOW_DAYS } from '../../subscriptions/constants/subscription.constants';
+import {
+  FREE_PLAN_SLUG,
+  SUBSCRIPTION_REFUND_WINDOW_DAYS,
+} from '../../subscriptions/constants/subscription.constants';
 import { SubscriptionPlan } from '../../subscriptions/entities/subscription-plan.entity';
 import { SubscriptionService } from '../../subscriptions/services/subscription.service';
 import { subscriptionPaymentMetaData } from '../constants/payment-metadata';
@@ -348,36 +351,69 @@ export class SubscriptionPaymentService {
   async successSubscriptionPayment(
     meta: subscriptionPaymentMetaData,
     paymentRef: string,
+    manager?: EntityManager,
   ) {
-    const payment = await this.subscriptionPaymentRepo.findOne({
+    const repository = manager
+      ? manager.getRepository(SubscriptionPayment)
+      : this.subscriptionPaymentRepo;
+    const payment = await repository.findOne({
       where: { paymentRef },
+      ...(manager ? { lock: { mode: 'pessimistic_write' as const } } : {}),
     });
     if (!payment)
       throw new NotFoundException(
         `Subscription payment ${paymentRef} not found`,
       );
-    if (payment.status === PaymentStatus.PAID) return;
+    if (payment.planAppliedAt || payment.status === PaymentStatus.CANCELED)
+      return;
 
-    await this.subscriptions.assignPlan(meta.tenantId, {
+    const assignment = {
       planId: meta.planId,
       billingInterval: meta.billingInterval,
-    });
+    };
+    if (manager)
+      await this.subscriptions.assignPlan(meta.tenantId, assignment, manager);
+    else await this.subscriptions.assignPlan(meta.tenantId, assignment);
 
-    await this.subscriptionPaymentRepo.update(
+    const planAppliedAt = new Date();
+    const status =
+      payment.status === PaymentStatus.REFUNDED ||
+      payment.status === PaymentStatus.PARTIALLY_REFUNDED
+        ? payment.status
+        : PaymentStatus.PAID;
+    await repository.update(
       { id: payment.id },
-      { status: PaymentStatus.PAID, paidAt: new Date() },
+      {
+        status,
+        paidAt: payment.paidAt ?? planAppliedAt,
+        planAppliedAt,
+      },
     );
+
+    if (status === PaymentStatus.REFUNDED) {
+      await this.downgradeRefundedPlan(payment, repository, manager);
+    }
   }
 
-  async cancelSubscriptionPayment(paymentRef: string) {
-    const payment = await this.subscriptionPaymentRepo.findOne({
+  async cancelSubscriptionPayment(paymentRef: string, manager?: EntityManager) {
+    const repository = manager
+      ? manager.getRepository(SubscriptionPayment)
+      : this.subscriptionPaymentRepo;
+    const payment = await repository.findOne({
       where: { paymentRef },
+      ...(manager ? { lock: { mode: 'pessimistic_write' as const } } : {}),
     });
     if (!payment)
       throw new NotFoundException(
         `Subscription payment ${paymentRef} not found`,
       );
-    await this.subscriptionPaymentRepo.update(
+    if (
+      payment.status === PaymentStatus.PAID ||
+      payment.status === PaymentStatus.REFUNDED ||
+      payment.status === PaymentStatus.PARTIALLY_REFUNDED
+    )
+      return;
+    await repository.update(
       { id: payment.id },
       { status: PaymentStatus.CANCELED },
     );
@@ -386,15 +422,27 @@ export class SubscriptionPaymentService {
   async failedSubscriptionPayment(
     paymentRef: string,
     failureReason: string | null,
+    manager?: EntityManager,
   ) {
-    const payment = await this.subscriptionPaymentRepo.findOne({
+    const repository = manager
+      ? manager.getRepository(SubscriptionPayment)
+      : this.subscriptionPaymentRepo;
+    const payment = await repository.findOne({
       where: { paymentRef },
+      ...(manager ? { lock: { mode: 'pessimistic_write' as const } } : {}),
     });
     if (!payment)
       throw new NotFoundException(
         `Subscription payment ${paymentRef} not found`,
       );
-    await this.subscriptionPaymentRepo.update(
+    if (
+      payment.status === PaymentStatus.PAID ||
+      payment.status === PaymentStatus.REFUNDED ||
+      payment.status === PaymentStatus.PARTIALLY_REFUNDED ||
+      payment.status === PaymentStatus.CANCELED
+    )
+      return;
+    await repository.update(
       { id: payment.id },
       { status: PaymentStatus.FAILED, failureReason },
     );
@@ -406,9 +454,14 @@ export class SubscriptionPaymentService {
       amountRefunded: number;
       refundReference: string | null;
     },
+    manager?: EntityManager,
   ) {
-    const payment = await this.subscriptionPaymentRepo.findOne({
+    const repository = manager
+      ? manager.getRepository(SubscriptionPayment)
+      : this.subscriptionPaymentRepo;
+    const payment = await repository.findOne({
       where: { paymentRef },
+      ...(manager ? { lock: { mode: 'pessimistic_write' as const } } : {}),
     });
     if (!payment)
       throw new NotFoundException(
@@ -426,7 +479,7 @@ export class SubscriptionPaymentService {
     const refundedAt =
       refundedAmount > 0 ? (payment.refundedAt ?? new Date()) : null;
 
-    await this.subscriptionPaymentRepo.update(
+    await repository.update(
       { id: payment.id },
       {
         status,
@@ -439,8 +492,68 @@ export class SubscriptionPaymentService {
     );
 
     if (status === PaymentStatus.REFUNDED) {
-      await this.subscriptions.downgradeToFree(payment.subscriptionId);
+      await this.downgradeRefundedPlan(payment, repository, manager);
+      return;
     }
+
+    if (payment.refundDowngradedAt) {
+      const subscriptions = manager
+        ? manager.getRepository(Subscription)
+        : this.subscriptionRepo;
+      const plans = manager
+        ? manager.getRepository(SubscriptionPlan)
+        : this.plansRepo;
+      const subscription = manager
+        ? await subscriptions.findOne({
+            where: { id: payment.subscriptionId },
+            lock: { mode: 'pessimistic_write' },
+          })
+        : await subscriptions.findOneBy({ id: payment.subscriptionId });
+      const free = await plans.findOneBy({ slug: FREE_PLAN_SLUG });
+      if (subscription && free && subscription.planId === free.id) {
+        const assignment = {
+          planId: payment.planId,
+          billingInterval: payment.billingInterval,
+        };
+        if (manager)
+          await this.subscriptions.assignPlan(
+            subscription.tenantId,
+            assignment,
+            manager,
+          );
+        else
+          await this.subscriptions.assignPlan(
+            subscription.tenantId,
+            assignment,
+          );
+      }
+      await repository.update({ id: payment.id }, { refundDowngradedAt: null });
+    }
+  }
+
+  private async downgradeRefundedPlan(
+    payment: SubscriptionPayment,
+    payments: Repository<SubscriptionPayment>,
+    manager?: EntityManager,
+  ): Promise<void> {
+    const subscriptions = manager
+      ? manager.getRepository(Subscription)
+      : this.subscriptionRepo;
+    const subscription = manager
+      ? await subscriptions.findOne({
+          where: { id: payment.subscriptionId },
+          lock: { mode: 'pessimistic_write' },
+        })
+      : await subscriptions.findOneBy({ id: payment.subscriptionId });
+    if (!subscription || subscription.planId !== payment.planId) return;
+
+    if (manager)
+      await this.subscriptions.downgradeToFree(payment.subscriptionId, manager);
+    else await this.subscriptions.downgradeToFree(payment.subscriptionId);
+    await payments.update(
+      { id: payment.id },
+      { refundDowngradedAt: new Date() },
+    );
   }
 
   async downgradeSubscriptionToFree(subscriptionId: number) {

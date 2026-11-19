@@ -1,62 +1,38 @@
-# Active Context — saas_commerce
+# Active Context
 
-Current focus and recent changes. Rewritten on each update.
+## Snapshot
+
+Date: 2026-11-19.
+
+Git command evidence (`git status --short --branch`, `git log --oneline -10`, and `git diff --stat`) shows `main` is one commit ahead of `origin/main`, with application changes and deletions still in the working tree. Git state has no path:line location; implementation claims below are separately tied to current source.
 
 ## Current focus
 
-**Email verification context and resend timer (2026-11-11).** The API now returns the configured
-`resendCooldownSeconds` for every generic OTP request outcome and customer registration. The
-storefront and store-owner dashboard keep pending verification email, tenant slug, and an absolute
-resend deadline in tenant-bound per-tab `sessionStorage`. `/verify-email` URLs no longer carry an
-email address; apex routing may still retain `?tenant=<slug>`. Password-reset URLs are unchanged.
+The uncommitted API work is hardening Stripe webhook delivery and payment-state concurrency:
 
-## Verification
+- A public `stripe_webhook_events` inbox records unique event ids, resource ordering, payload, claim state, attempts, failure, and retry timing (`apps/api/src/modules/payments/entities/stripe-webhook-event.entity.ts:13-77`; `apps/api/src/core.module.ts:25-42`).
+- Signature-verified events are persisted before processing; reconciliation includes pending, due-failed, and stale-processing rows (`apps/api/src/modules/payments/webhooks/stripe-webhook.service.ts:64-124`; `apps/api/src/modules/payments/webhooks/stripe-webhook.service.ts:197-219`).
+- Processing uses transactional claims, per-resource PostgreSQL advisory locks, row locks, terminal success, and exponential retry scheduling (`apps/api/src/modules/payments/webhooks/stripe-webhook.service.ts:221-283`; `apps/api/src/modules/payments/webhooks/stripe-webhook.service.ts:306-385`).
+- API scripts expose an idempotent schema update and a reconciliation entry point (`apps/api/package.json:24-30`; `apps/api/test/migrate-stripe-webhook-events.ts:5-12`; `apps/api/test/reconcile-stripe-webhooks.ts:5-20`).
+- Subscription payment handling now uses row locks and state guards around plan application/refund transitions (`apps/api/src/modules/payments/services/subscription-payment.service.ts:351-448`; `apps/api/src/modules/payments/services/subscription-payment.service.ts:451-557`; `apps/api/src/modules/subscriptions/services/subscription.service.ts:164-241`).
 
-- Focused API Jest: 2 suites, 44 tests pass; API typecheck passes.
-- Store-owner dashboard: 15 Vitest files, 174 tests pass with the canonical localhost API URL;
-  lint passes with five pre-existing warnings, typecheck passes, and the production build passes
-  with the existing large-chunk warning.
-- Storefront lint, typecheck, and the 17-route production build pass.
-- Manual browser acceptance checks were not run.
+Do not describe this work as committed until Git status changes.
 
-## Previous payment work
+## Recent committed change
 
-Payment reliability and security hardening with ownership-aligned tests remains in the worktree.
-Existing routes, DTOs, response shapes, Stripe metadata, and frontend contracts are preserved.
+`HEAD` is `6e960bf` (`fix order cancelation`) according to `git log`. The resulting current source centralizes locked order reads for mutations (`apps/api/src/modules/orders/orders.helpers.ts:113-119`) and locks products during checkout stock evaluation (`apps/api/src/modules/orders/orders.service.ts:138-146`).
 
-- **Cross-Tenant Stripe Idempotency Isolation:** order keys include tenant ID
-  (`tenant:${tenant.id}:order:${order.id}:payment:v1`). Subscription keys also include tenant,
-  subscription, plan, and billing interval. Creation locks the subscription row inside a transaction,
-  reuses active intents (including `processing`), and preserves conflicts for succeeded/canceled intents.
-- **Order Ownership (BOLA / IDOR) Validation:** `OrderPaymentService.createOrderPaymentIntent`
-  requires the authenticated user, hides foreign orders with `NotFoundException`, and permits users
-  with order management permission or store/platform owner roles. The controller request is required
-  at the type level, matching actual authenticated Nest request handling.
-- **Payment Unit-Test Refactor:** `stripe.payment.service.spec.ts` now verifies only facade
-  delegation. Order creation/refunds/reconciliation live in `order-payment.service.spec.ts`; webhook
-  routing lives in the new `stripe-webhook.service.spec.ts`; account/onboarding/payout behavior lives
-  in the new `stripe-connect.service.spec.ts`; subscription locking, intent reuse, idempotency,
-  reconciliation, and cancellation live in `subscription-payment.service.spec.ts`.
-- `workflow.md` documents tenant-scoped idempotency and ownership checks.
+## Unrelated working-tree state
 
-## Previous payment verification (not rerun)
+Git status also reports deletions under `load-tests/k6/**`. They were not modified during this Memory Bank refresh and whether they are intentional is **unknown**. The prior six Memory Bank files were also deleted in the working tree; this task recreates only those six files.
 
-- Payment tests: 9 suites, 144 tests pass.
-- Full API unit tests: 108 suites, 1,404 tests pass.
-- Payment-module ESLint: pass.
-- API typecheck (`tsc --noEmit`): pass.
-- `git diff --check`: pass (line-ending conversion warnings only).
+## Next steps
 
-## Preserved reliability behavior and remaining debt
+1. Validate the current API work with the manifest-provided typecheck, unit-test, and build commands before committing (`apps/api/package.json:8-23`). Current pass/fail status from this refresh is **unknown** because application checks were not run.
+2. For an environment with public-schema synchronization disabled, apply the idempotent webhook schema script before accepting these events (`apps/api/test/migrate-stripe-webhook-events.ts:5-12`; `apps/api/test/migrate-stripe-webhook-events.ts:80-89`).
+3. Decide whether the `load-tests/k6/**` deletions are intentional; disposition is **unknown**.
+4. Restore or replace the missing root cross-app contract document and clarify the root Compose entry point; both remain **unknown** (`apps/api/AGENTS.md:6-7`; `apps/docker-compose.yml:1-48`).
 
-- A canceled order PaymentIntent still triggers 409 Conflict without auto-rotating to `:v2`.
-- Webhook updates to Payment and Order rows are executed outside one database transaction.
-- Webhook event IDs are not deduplicated in a dedicated processed-events table.
-- Order reconciliation writes `canceledAt`/`failedAt` properties that are not declared on TypeORM
-  entities.
+## Rule pointers
 
-## Working tree state
-
-Existing uncommitted payment, super-admin dashboard, and storefront dev-origin changes were left
-untouched. This task changes only the planned API, storefront, store-owner dashboard, tests, and
-documentation. No commits were created.
+Follow [API Payments](../apps/api/AGENTS.md#payments), [API Tests](../apps/api/AGENTS.md#tests), and each app's own `AGENTS.md`. The absent root `AGENTS.md` cannot currently supply the cross-app rules referenced by those files.

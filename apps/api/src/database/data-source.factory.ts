@@ -1,12 +1,11 @@
 import { ConfigService } from '@nestjs/config';
 import { PostgresConnectionOptions } from 'typeorm/driver/postgres/PostgresConnectionOptions';
-import { TypeOrmDailyLogger } from '../logger/typeorm-daily.logger';
-import { IDB, IENV } from './env.interface';
+import { TypeOrmDailyLogger } from '../common/logger/typeorm-daily.logger';
+import { IDB, IENV } from '../common/config/env.interface';
 
 export interface DataSourceOverrides {
   schema?: string;
   entities?: PostgresConnectionOptions['entities'];
-  synchronize?: boolean;
   poolSize?: number;
 }
 
@@ -27,7 +26,6 @@ export const buildDataSourceOptions = (
     port,
     username,
     password,
-    synchronize,
     logging,
     ssl,
     statementTimeoutMs,
@@ -43,7 +41,8 @@ export const buildDataSourceOptions = (
     ssl,
     logging,
     logger: getSharedLogger(),
-    synchronize: synchronize,
+    synchronize: false,
+    migrationsRun: false,
     ...(statementTimeoutMs > 0
       ? { extra: { statement_timeout: statementTimeoutMs } }
       : {}),

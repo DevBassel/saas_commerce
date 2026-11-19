@@ -1,12 +1,11 @@
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
-import { buildDataSourceOptions } from 'src/common/config/data-source.factory';
 import { IENV } from 'src/common/config/env.interface';
-import { TENANT_ENTITIES } from '../../utils/tenant-entities';
+import { buildTenantDataSourceOptions } from 'src/database/data-source-options';
 import { TenantManagerService } from '../../services/tenant-manager.service';
 
-jest.mock('src/common/config/data-source.factory', () => ({
-  buildDataSourceOptions: jest.fn(() => ({ type: 'postgres' })),
+jest.mock('src/database/data-source-options', () => ({
+  buildTenantDataSourceOptions: jest.fn(() => ({ type: 'postgres' })),
 }));
 
 jest.mock('typeorm', () => {
@@ -18,7 +17,7 @@ jest.mock('typeorm', () => {
 });
 
 const DataSourceMock = DataSource as unknown as jest.Mock;
-const buildOptionsMock = buildDataSourceOptions as jest.Mock;
+const buildOptionsMock = buildTenantDataSourceOptions as jest.Mock;
 
 interface FakeDataSource {
   options: unknown;
@@ -203,39 +202,33 @@ describe('TenantManagerService', () => {
     expect(instances[1].destroy).toHaveBeenCalledTimes(1);
   });
 
-  describe('datasource options', () => {
+  describe('datasource creation', () => {
     const buildWith = async (
       overrides: Parameters<typeof makeConfig>[0],
-    ): Promise<Record<string, unknown>> => {
+    ): Promise<unknown[]> => {
       buildOptionsMock.mockClear();
       const service = new TenantManagerService(makeConfig(overrides));
       await service.getDataSource({ schemaName: 'tenant_a' });
-      const calls = buildOptionsMock.mock.calls as unknown as Array<
-        [unknown, Record<string, unknown>]
-      >;
-      return calls[0][1];
+      return buildOptionsMock.mock.calls[0] as unknown[];
     };
 
-    it('passes the schema, entities and pool size through', async () => {
-      const overrides = await buildWith({ synchronize: true, poolSize: 11 });
+    it('builds runtime options for the requested schema', async () => {
+      const args = await buildWith({ poolSize: 11 });
 
-      expect(overrides.schema).toBe('tenant_a');
-      expect(overrides.entities).toBe(TENANT_ENTITIES);
-      expect(overrides.poolSize).toBe(11);
+      expect(args[1]).toBe('tenant_a');
+      expect(args[2]).toBeUndefined();
     });
 
-    it.each([
-      ['development', true, false, true],
-      ['development', false, false, false],
-      ['production', true, false, false],
-      ['production', true, true, true],
-      ['production', false, true, false],
-    ])(
-      'synchronize for env=%s synchronize=%s syncTenants=%s is %s',
-      async (env, synchronize, syncTenants, expected) => {
-        const overrides = await buildWith({ env, synchronize, syncTenants });
-        expect(overrides.synchronize).toBe(expected);
-      },
-    );
+    it('creates an isolated single-connection datasource for migrations', () => {
+      const service = new TenantManagerService(makeConfig());
+
+      service.createMigrationDataSource({ schemaName: 'tenant_a' });
+
+      expect(buildOptionsMock).toHaveBeenCalledWith(
+        expect.anything(),
+        'tenant_a',
+        1,
+      );
+    });
   });
 });

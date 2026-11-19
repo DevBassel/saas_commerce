@@ -1,80 +1,52 @@
-# Tech Context — saas_commerce
+# Technical Context
 
-Technologies, workspace layout, and how to run things. Authoritative detail in the root and
-per-app `AGENTS.md` files.
+## Workspace and orchestration
 
-## Stack
+- Root runtime floor is Node.js 20+ with pnpm 12.21.0 (`package.json:5-8`).
+- Root `dev`, `build`, `start`, `lint`, `typecheck`, and `test` scripts delegate to Turborepo (`package.json:9-16`).
+- Turbo caches build/test outputs, does not cache lint/typecheck, and treats dev as persistent (`turbo.json:3-24`).
+- Workspace discovery includes `apps/*` and `packages/*`; approved native package builds are declared centrally (`pnpm-workspace.yaml:1-13`).
 
-- **Runtime/PM:** Node `>=20` (root `engines`), pnpm workspace + Turborepo. Single root
-  `pnpm-lock.yaml` and `.npmrc` (`legacy-peer-deps=true`).
-- **API:** NestJS 10, TypeORM 0.3, PostgreSQL 16, Joi-validated env, pino logging, helmet,
-  Swagger at `/api/v1`, `@aws-sdk/client-s3` for R2, Stripe SDK, ioredis for the Redis-only
-  response cache (`REDIS_URL` required at boot). Cache fingerprints use a versioned (`v3:`)
-  type-preserving JSON-like canonical serialization with sorted keys/arrays. Redis health probes wait for client
-  readiness up to `CACHE_REDIS_CONNECT_TIMEOUT_MS`; normal commands retain their shorter timeout.
-- **Dashboards:** Refine v5, Vite 6, React 19, React Router 7, axios, Tailwind v4 (CSS-first),
-  shadcn/ui, react-hook-form + zod. Store owner adds Vitest; super admin has none.
-- **Storefront:** Next.js 16 App Router, React 19, NextAuth v4 (JWT), Tailwind v4, Base UI
-  primitives, Stripe.js.
+Root entry points are `pnpm dev`, `pnpm build`, `pnpm start`, `pnpm lint`, `pnpm typecheck`, and `pnpm test`; each delegates to the matching Turbo task (`package.json:9-16`). Use filtered commands from the app `AGENTS.md` links below for one application.
 
-## Workspace layout
+## Application stack and verification commands
 
-```
-apps/api                     saas_store_api      4000
-apps/store_owner_dashboard   tenant_dash         5174
-apps/super_admin_dashboard   super_admin_dash    5173
-apps/tenant_store            tenant_store        3000
-packages/*                   intentionally empty
-load-tests/k6                k6 load tests (need >=10 seeded tenants)
-compose.yaml                 API + Redis (external Postgres; project name saas_store)
-```
+| App | Stack evidenced by manifest | Available checks |
+| --- | --- | --- |
+| API (`saas_store_api`) | NestJS, TypeORM, PostgreSQL driver, Redis client, Stripe SDK, R2/S3 client (`apps/api/package.json:32-61`) | build, typecheck, lint, Jest unit/integration/e2e (`apps/api/package.json:8-30`) |
+| Store Owner (`tenant_dash`) | React 19, Refine, Vite, Tailwind 4, Stripe, Vitest (`apps/store_owner_dashboard/package.json:20-46`; `apps/store_owner_dashboard/package.json:48-72`) | build, typecheck, lint, Vitest (`apps/store_owner_dashboard/package.json:66-73`) |
+| Super Admin (`super_admin_dash`) | React 19, Refine, Vite, Tailwind 4 (`apps/super_admin_dashboard/package.json:34-69`; `apps/super_admin_dashboard/package.json:71-94`) | build, typecheck, lint; test task **unknown/not exposed** (`apps/super_admin_dashboard/package.json:89-94`) |
+| Tenant Store (`tenant_store`) | Next.js 16, React 19, NextAuth 4, Tailwind 4, Stripe (`apps/tenant_store/package.json:12-43`) | build, start, lint, typecheck; test task **unknown/not exposed** (`apps/tenant_store/package.json:5-10`) |
 
-## Commands (from repo root)
+Use app-specific command and pitfall sections instead of copying their rules: [API](../apps/api/AGENTS.md#commands), [Store Owner](../apps/store_owner_dashboard/AGENTS.md#commands), [Super Admin](../apps/super_admin_dashboard/AGENTS.md#commands), [Tenant Store](../apps/tenant_store/AGENTS.md#commands).
 
-- `pnpm install`, `pnpm dev`, `pnpm build`, `pnpm lint`, `pnpm typecheck`, `pnpm test`,
-  `pnpm start`, `pnpm clean` — all `turbo run <task>`.
-- Target one package: `pnpm --filter saas_store_api test`, `pnpm --filter tenant_dash build`.
-- `turbo.json` has deliberate choices: no `test → build` dependency; `dev`/`start` uncached;
-  `start` depends on `build`.
+## Local ports and packaging
 
-## Database
+- Store Owner Vite dev/preview uses strict port 5174 (`apps/store_owner_dashboard/vite.config.ts:7-24`).
+- Super Admin Vite dev/preview uses strict port 5173; production normally builds into the API static directory (`apps/super_admin_dashboard/vite.config.ts:58-80`).
+- Tenant Store has Next.js `dev`, `build`, and `start` scripts; standalone output is conditional for container builds (`apps/tenant_store/package.json:5-10`; `apps/tenant_store/next.config.ts:22-34`).
+- API port is configuration-driven rather than hard-coded in bootstrap (`apps/api/src/main.ts:21-23`; `apps/api/src/main.ts:61-64`).
 
-- Postgres is external (local or remote); Compose does not run it.
-- `docker compose up -d redis` starts the cache container `saas_store_redis`.
-- Host `DB_HOST=127.0.0.1`; from inside the API container Compose defaults `DB_HOST` to
-  `host.docker.internal` (override for a remote database).
-- Per-tenant schemas are created from entity metadata; no migrations. `DB_SYNCHRONIZE_TENANTS`
-  (default false) is the production opt-in for tenant `synchronize`.
+## Data and infrastructure
+
+- TypeORM is configured for PostgreSQL; root/public synchronization comes from validated DB configuration (`apps/api/src/common/config/data-source.factory.ts:20-53`). Tenant synchronization is further disabled in production unless explicitly enabled (`apps/api/src/modules/tenants/services/tenant-manager.service.ts:71-80`).
+- A general TypeORM migration framework is **unknown** from inspected scripts. The API currently exposes feature-specific schema/reconciliation commands for durable Stripe webhooks (`apps/api/package.json:24-30`; `apps/api/test/migrate-stripe-webhook-events.ts:5-12`).
+- Root `compose.yaml` is absent, so its intended setup is **unknown**. `apps/docker-compose.yml` defines Redis, replicated API containers, and an Nginx proxy, while PostgreSQL is expected on the Docker host (`apps/docker-compose.yml:1-18`; `apps/docker-compose.yml:20-48`).
 
 ## Environment files
 
-Every app has its own gitignored `.env`; only `.env.example` is committed.
+- API configuration authority is `apps/api/.env.example` plus Joi validation; local execution needs a real `apps/api/.env` and external PostgreSQL/Redis (`apps/api/AGENTS.md:13-15`; `apps/api/AGENTS.md:498-527`).
+- Both Refine dashboards document copying their app-local `.env.example` to `.env`; values are build-time inputs (`apps/store_owner_dashboard/AGENTS.md:202-207`; `apps/super_admin_dashboard/AGENTS.md:108-111`).
+- Tenant Store documents NextAuth, backend, root-domain, tenant-mode, Stripe, and standalone-build variable names without making their values part of this bank (`apps/tenant_store/AGENTS.md:212-226`).
+- A canonical root-level environment file or template is **unknown**.
 
-- `apps/api/.env` — full config, Joi-validated. Stripe keys required (blank values fail boot).
-- `apps/store_owner_dashboard/.env`, `apps/super_admin_dashboard/.env` — `VITE_API_URL`.
-- `apps/tenant_store/.env` — `NEXTAUTH_URL`, `NEXTAUTH_SECRET`, `NEXT_PUBLIC_BACKEND_URL`,
-  `NEXT_PUBLIC_APP_ROOT_DOMAIN`, `R2_PUBLIC_URL`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`.
-- root `.env` — API container + Redis Compose values.
+## Docker and tooling notes
 
-`VITE_*` / `NEXT_PUBLIC_*` are inlined at build time; changing one requires a rebuild.
+- The available Compose file is app-scoped, not the requested root `compose.yaml`; use of it as the canonical workflow is therefore **unknown** (`apps/docker-compose.yml:1-48`).
+- Super Admin normally emits into `apps/api/static`; Tenant Store enables standalone output only for its container-oriented build flag (`apps/super_admin_dashboard/vite.config.ts:58-80`; `apps/tenant_store/next.config.ts:22-34`).
+- The dashboards use strict TypeScript and flat ESLint configurations; API lint auto-fixes, while dashboard lint scripts do not pass `--fix` (`apps/api/AGENTS.md:537-546`; `apps/store_owner_dashboard/AGENTS.md:12-17`; `apps/store_owner_dashboard/AGENTS.md:209-216`; `apps/super_admin_dashboard/AGENTS.md:13-20`; `apps/super_admin_dashboard/AGENTS.md:137-150`).
+- Super Admin and Tenant Store intentionally expose no test task; Store Owner has Vitest and the API has Jest (`apps/super_admin_dashboard/AGENTS.md:19-20`; `apps/tenant_store/AGENTS.md:18-18`; `apps/store_owner_dashboard/AGENTS.md:17-17`; `apps/api/AGENTS.md:20-22`).
 
-## Docker
+## Configuration and security handling
 
-Only the API is containerized. `docker compose up -d --build` builds
-`apps/api/Dockerfile` (embedded Super Admin dashboard first, then the NestJS API) and runs it with
-Redis; Postgres is external. `apps/api/static` is rebuilt inside the image. The three frontends run
-from source with `pnpm dev` or a package filter; there are no per-app Dockerfiles and no
-`Dockerfile.dev`.
-
-## Tooling notes
-
-- OpenCode project configuration lives in `opencode.json` and `.opencode/`, verified with CLI
-  `1.19.4` on Windows. Root `plans/` holds implementation documents. See `AGENTS.md` → OpenCode
-  planning workflow and `plans/README.md` for usage, verification, and version-specific limits.
-  OpenCode bootstraps its own ignored runtime SDK files under `.opencode/`; application pnpm
-  manifests and lockfile are independent.
-- `apps/api` ESLint is flat config and `lint` auto-fixes (mutates files).
-- Store owner typecheck is strict with `noUnusedLocals`/`noUnusedParameters`; unused imports fail
-  `typecheck` and `build`.
-- `NEXT_STANDALONE=1` is build-only and must never be set for a local Windows build.
-- Kilo agent config lives in `.kilo/`; the Memory Bank wiring is described in `AGENTS.md`.
+Configuration is validated at API bootstrap and loaded through typed configuration groups (`apps/api/src/core.module.ts:44-50`; `apps/api/src/common/config/data-source.factory.ts:20-34`). This bank deliberately records no secret, token, credential, or `.env` value. Use [API Environment](../apps/api/AGENTS.md#environment) and each frontend's Environment section for variable names and setup constraints.

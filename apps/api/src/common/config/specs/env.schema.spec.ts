@@ -14,7 +14,7 @@ const baseEnv = (): Record<string, unknown> => ({
   DB_PORT: 5432,
   DB_USERNAME: 'postgres',
   DB_PASSWORD: 'postgres',
-  DB_SYNCHRONIZE: true,
+  DB_SYNCHRONIZE: false,
   DB_LOGGING: false,
   DB_SSL: false,
   TENANT_POOL_SIZE: 10,
@@ -66,6 +66,14 @@ describe('EnvSchema', () => {
     const result = validate() as unknown as { value: Record<string, unknown> };
     expect(result.value.DB_SYNCHRONIZE_TENANTS).toBe(false);
   });
+
+  it.each(['DB_SYNCHRONIZE', 'DB_SYNCHRONIZE_TENANTS'])(
+    'rejects enabling %s',
+    (name) => {
+      const result = validate({ [name]: true });
+      expect(result.error).toBeDefined();
+    },
+  );
 
   it('defaults STRIPE_APPLICATION_FEE_BPS to 0', () => {
     const result = validate() as unknown as { value: Record<string, unknown> };

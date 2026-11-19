@@ -18,6 +18,7 @@ import { randomUUID } from 'crypto';
 import { compare, hash } from 'bcrypt';
 import { TenantService } from '../tenants/tenant.service';
 import { TenantProvisionerService } from '../tenants/services/tenant-provisioner.service';
+import { TenantStatus } from '../tenants/enums/tenantStatus.enum';
 import { assertTenantActive } from '../tenants/utils/tenant-policy';
 import { requireTenantContext } from '../tenants/utils/tenant-scope';
 import { SubscriptionService } from '../subscriptions/services/subscription.service';
@@ -99,6 +100,8 @@ export class AuthService {
 
     await this.tenantService.setOwnerUserId(tenant.id, owner.id);
 
+    await this.tenantService.activate(tenant.id);
+    tenant.status = TenantStatus.ACTIVE;
     return this.returnUserCredential(owner, tenant);
   }
 

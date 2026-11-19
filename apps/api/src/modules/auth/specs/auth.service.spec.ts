@@ -69,6 +69,7 @@ const buildMocks = () => {
     findBySchemaName: jest.fn(),
     create: jest.fn(),
     setOwnerUserId: jest.fn().mockResolvedValue(undefined),
+    activate: jest.fn().mockResolvedValue(undefined),
   };
   const provisioner = { provision: jest.fn().mockResolvedValue(undefined) };
   const subscriptions = {
@@ -271,6 +272,10 @@ describe('AuthService', () => {
         order.push('session');
         return Promise.resolve();
       });
+      mocks.tenantService.activate.mockImplementation(() => {
+        order.push('activate');
+        return Promise.resolve();
+      });
 
       const result = await service.registerStore({
         storeName: 'Acme',
@@ -286,6 +291,7 @@ describe('AuthService', () => {
         'provision',
         'owner',
         'setOwner',
+        'activate',
         'session',
       ]);
       expect(mocks.tenantService.create).toHaveBeenCalledWith({
@@ -299,8 +305,34 @@ describe('AuthService', () => {
         tenant,
       );
       expect(mocks.tenantService.setOwnerUserId).toHaveBeenCalledWith(3, 9);
+      expect(mocks.tenantService.activate).toHaveBeenCalledWith(3);
       expect(result.id).toBe(9);
       expect(result.refresh_token).toEqual(expect.any(String));
+    });
+
+    it('does not activate the tenant when provisioning fails', async () => {
+      mocks.tenantService.create.mockResolvedValue({
+        id: 3,
+        schemaName: 'tenant_acme',
+        status: TenantStatus.INACTIVE,
+      });
+      mocks.provisioner.provision.mockRejectedValue(
+        new Error('migration failed'),
+      );
+
+      await expect(
+        service.registerStore({
+          storeName: 'Acme',
+          storeSlug: 'acme',
+          subdomain: 'acme',
+          name: 'Owner',
+          email: 'owner@test.dev',
+          password: 'password1',
+        }),
+      ).rejects.toThrow('migration failed');
+
+      expect(mocks.tenantService.activate).not.toHaveBeenCalled();
+      expect(mocks.userService.create).not.toHaveBeenCalled();
     });
   });
 
