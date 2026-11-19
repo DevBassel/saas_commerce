@@ -602,25 +602,38 @@ describe('AuthService email OTP flows', () => {
         1,
         tenantEntity,
       );
+      expect(mocks.userService.updateSession).not.toHaveBeenCalled();
+      expect(mocks.userService.updateSessionPublic).not.toHaveBeenCalled();
     });
 
-    it('issues credentials for LOGIN_MFA', async () => {
-      mocks.emailOtp.verify.mockResolvedValue({
-        user: makeUser(),
-        challenge: {},
-      });
+    it.each(['LOGIN_MFA', 'UNSUPPORTED_PURPOSE', OtpPurpose.SENSITIVE_ACTION])(
+      'rejects %s before consuming the code or issuing credentials',
+      async (purpose) => {
+        mocks.emailOtp.verify.mockResolvedValue({
+          user: makeUser(),
+          challenge: {},
+        });
 
-      const result = (await tenantStorage.run(TENANT_CTX, () =>
-        service.verifyEmailOtp({
-          email: 'jane@test.dev',
-          purpose: OtpPurpose.LOGIN_MFA,
-          code: '123456',
-        }),
-      )) as { access_token: string; refresh_token: string };
+        const error = (await tenantStorage
+          .run(TENANT_CTX, () =>
+            service.verifyEmailOtp({
+              email: 'jane@test.dev',
+              purpose: purpose as OtpPurpose,
+              code: '123456',
+            }),
+          )
+          .catch((e: unknown) => e)) as BadRequestException;
 
-      expect(result.access_token).toEqual(expect.any(String));
-      expect(result.refresh_token).toEqual(expect.any(String));
-    });
+        expect(error).toBeInstanceOf(BadRequestException);
+        expect(error.getResponse()).toMatchObject({
+          code: OtpErrorCode.PURPOSE_NOT_SUPPORTED,
+        });
+        expect(mocks.emailOtp.verify).not.toHaveBeenCalled();
+        expect(mocks.userService.markEmailVerified).not.toHaveBeenCalled();
+        expect(mocks.userService.updateSession).not.toHaveBeenCalled();
+        expect(mocks.userService.updateSessionPublic).not.toHaveBeenCalled();
+      },
+    );
 
     it('rejects PASSWORD_RESET before consuming the code', async () => {
       const error = (await tenantStorage

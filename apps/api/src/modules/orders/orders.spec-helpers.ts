@@ -88,7 +88,7 @@ export const buildMocks = () => {
       updatedAt: NOW,
       ...data,
     })),
-    update: jest.fn(),
+    update: jest.fn().mockResolvedValue({ affected: 1 }),
     manager: { transaction: jest.fn() },
   };
   const orderItemRepo = {
@@ -205,6 +205,100 @@ export const buildMocks = () => {
     paymentsMocks,
     couponsMocks,
     cacheMocks,
+  };
+};
+
+export const buildOrderRaceMocks = (
+  overrides: Record<string, unknown> = {},
+  coordinatedReads = 2,
+) => {
+  const mocks = buildMocks();
+  let storedOrder = structuredClone(
+    orderEntity({
+      status: OrderStatus.CONFIRMED,
+      couponId: 5,
+      items: [{ id: 1, productId: 5, quantity: 2 }],
+      ...overrides,
+    }),
+  );
+  let stock = 8;
+  let committed = false;
+  let preflightReads = 0;
+  let releasePreflightReads: () => void;
+  let transactionTail = Promise.resolve();
+  const preflightBarrier = new Promise<void>((resolve) => {
+    releasePreflightReads = resolve;
+  });
+
+  mocks.orderRepo.findOne.mockImplementation(async () => {
+    const snapshot = structuredClone(storedOrder);
+    // Force both legacy pre-transaction reads to observe the same status.
+    if (!committed && preflightReads < coordinatedReads) {
+      preflightReads += 1;
+      if (preflightReads === coordinatedReads) releasePreflightReads();
+      await preflightBarrier;
+    }
+    return snapshot;
+  });
+  mocks.orderRepo.update.mockImplementation(
+    (_where: unknown, changes: Record<string, unknown>) => {
+      Object.assign(storedOrder, changes);
+      return Promise.resolve({ affected: 1 });
+    },
+  );
+  mocks.productRepo.increment.mockImplementation(
+    (_where: unknown, _field: string, quantity: number) => {
+      stock += quantity;
+      return Promise.resolve();
+    },
+  );
+
+  const lockedOrderRepo = {
+    ...mocks.orderRepo,
+    findOne: jest.fn((options: { lock?: { mode: string } }) => {
+      if (options.lock?.mode !== 'pessimistic_write') {
+        return Promise.reject(
+          new Error('Order mutation must read with a write lock'),
+        );
+      }
+      return Promise.resolve(structuredClone(storedOrder));
+    }),
+    update: mocks.orderRepo.update,
+  };
+  const getRepository =
+    mocks.entityManager.getRepository.getMockImplementation();
+  mocks.entityManager.getRepository.mockImplementation((entity: unknown) =>
+    entity === Order
+      ? lockedOrderRepo
+      : (getRepository?.(entity) ?? mocks.orderRepo),
+  );
+  mocks.orderRepo.manager.transaction.mockImplementation(
+    (callback: (manager: unknown) => unknown) => {
+      const transaction = transactionTail.then(async () => {
+        const before = structuredClone(storedOrder);
+        const stockBefore = stock;
+        try {
+          const result = await callback(mocks.entityManager);
+          committed = true;
+          return result;
+        } catch (error) {
+          storedOrder = before;
+          stock = stockBefore;
+          throw error;
+        }
+      });
+      transactionTail = transaction.then(
+        () => undefined,
+        () => undefined,
+      );
+      return transaction;
+    },
+  );
+
+  return {
+    ...mocks,
+    lockedOrderRepo,
+    state: () => ({ order: structuredClone(storedOrder), stock }),
   };
 };
 

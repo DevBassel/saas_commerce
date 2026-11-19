@@ -31,10 +31,19 @@ describe('ManageOrderService', () => {
       );
 
       expect(orderRepo.update).toHaveBeenCalledWith(
-        { id: 1 },
+        { id: 1, status: OrderStatus.PENDING },
         { status: OrderStatus.CONFIRMED },
       );
       expect(result.status).toBe(OrderStatus.CONFIRMED);
+      expect(
+        orderRepo.manager.transaction.mock.invocationCallOrder[0],
+      ).toBeLessThan(orderRepo.findOne.mock.invocationCallOrder[0]);
+      expect(orderRepo.findOne).toHaveBeenCalledWith({
+        where: { id: 1 },
+        relations: { items: true },
+        relationLoadStrategy: 'query',
+        lock: { mode: 'pessimistic_write' },
+      });
     });
 
     it('restocks when transitioning to cancelled', async () => {
@@ -101,7 +110,7 @@ describe('ManageOrderService', () => {
 
       expect(paymentsMocks.refundOrder).toHaveBeenCalledTimes(1);
       expect(orderRepo.update).toHaveBeenCalledWith(
-        { id: 1 },
+        { id: 1, status: OrderStatus.CONFIRMED },
         {
           status: OrderStatus.CANCELLED,
           paymentStatus: PaymentStatus.REFUNDED,
@@ -128,7 +137,7 @@ describe('ManageOrderService', () => {
       );
 
       expect(orderRepo.update).toHaveBeenCalledWith(
-        { id: 1 },
+        { id: 1, status: OrderStatus.RETURN_REQUESTED },
         { status: OrderStatus.RETURNED },
       );
       expect(productRepo.increment).toHaveBeenCalledWith({ id: 5 }, 'stock', 2);
@@ -151,7 +160,7 @@ describe('ManageOrderService', () => {
       );
 
       expect(orderRepo.update).toHaveBeenCalledWith(
-        { id: 1 },
+        { id: 1, status: OrderStatus.RETURN_REQUESTED },
         { status: OrderStatus.DELIVERED },
       );
       expect(productRepo.increment).not.toHaveBeenCalled();
@@ -205,7 +214,7 @@ describe('ManageOrderService', () => {
 
       expect(paymentsMocks.refundOrder).toHaveBeenCalledTimes(1);
       expect(orderRepo.update).toHaveBeenCalledWith(
-        { id: 1 },
+        { id: 1, status: OrderStatus.RETURN_REQUESTED },
         {
           status: OrderStatus.RETURNED,
           paymentStatus: PaymentStatus.REFUNDED,

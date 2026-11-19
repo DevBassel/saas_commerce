@@ -44,9 +44,11 @@ import {
   resolveSort,
 } from '../../common/pagination/pagination';
 import {
+  findOrderForUpdate,
   refundOrderIfPaid,
   restockOrderItems,
   serializeOrder,
+  transitionOrderStatus,
 } from './orders.helpers';
 import { SubscriptionEntitlementsService } from '../subscriptions/services/subscription-entitlements.service';
 import { TenantCacheService } from '../../common/cache/tenant-cache.service';
@@ -346,41 +348,56 @@ export class OrdersService {
     const { target, orderRepo } = await this.repos(tenant);
     const manage = this.canManage(requester);
 
-    const order = await orderRepo.findOne({
-      where: { id },
-      relations: { items: true },
-    });
-    if (!order || (!manage && order.userId !== requester.id)) {
-      throw new NotFoundException('Order not found');
-    }
+    const cancelOrder = async (
+      manager: EntityManager,
+      refundedAt?: Date | null,
+    ): Promise<Order | null> => {
+      const order = await findOrderForUpdate(manager, id);
+      if (!order || (!manage && order.userId !== requester.id)) {
+        throw new NotFoundException('Order not found');
+      }
 
-    const cancellable = manage
-      ? MANAGER_CANCELLABLE_STATUSES.has(order.status)
-      : OWNER_CANCELLABLE_STATUSES.has(order.status);
-    if (!cancellable) {
-      throw new BadRequestException(
-        `Order cannot be cancelled from ${order.status}`,
-      );
-    }
+      const cancellable = manage
+        ? MANAGER_CANCELLABLE_STATUSES.has(order.status)
+        : OWNER_CANCELLABLE_STATUSES.has(order.status);
+      if (!cancellable) {
+        throw new BadRequestException(
+          `Order cannot be cancelled from ${order.status}`,
+        );
+      }
+      if (
+        order.paymentStatus === PaymentStatus.PAID &&
+        refundedAt === undefined
+      ) {
+        return order;
+      }
 
-    // Stripe must not run inside the DB transaction. Refund first, so a paid
-    // order is never cancelled without the customer's money coming back.
-    const refundedAt = await refundOrderIfPaid(order, target, this.payments);
-
-    await orderRepo.manager.transaction(async (manager: EntityManager) => {
-      const orders = manager.getRepository(Order);
-      await orders.update(
-        { id },
-        {
-          status: OrderStatus.CANCELLED,
-          ...(refundedAt
-            ? { paymentStatus: PaymentStatus.REFUNDED, refundedAt }
-            : {}),
-        },
+      await transitionOrderStatus(
+        manager,
+        order,
+        OrderStatus.CANCELLED,
+        refundedAt,
       );
       await restockOrderItems(manager, order.items ?? []);
       await this.coupons.restoreUsage(manager, order);
-    });
+      return null;
+    };
+
+    const refundSource = await orderRepo.manager.transaction((manager) =>
+      cancelOrder(manager),
+    );
+    if (refundSource) {
+      // Stripe stays outside DB locks. Re-lock and revalidate afterward rather
+      // than using the pre-refund snapshot to decide whether to restore stock.
+      const refundedAt = await refundOrderIfPaid(
+        refundSource,
+        target,
+        this.payments,
+      );
+      await orderRepo.manager.transaction((manager) =>
+        cancelOrder(manager, refundedAt),
+      );
+    }
 
     await this.cache.invalidateProducts(target);
     return this.findOne(id, requester, target);
@@ -395,11 +412,7 @@ export class OrdersService {
     const manage = this.canManage(requester);
 
     await orderRepo.manager.transaction(async (manager: EntityManager) => {
-      const orders = manager.getRepository(Order);
-      const order = await orders.findOne({
-        where: { id },
-        relations: { items: true },
-      });
+      const order = await findOrderForUpdate(manager, id);
       if (!order || (!manage && order.userId !== requester.id)) {
         throw new NotFoundException('Order not found');
       }
@@ -410,7 +423,7 @@ export class OrdersService {
         );
       }
 
-      await orders.update({ id }, { status: OrderStatus.RETURN_REQUESTED });
+      await transitionOrderStatus(manager, order, OrderStatus.RETURN_REQUESTED);
     });
 
     return this.findOne(id, requester, target);

@@ -62,7 +62,7 @@ describe('EmailService', () => {
     await service.sendOtpEmail({
       to: 'jane@test.dev',
       code: '222222',
-      purpose: 'LOGIN_MFA',
+      purpose: 'EMAIL_VERIFICATION',
       expiresInSeconds: 600,
     });
 

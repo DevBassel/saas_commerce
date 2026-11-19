@@ -16,9 +16,11 @@ import { CouponsService } from '../coupons/coupons.service';
 import { SerializedOrder } from './constants/orders.interface';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import {
+  findOrderForUpdate,
   refundOrderIfPaid,
   restockOrderItems,
   serializeOrder,
+  transitionOrderStatus,
 } from './orders.helpers';
 import { TenantCacheService } from '../../common/cache/tenant-cache.service';
 
@@ -58,55 +60,61 @@ export class ManageOrderService {
     tenant?: TenantRef,
   ): Promise<SerializedOrder> {
     const { target, orderRepo } = await this.repos(tenant);
-
-    const found = await orderRepo.findOne({
-      where: { id },
-      relations: { items: true },
-    });
-    if (!found) throw new NotFoundException('Order not found');
-
     const next = dto.status;
-    const allowed = ALLOWED_TRANSITIONS[found.status] ?? [];
-    if (!allowed.includes(next)) {
-      throw new BadRequestException(
-        `Cannot change order status from ${found.status} to ${next}`,
-      );
-    }
-
     const restockable =
       next === OrderStatus.CANCELLED || next === OrderStatus.RETURNED;
-    const refundedAt = restockable
-      ? await refundOrderIfPaid(found, target, this.payments)
-      : null;
+    const applyTransition = async (
+      manager: EntityManager,
+      refundedAt?: Date | null,
+    ): Promise<{ order: Order; needsRefund: boolean }> => {
+      const found = await findOrderForUpdate(manager, id);
+      if (!found) throw new NotFoundException('Order not found');
 
-    await orderRepo.manager.transaction(async (manager: EntityManager) => {
-      const orders = manager.getRepository(Order);
-      await orders.update(
-        { id },
-        {
-          status: next,
-          ...(refundedAt
-            ? { paymentStatus: PaymentStatus.REFUNDED, refundedAt }
-            : {}),
-        },
+      const allowed = ALLOWED_TRANSITIONS[found.status] ?? [];
+      if (!allowed.includes(next)) {
+        throw new BadRequestException(
+          `Cannot change order status from ${found.status} to ${next}`,
+        );
+      }
+      if (
+        restockable &&
+        found.paymentStatus === PaymentStatus.PAID &&
+        refundedAt === undefined
+      ) {
+        return { order: found, needsRefund: true };
+      }
+
+      const order = await transitionOrderStatus(
+        manager,
+        found,
+        next,
+        refundedAt,
       );
       if (restockable) {
         await restockOrderItems(manager, found.items ?? []);
         await this.coupons.restoreUsage(manager, found);
       }
-    });
+      return { order, needsRefund: false };
+    };
+
+    let result = await orderRepo.manager.transaction((manager) =>
+      applyTransition(manager),
+    );
+    if (result.needsRefund) {
+      // Never retain an Order lock during Stripe calls; the final transaction
+      // must validate the current row again before applying any side effects.
+      const refundedAt = await refundOrderIfPaid(
+        result.order,
+        target,
+        this.payments,
+      );
+      result = await orderRepo.manager.transaction((manager) =>
+        applyTransition(manager, refundedAt),
+      );
+    }
 
     if (restockable) await this.cache.invalidateProducts(target);
 
-    return serializeOrder(
-      {
-        ...found,
-        status: next,
-        ...(refundedAt
-          ? { paymentStatus: PaymentStatus.REFUNDED, refundedAt }
-          : {}),
-      } as Order,
-      this.r2,
-    );
+    return serializeOrder(result.order, this.r2);
   }
 }

@@ -350,7 +350,7 @@ known email and sends nothing. Codes are stored only as an HMAC-SHA256 hash that
 challenge id. Verification locks the newest challenge, checks expiry and attempt limits, and marks
 the challenge consumed exactly once.
 
-Implemented purposes cover email verification, password reset, and the service path for login MFA.
+Implemented purposes cover email verification and password reset.
 Platform-admin OTP is not implemented. Set `OTP_REQUIRE_EMAIL_VERIFIED=true` to block password login
 before verification; authenticated tenant routes are independently protected by
 `EmailVerifiedGuard`.

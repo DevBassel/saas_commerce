@@ -186,7 +186,7 @@
                   "mode": "raw",
                   "raw": "{\n  \"email\": \"john@example.com\",\n  \"purpose\": \"EMAIL_VERIFICATION\"\n}"
                 },
-                "description": "Public tenant-scoped route (send x-tenant-slug). purpose: EMAIL_VERIFICATION | PASSWORD_RESET | LOGIN_MFA | SENSITIVE_ACTION. Always returns 200 even for unknown emails. Throttled 1/min."
+                "description": "Public tenant-scoped route (send x-tenant-slug). purpose: EMAIL_VERIFICATION | PASSWORD_RESET | SENSITIVE_ACTION. Always returns 200 even for unknown emails. Throttled 1/min."
               },
               "event": [
                 {

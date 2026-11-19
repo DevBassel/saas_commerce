@@ -263,7 +263,7 @@ export class AuthService {
 
     if (dto.purpose === OtpPurpose.PASSWORD_RESET)
       throw otpError(OtpErrorCode.PURPOSE_REQUIRES_CONFIRM);
-    if (dto.purpose === OtpPurpose.SENSITIVE_ACTION)
+    if (dto.purpose !== OtpPurpose.EMAIL_VERIFICATION)
       throw otpError(OtpErrorCode.PURPOSE_NOT_SUPPORTED);
 
     const { user } = await this.emailOtp.verify({
@@ -273,13 +273,8 @@ export class AuthService {
       tenant,
     });
 
-    if (dto.purpose === OtpPurpose.EMAIL_VERIFICATION) {
-      await this.userService.markEmailVerified(user.id, tenant);
-      return { verified: true };
-    }
-
-    // LOGIN_MFA: the challenge is consumed; issue the standard credentials.
-    return this.returnUserCredential(user, tenant);
+    await this.userService.markEmailVerified(user.id, tenant);
+    return { verified: true };
   }
 
   async confirmPasswordReset(dto: ConfirmPasswordResetDto) {

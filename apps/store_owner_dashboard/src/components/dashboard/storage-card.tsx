@@ -4,7 +4,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn, formatBytes, storagePercent } from "@/lib/utils";
 import { Database, HardDrive, LucideIcon } from "lucide-react";
-import { Tooltip } from "@radix-ui/react-tooltip";
 
 const SIZE = 96;
 const STROKE_WIDTH = 8;

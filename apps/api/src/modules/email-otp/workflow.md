@@ -3,7 +3,7 @@
 Ownership boundary:
 
 - `EmailOtpService` (this module) owns **code generation, hashing, storage, throttling counters, and atomic consumption**. It knows nothing about what a purpose does.
-- `AuthService` (`../auth`) owns **purpose routing and effects** (`markEmailVerified`, credential issuance, password update).
+- `AuthService` (`../auth`) owns **purpose routing and effects** (`markEmailVerified`, password update).
 - `EmailService` (`../email`) owns **delivery** over the `EMAIL_TRANSPORT` seam.
 - `OtpChallenge` is a **tenant** entity (`TENANT_ENTITIES`) — this flow is tenant-schema only. Platform (`SUPER_ADMIN`) OTP is out of scope.
 
@@ -33,19 +33,17 @@ flowchart TD
     A1 --> S1["EmailOtpService.request"]
     A2 --> S2a{"purpose"}
     S2a -->|"PASSWORD_RESET"| E1["400 OTP_PURPOSE_REQUIRES_CONFIRM<br/>(checked before consumption)"]
-    S2a -->|"SENSITIVE_ACTION"| E2["400 OTP_PURPOSE_NOT_SUPPORTED<br/>(checked before consumption)"]
-    S2a -->|"EMAIL_VERIFICATION / LOGIN_MFA"| S2["EmailOtpService.verify"]
+    S2a -->|"other purposes"| E2["400 OTP_PURPOSE_NOT_SUPPORTED<br/>(checked before consumption)"]
+    S2a -->|"EMAIL_VERIFICATION"| S2["EmailOtpService.verify"]
     A3 --> S3["EmailOtpService.verify<br/>purpose = PASSWORD_RESET"]
     A4 --> S4["EmailOtpService.request<br/>purpose = EMAIL_VERIFICATION<br/>(best-effort, errors logged)"]
 
-    S2 --> F1{"purpose"}
-    F1 -->|"EMAIL_VERIFICATION"| F1a["UsersService.markEmailVerified<br/>→ 200 { verified: true }"]
-    F1 -->|"LOGIN_MFA"| F1b["AuthService.returnUserCredential<br/>→ access_token + refresh_token"]
+    S2 --> F1["UsersService.markEmailVerified<br/>→ 200 { verified: true }"]
 
     S3 --> F3["bcrypt.hash(newPassword, BCRYPT_ROUNDS)<br/>UsersService.updatePassword<br/>→ 200 { success: true }"]
 ```
 
-`PASSWORD_RESET` codes must be confirmed through `/auth/password-reset/confirm`; `SENSITIVE_ACTION` is reserved and rejected. Both rejections happen **before** `EmailOtpService.verify`, so the challenge is not consumed and attempts are not incremented.
+`PASSWORD_RESET` codes must be confirmed through `/auth/password-reset/confirm`; all other purposes except `EMAIL_VERIFICATION` are rejected as unsupported (`SENSITIVE_ACTION` remains reserved). These rejections happen **before** `EmailOtpService.verify`, so the challenge is not consumed and attempts are not incremented.
 
 ---
 
@@ -169,17 +167,17 @@ Config (`otp` group, Joi-validated): `OTP_LENGTH` (default 6), `OTP_EXPIRATION_S
 | `OTP_ALREADY_USED` | `consumedAt` set before verify |
 | `OTP_TOO_MANY_ATTEMPTS` | `attempts >= maxAttempts` |
 | `OTP_PURPOSE_REQUIRES_CONFIRM` | `PASSWORD_RESET` sent to `/auth/email-otp/verify` |
-| `OTP_PURPOSE_NOT_SUPPORTED` | `SENSITIVE_ACTION` sent to `/auth/email-otp/verify` |
+| `OTP_PURPOSE_NOT_SUPPORTED` | a purpose other than `EMAIL_VERIFICATION` or `PASSWORD_RESET` reaches `AuthService.verifyEmailOtp` |
 
 ## Related behavior outside this module
 
 - `AuthService.register` creates the CUSTOMER then calls `EmailOtpService.request(EMAIL_VERIFICATION)` best-effort; a failure is logged and registration still succeeds.
 - `OTP_REQUIRE_EMAIL_VERIFIED=true` makes `POST /auth/login` reject unverified users with `401 { code: 'EMAIL_NOT_VERIFIED' }` before issuing credentials. Independently, `EmailVerifiedGuard` rejects every authenticated tenant route with `403 { code: 'EMAIL_NOT_VERIFIED' }` unless the route is `@Public`, `@Platform`, or `@AllowUnverifiedEmail()`.
-- `LOGIN_MFA` can be requested and verified, but `POST /auth/login` does not issue an MFA challenge; a client must call the request route explicitly.
+- Email OTP verification returns `{ verified: true }` without issuing login credentials.
 - Production schema changes for `otp_challenges` use the idempotent `test/migrate-otp-challenges.ts`; dev/staging rely on tenant `synchronize`.
 
 ## Validation
 
 - `email-otp.service.spec.ts` — unknown email, supersede + send, cooldown, window cap, successful consumption, wrong code increments attempts, expired, already used, attempts cap, missing challenge, unknown email on verify.
 - `otp-code.util.spec.ts` — code shape/zero-padding, per-challenge HMAC uniqueness, constant-time compare.
-- `AuthService` spec covers purpose routing (`verifyEmailOtp` marks verified, `LOGIN_MFA` issues credentials, `PASSWORD_RESET` rejected before consumption).
+- `AuthService` spec covers purpose routing (`verifyEmailOtp` marks verified without creating a session; unsupported purposes and `PASSWORD_RESET` are rejected before consumption).

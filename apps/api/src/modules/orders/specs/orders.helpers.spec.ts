@@ -8,11 +8,13 @@ import { OrderItem } from '../entities/order-item.entity';
 import { OrderStatus } from '../constants/order-status.enum';
 import { DiscountType } from '../../coupons/constants/discount-type.enum';
 import {
+  findOrderForUpdate,
   refundOrderIfPaid,
   restockOrderItems,
   serializeDeliveryAddress,
   serializeOrder,
   serializeOrderItem,
+  transitionOrderStatus,
 } from '../orders.helpers';
 
 const NOW = new Date('2026-01-01T00:00:00Z');
@@ -250,6 +252,94 @@ describe('refundOrderIfPaid', () => {
         payments as never,
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+describe('findOrderForUpdate', () => {
+  it('locks the order in the caller transaction without joining nullable items', async () => {
+    const found = order();
+    const findOne = jest.fn().mockResolvedValue(found);
+    const getRepository = jest.fn(() => ({ findOne }));
+    const manager = {
+      getRepository,
+    } as unknown as EntityManager;
+
+    await expect(findOrderForUpdate(manager, 1)).resolves.toBe(found);
+
+    expect(getRepository).toHaveBeenCalledWith(Order);
+    expect(findOne).toHaveBeenCalledWith({
+      where: { id: 1 },
+      relations: { items: true },
+      relationLoadStrategy: 'query',
+      lock: { mode: 'pessimistic_write' },
+    });
+  });
+});
+
+describe('transitionOrderStatus', () => {
+  it('requires the current status to match before completing the transition', async () => {
+    const found = order({ status: OrderStatus.CONFIRMED });
+    const update = jest.fn().mockResolvedValue({ affected: 1 });
+    const getRepository = jest.fn(() => ({ update }));
+    const manager = {
+      getRepository,
+    } as unknown as EntityManager;
+
+    const result = await transitionOrderStatus(
+      manager,
+      found,
+      OrderStatus.CANCELLED,
+    );
+
+    expect(getRepository).toHaveBeenCalledWith(Order);
+    expect(update).toHaveBeenCalledWith(
+      { id: 1, status: OrderStatus.CONFIRMED },
+      { status: OrderStatus.CANCELLED },
+    );
+    expect(result.status).toBe(OrderStatus.CANCELLED);
+  });
+
+  it('writes the status and successful refund mirror together', async () => {
+    const found = order({
+      status: OrderStatus.RETURN_REQUESTED,
+      paymentStatus: PaymentStatus.PAID,
+    });
+    const update = jest.fn().mockResolvedValue({ affected: 1 });
+    const manager = {
+      getRepository: jest.fn(() => ({ update })),
+    } as unknown as EntityManager;
+
+    const result = await transitionOrderStatus(
+      manager,
+      found,
+      OrderStatus.RETURNED,
+      NOW,
+    );
+
+    expect(update).toHaveBeenCalledWith(
+      { id: 1, status: OrderStatus.RETURN_REQUESTED },
+      {
+        status: OrderStatus.RETURNED,
+        paymentStatus: PaymentStatus.REFUNDED,
+        refundedAt: NOW,
+      },
+    );
+    expect(result.paymentStatus).toBe(PaymentStatus.REFUNDED);
+    expect(result.refundedAt).toBe(NOW);
+  });
+
+  it('rejects a lost transition without marking the in-memory order complete', async () => {
+    const found = order({ status: OrderStatus.CONFIRMED });
+    const manager = {
+      getRepository: jest.fn(() => ({
+        update: jest.fn().mockResolvedValue({ affected: 0 }),
+      })),
+    } as unknown as EntityManager;
+
+    await expect(
+      transitionOrderStatus(manager, found, OrderStatus.CANCELLED),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(found.status).toBe(OrderStatus.CONFIRMED);
   });
 });
 

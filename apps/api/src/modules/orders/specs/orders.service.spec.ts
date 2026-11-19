@@ -10,6 +10,7 @@ import {
   NOW,
   TENANT,
   buildMocks,
+  buildOrderRaceMocks,
   customerCart,
   defaultAddress,
   manager,
@@ -599,13 +600,22 @@ describe('OrdersService', () => {
       const result = await service.cancel(1, requester(), TENANT);
 
       expect(orderRepo.update).toHaveBeenCalledWith(
-        { id: 1 },
+        { id: 1, status: OrderStatus.PENDING },
         { status: OrderStatus.CANCELLED },
       );
       expect(productRepo.increment).toHaveBeenCalledTimes(1);
       expect(productRepo.increment).toHaveBeenCalledWith({ id: 5 }, 'stock', 2);
       expect(result.status).toBe(OrderStatus.CANCELLED);
       expect(cacheMocks.invalidateProducts).toHaveBeenCalledWith(TENANT);
+      expect(
+        orderRepo.manager.transaction.mock.invocationCallOrder[0],
+      ).toBeLessThan(orderRepo.findOne.mock.invocationCallOrder[0]);
+      expect(orderRepo.findOne).toHaveBeenCalledWith({
+        where: { id: 1 },
+        relations: { items: true },
+        relationLoadStrategy: 'query',
+        lock: { mode: 'pessimistic_write' },
+      });
     });
 
     it('rejects cancelling a delivered order', async () => {
@@ -650,7 +660,7 @@ describe('OrdersService', () => {
       await service.cancel(1, manager(), TENANT);
 
       expect(orderRepo.update).toHaveBeenCalledWith(
-        { id: 1 },
+        { id: 1, status: OrderStatus.PROCESSING },
         { status: OrderStatus.CANCELLED },
       );
       expect(productRepo.increment).toHaveBeenCalledWith({ id: 5 }, 'stock', 1);
@@ -692,6 +702,13 @@ describe('OrdersService', () => {
         )
         .mockResolvedValueOnce(
           orderEntity({
+            status: OrderStatus.CONFIRMED,
+            paymentStatus: PaymentStatus.PAID,
+            items: [{ id: 1, productId: 5, quantity: 2 }],
+          }),
+        )
+        .mockResolvedValueOnce(
+          orderEntity({
             status: OrderStatus.CANCELLED,
             paymentStatus: PaymentStatus.REFUNDED,
             refundedAt: NOW,
@@ -703,7 +720,7 @@ describe('OrdersService', () => {
 
       expect(paymentsMocks.refundOrder).toHaveBeenCalledTimes(1);
       expect(orderRepo.update).toHaveBeenCalledWith(
-        { id: 1 },
+        { id: 1, status: OrderStatus.CONFIRMED },
         {
           status: OrderStatus.CANCELLED,
           paymentStatus: PaymentStatus.REFUNDED,
@@ -747,7 +764,7 @@ describe('OrdersService', () => {
 
       expect(paymentsMocks.refundOrder).not.toHaveBeenCalled();
       expect(orderRepo.update).toHaveBeenCalledWith(
-        { id: 1 },
+        { id: 1, status: OrderStatus.PENDING },
         { status: OrderStatus.CANCELLED },
       );
     });
@@ -769,6 +786,205 @@ describe('OrdersService', () => {
     });
   });
 
+  describe('atomic order transitions', () => {
+    const apply = (
+      action: string,
+      mocks: ReturnType<typeof buildOrderRaceMocks>,
+    ) =>
+      action === 'cancel'
+        ? mocks.service.cancel(1, requester(), TENANT)
+        : mocks.manageService.updateStatus(
+            1,
+            {
+              status:
+                action === 'returned'
+                  ? OrderStatus.RETURNED
+                  : OrderStatus.CANCELLED,
+            },
+            TENANT,
+          );
+
+    it.each([
+      {
+        name: 'two cancellations',
+        status: OrderStatus.CONFIRMED,
+        actions: ['cancel', 'cancel'],
+      },
+      {
+        name: 'cancellation and a status cancellation',
+        status: OrderStatus.CONFIRMED,
+        actions: ['cancel', 'cancelled'],
+      },
+      {
+        name: 'two status cancellations',
+        status: OrderStatus.CONFIRMED,
+        actions: ['cancelled', 'cancelled'],
+      },
+      {
+        name: 'two return approvals',
+        status: OrderStatus.RETURN_REQUESTED,
+        actions: ['returned', 'returned'],
+      },
+    ])(
+      'restores stock once for $name and later retries',
+      async ({ status, actions }) => {
+        const mocks = buildOrderRaceMocks({ status });
+
+        const results = await Promise.allSettled(
+          actions.map((action) => apply(action, mocks)),
+        );
+
+        expect(
+          results.filter((result) => result.status === 'fulfilled'),
+        ).toHaveLength(1);
+        expect(
+          results.filter((result) => result.status === 'rejected'),
+        ).toHaveLength(1);
+        for (const result of results) {
+          if (result.status === 'rejected') {
+            expect(result.reason).toBeInstanceOf(BadRequestException);
+          }
+        }
+        expect(mocks.state().stock).toBe(10);
+        expect(mocks.productRepo.increment).toHaveBeenCalledTimes(1);
+        expect(mocks.couponsMocks.restoreUsage).toHaveBeenCalledTimes(1);
+        expect(mocks.lockedOrderRepo.findOne).toHaveBeenCalledWith({
+          where: { id: 1 },
+          relations: { items: true },
+          relationLoadStrategy: 'query',
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        await expect(apply(actions[0], mocks)).rejects.toBeInstanceOf(
+          BadRequestException,
+        );
+        expect(mocks.state().stock).toBe(10);
+        expect(mocks.productRepo.increment).toHaveBeenCalledTimes(1);
+        expect(mocks.couponsMocks.restoreUsage).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it('rolls back status and stock together and permits a safe retry', async () => {
+      const mocks = buildOrderRaceMocks({}, 1);
+      mocks.couponsMocks.restoreUsage.mockRejectedValueOnce(
+        new Error('coupon restoration failed'),
+      );
+
+      await expect(apply('cancel', mocks)).rejects.toThrow(
+        'coupon restoration failed',
+      );
+      expect(mocks.state().order.status).toBe(OrderStatus.CONFIRMED);
+      expect(mocks.state().stock).toBe(8);
+      expect(mocks.cacheMocks.invalidateProducts).not.toHaveBeenCalled();
+
+      await apply('cancel', mocks);
+
+      expect(mocks.state().order.status).toBe(OrderStatus.CANCELLED);
+      expect(mocks.state().stock).toBe(10);
+      expect(mocks.cacheMocks.invalidateProducts).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['cancel', 'cancelled', 'returned'])(
+      'does not restock when the atomic %s status update is lost',
+      async (action) => {
+        const mocks = buildMocks();
+        mocks.orderRepo.findOne.mockResolvedValue(
+          orderEntity({
+            status:
+              action === 'returned'
+                ? OrderStatus.RETURN_REQUESTED
+                : OrderStatus.CONFIRMED,
+            items: [{ id: 1, productId: 5, quantity: 2 }],
+          }),
+        );
+        mocks.orderRepo.update.mockResolvedValue({ affected: 0 });
+
+        const result =
+          action === 'cancel'
+            ? mocks.service.cancel(1, requester(), TENANT)
+            : mocks.manageService.updateStatus(
+                1,
+                {
+                  status:
+                    action === 'returned'
+                      ? OrderStatus.RETURNED
+                      : OrderStatus.CANCELLED,
+                },
+                TENANT,
+              );
+
+        await expect(result).rejects.toBeInstanceOf(BadRequestException);
+        expect(mocks.productRepo.increment).not.toHaveBeenCalled();
+        expect(mocks.couponsMocks.restoreUsage).not.toHaveBeenCalled();
+        expect(mocks.cacheMocks.invalidateProducts).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(['cancel', 'cancelled', 'returned'])(
+      'relocks and rejects a stale paid %s after the external refund',
+      async (action) => {
+        const mocks = buildMocks();
+        let insideTransaction = false;
+        let storedOrder = orderEntity({
+          status:
+            action === 'returned'
+              ? OrderStatus.RETURN_REQUESTED
+              : OrderStatus.CONFIRMED,
+          paymentStatus: PaymentStatus.PAID,
+          items: [{ id: 1, productId: 5, quantity: 2 }],
+        });
+        const readLocations: boolean[] = [];
+        mocks.orderRepo.findOne.mockImplementation(() => {
+          readLocations.push(insideTransaction);
+          return Promise.resolve(structuredClone(storedOrder));
+        });
+        mocks.orderRepo.manager.transaction.mockImplementation(
+          async (callback: (manager: unknown) => unknown) => {
+            insideTransaction = true;
+            try {
+              return await callback(mocks.entityManager);
+            } finally {
+              insideTransaction = false;
+            }
+          },
+        );
+        mocks.paymentsMocks.refundOrder.mockImplementation(() => {
+          expect(insideTransaction).toBe(false);
+          storedOrder = orderEntity({
+            status:
+              action === 'returned'
+                ? OrderStatus.RETURNED
+                : OrderStatus.CANCELLED,
+            paymentStatus: PaymentStatus.REFUNDED,
+          });
+          return Promise.resolve({ refundedAt: NOW });
+        });
+
+        const result =
+          action === 'cancel'
+            ? mocks.service.cancel(1, requester(), TENANT)
+            : mocks.manageService.updateStatus(
+                1,
+                {
+                  status:
+                    action === 'returned'
+                      ? OrderStatus.RETURNED
+                      : OrderStatus.CANCELLED,
+                },
+                TENANT,
+              );
+
+        await expect(result).rejects.toBeInstanceOf(BadRequestException);
+        expect(readLocations).toEqual([true, true]);
+        expect(mocks.orderRepo.manager.transaction).toHaveBeenCalledTimes(2);
+        expect(mocks.orderRepo.update).not.toHaveBeenCalled();
+        expect(mocks.productRepo.increment).not.toHaveBeenCalled();
+        expect(mocks.couponsMocks.restoreUsage).not.toHaveBeenCalled();
+        expect(mocks.cacheMocks.invalidateProducts).not.toHaveBeenCalled();
+      },
+    );
+  });
+
   describe('requestReturn', () => {
     it('requests a return for an owner delivered order without restocking', async () => {
       const { service, orderRepo, productRepo } = buildMocks();
@@ -786,11 +1002,35 @@ describe('OrdersService', () => {
       const result = await service.requestReturn(1, requester(), TENANT);
 
       expect(orderRepo.update).toHaveBeenCalledWith(
-        { id: 1 },
+        { id: 1, status: OrderStatus.DELIVERED },
         { status: OrderStatus.RETURN_REQUESTED },
       );
       expect(productRepo.increment).not.toHaveBeenCalled();
       expect(result.status).toBe(OrderStatus.RETURN_REQUESTED);
+      expect(orderRepo.findOne).toHaveBeenCalledWith({
+        where: { id: 1 },
+        relations: { items: true },
+        relationLoadStrategy: 'query',
+        lock: { mode: 'pessimistic_write' },
+      });
+    });
+
+    it('does not reopen a completed return using a stale status', async () => {
+      const mocks = buildOrderRaceMocks({ status: OrderStatus.RETURNED }, 1);
+
+      await expect(
+        mocks.service.requestReturn(1, requester(), TENANT),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(mocks.lockedOrderRepo.findOne).toHaveBeenCalledWith({
+        where: { id: 1 },
+        relations: { items: true },
+        relationLoadStrategy: 'query',
+        lock: { mode: 'pessimistic_write' },
+      });
+      expect(mocks.orderRepo.update).not.toHaveBeenCalled();
+      expect(mocks.productRepo.increment).not.toHaveBeenCalled();
+      expect(mocks.state().order.status).toBe(OrderStatus.RETURNED);
     });
 
     it('throws 404 for a non-owner', async () => {
@@ -830,7 +1070,7 @@ describe('OrdersService', () => {
       await service.requestReturn(1, manager(), TENANT);
 
       expect(orderRepo.update).toHaveBeenCalledWith(
-        { id: 1 },
+        { id: 1, status: OrderStatus.DELIVERED },
         { status: OrderStatus.RETURN_REQUESTED },
       );
     });

@@ -7,6 +7,7 @@ import { PaymentStatus } from '../payments/constants/payment-status.enum';
 import { Product } from '../products/entities/product.entity';
 import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
+import { OrderStatus } from './constants/order-status.enum';
 import {
   SerializedDeliveryAddress,
   SerializedOrder,
@@ -102,6 +103,42 @@ export async function refundOrderIfPaid(
     );
   }
   return result.refundedAt;
+}
+
+export function findOrderForUpdate(
+  manager: EntityManager,
+  id: number,
+): Promise<Order | null> {
+  return manager.getRepository(Order).findOne({
+    where: { id },
+    relations: { items: true },
+    // Load items separately: FOR UPDATE must not target a nullable outer join.
+    relationLoadStrategy: 'query',
+    lock: { mode: 'pessimistic_write' },
+  });
+}
+
+export async function transitionOrderStatus(
+  manager: EntityManager,
+  order: Order,
+  status: OrderStatus,
+  refundedAt?: Date | null,
+): Promise<Order> {
+  const changes = {
+    status,
+    ...(refundedAt
+      ? { paymentStatus: PaymentStatus.REFUNDED, refundedAt }
+      : {}),
+  };
+  const result = await manager
+    .getRepository(Order)
+    .update({ id: order.id, status: order.status }, changes);
+  // Only the winning transition may restore stock. The terminal status and
+  // restoration commit together, so retries cannot earn another restoration.
+  if (result.affected !== 1) {
+    throw new BadRequestException('Order status changed; retry the request');
+  }
+  return Object.assign(order, changes);
 }
 
 export async function restockOrderItems(

@@ -57,31 +57,38 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    CA["cancel(id, requester)"]
-        A0["load order + items"] --> A1{"exists and<br/>(owner or manage)?"}
+    CA["cancel(id, requester)"] --> A0["begin tenant transaction<br/>load order FOR UPDATE<br/>load items separately"]
+        A0 --> A1{"exists and<br/>(owner or manage)?"}
         A1 -->|"no"| A1E["404 Order not found"]
         A1 -->|"yes"| A2{"cancellable status?"}
         A2 -->|"manage: PENDING/CONFIRMED/PROCESSING/SHIPPED"| A3
         A2 -->|"owner: only PENDING/CONFIRMED"| A3
         A2 -->|"otherwise"| A2E["400 Order cannot be cancelled from status"]
-        A3["refundOrderIfPaid BEFORE the transaction:<br/>paymentStatus PAID → Stripe refund<br/>(paid but no refundable payment → 400)"] --> A4["transaction: status = CANCELLED<br/>(+ paymentStatus REFUNDED / refundedAt when refunded)"]
-        A4 --> A5["increment product.stock per line<br/>(skip productId = null)"]
+        A3{"paid and refund not prepared?"}
+        A3 -->|"yes"| AR["finish read-only transaction<br/>refundOrderIfPaid outside DB locks<br/>(paid but no refundable payment → 400)"]
+        AR -->|"new transaction: re-lock and revalidate"| A0
+        A3 -->|"no"| A4["conditional UPDATE by id + current status<br/>must affect one row; status = CANCELLED<br/>(+ payment mirror when refunded)"]
+        A4 --> A5["restore stock + coupon usage<br/>only when exactly one order row transitioned"]
+        A5 --> A6["commit status, stock and coupon restoration together"]
 
-    RR["requestReturn(id, requester)"]
-        R0["tenant transaction: load order + items"] --> R1{"exists and<br/>(owner or manage)?"}
+    RR["requestReturn(id, requester)"] --> R0["begin tenant transaction<br/>load order FOR UPDATE<br/>load items separately"]
+        R0 --> R1{"exists and<br/>(owner or manage)?"}
         R1 -->|"no"| R1E["404 Order not found"]
         R1 -->|"yes"| R2{"status = DELIVERED?"}
         R2 -->|"no"| R2E["400 Return can only be requested<br/>for a delivered order"]
-        R2 -->|"yes"| R3["status = RETURN_REQUESTED<br/>(no restock, no refund yet)"]
+        R2 -->|"yes"| R3["conditional UPDATE by id + DELIVERED<br/>status = RETURN_REQUESTED<br/>commit; no restock or refund"]
 
-    US["updateStatus(id, dto)"]
-        U0["load order + items"] --> U1{"next in ALLOWED_TRANSITIONS<br/>from current status?"}
+    US["updateStatus(id, dto)"] --> U0["begin tenant transaction<br/>load order FOR UPDATE<br/>load items separately"]
+        U0 --> U1{"next in ALLOWED_TRANSITIONS<br/>from locked current status?"}
         U1 -->|"no"| U1E["400 Cannot change order status from X to Y"]
-        U1 -->|"yes"| U2["next = CANCELLED or RETURNED?"]
-        U2 -->|"yes"| U3["refundOrderIfPaid before the transaction"]
-        U2 -->|"no"| U4["transaction: set status"]
-        U3 --> U5["transaction: set status<br/>(+ payment mirror when refunded)<br/>+ restock when restockable"]
-        U4 --> U4B["transaction: set status only (no restock)"]
+        U1 -->|"yes"| U2{"terminal next, paid,<br/>and refund not prepared?"}
+        U2 -->|"yes"| U3["finish read-only transaction<br/>refundOrderIfPaid outside DB locks"]
+        U3 -->|"new transaction: re-lock and revalidate"| U0
+        U2 -->|"no"| U4["conditional UPDATE by id + current status<br/>must affect one row<br/>set next status + any refund mirror"]
+        U4 --> U5{"next = CANCELLED or RETURNED?"}
+        U5 -->|"yes"| U6["restore stock + coupon usage"]
+        U5 -->|"no terminal restoration"| U7["commit"]
+        U6 --> U7
 ```
 
 Order status transitions (`ManageOrderService.ALLOWED_TRANSITIONS`):
@@ -96,4 +103,6 @@ Order status transitions (`ManageOrderService.ALLOWED_TRANSITIONS`):
 | `RETURN_REQUESTED` | `RETURNED`, `DELIVERED` |
 | `RETURNED`, `CANCELLED` | terminal |
 
-Entering `CANCELLED` or `RETURNED` restocks every line and refunds the order when `paymentStatus` is `PAID`. Refunds always run before the status transaction so a paid order is never cancelled without the customer's money coming back.
+Every status mutation loads the order with `pessimistic_write` inside its tenant transaction and validates the current locked status. Items use the query relation-loading strategy so the order lock does not target nullable joined rows. The conditional status update must affect exactly one row before stock or coupon usage is restored. The committed terminal status is the one-time restoration marker: concurrent or repeated requests cannot restore stock again, and failures roll back status, stock and coupon changes together.
+
+For paid cancellation or return approval, a first locked, read-only transaction prepares the refund. Stripe runs outside DB transactions; the final transaction re-locks the order, revalidates eligibility, and commits the status, refund mirror, stock and coupon restoration together. An external refund cannot be rolled back if the status changes before that final recheck. Unpaid and non-refund transitions complete in one transaction.

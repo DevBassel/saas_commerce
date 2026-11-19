@@ -14,7 +14,6 @@ export interface OtpEmailParams {
 const PURPOSE_LABELS: Record<string, string> = {
   EMAIL_VERIFICATION: 'verify your email address',
   PASSWORD_RESET: 'reset your password',
-  LOGIN_MFA: 'finish signing in',
   SENSITIVE_ACTION: 'confirm a sensitive action',
 };
 

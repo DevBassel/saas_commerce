@@ -1,3 +1,4 @@
+import { BadRequestException, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { EmailOtpController } from '../email-otp.controller';
 import { AuthService } from '../../auth/auth.service';
@@ -58,6 +59,47 @@ describe('EmailOtpController', () => {
 
       expect(authService.verifyEmailOtp).toHaveBeenCalledWith(dto);
       expect(result).toEqual(expected);
+    });
+  });
+
+  describe('purpose validation', () => {
+    const pipe = new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    });
+
+    it.each([
+      {
+        route: 'request',
+        metatype: RequestOtpDto,
+        payload: { email: 'test@test.dev', purpose: 'LOGIN_MFA' },
+      },
+      {
+        route: 'verify',
+        metatype: VerifyOtpDto,
+        payload: {
+          email: 'test@test.dev',
+          purpose: 'LOGIN_MFA',
+          code: '123456',
+        },
+      },
+    ])('rejects LOGIN_MFA for $route', async ({ metatype, payload }) => {
+      await expect(
+        pipe.transform(payload, { type: 'body', metatype }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it.each([
+      OtpPurpose.EMAIL_VERIFICATION,
+      OtpPurpose.PASSWORD_RESET,
+      OtpPurpose.SENSITIVE_ACTION,
+    ])('accepts %s for requests', async (purpose) => {
+      const payload = { email: 'test@test.dev', purpose };
+
+      await expect(
+        pipe.transform(payload, { type: 'body', metatype: RequestOtpDto }),
+      ).resolves.toMatchObject(payload);
     });
   });
 });
