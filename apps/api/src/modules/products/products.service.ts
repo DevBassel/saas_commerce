@@ -230,7 +230,7 @@ export class ProductsService {
 
     const keys = (product.images ?? []).map((image) => ({
       key: image.objectKey,
-      size: image.sizeBytes,
+      size: image.storedSizeBytes,
     }));
     if (keys.length > 0) {
       await imageRepo.delete({ productId: id });
@@ -290,28 +290,15 @@ export class ProductsService {
       );
     }
 
-    const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
-
-    const registered = await this.tenantService.findBySchemaName(
-      target.schemaName,
-    );
-    if (
-      registered &&
-      BigInt(registered.storageUsedBytes) + BigInt(totalBytes) >
-        BigInt(registered.storageCapacityBytes)
-    ) {
-      throw new BadRequestException('Storage capacity exceeded');
-    }
-
     const maxPosition = await imageRepo.maximum('position', { productId });
     const basePosition = maxPosition ?? 0;
 
     const uploaded: R2Upload[] = [];
     let savedEntities: ProductImage[] | null = null;
     try {
-      const results = await Promise.all(
+      const settled = await Promise.allSettled(
         files.map(async (file) => {
-          const result = await this.r2.upload(
+          return this.r2.upload(
             this.r2.buildObjectKey(
               target.schemaName,
               'products',
@@ -320,16 +307,31 @@ export class ProductsService {
             file.buffer,
             file.mimetype,
           );
-          uploaded.push(result);
-          return result;
         }),
+      );
+      uploaded.push(
+        ...settled.flatMap((result) =>
+          result.status === 'fulfilled' ? [result.value] : [],
+        ),
+      );
+      const failed = settled.find((result) => result.status === 'rejected');
+      if (failed?.status === 'rejected') throw failed.reason;
+
+      const results = settled.map((result) => {
+        if (result.status === 'rejected') throw result.reason;
+        return result.value;
+      });
+      const storedBytes = results.reduce(
+        (sum, result) => sum + result.sizeBytes,
+        0,
       );
 
       const entities = results.map((result, index) =>
         imageRepo.create({
           productId,
           objectKey: result.key,
-          sizeBytes: result.sizeBytes,
+          originalSizeBytes: files[index].size,
+          storedSizeBytes: result.sizeBytes,
           mimeType: files[index].mimetype,
           position: basePosition + index + 1,
         }),
@@ -338,7 +340,7 @@ export class ProductsService {
       // update capacity
       await this.tenantService.adjustStorageUsedBytes(
         target.schemaName,
-        totalBytes,
+        storedBytes,
       );
     } catch (error) {
       if (uploaded.length > 0) {
@@ -370,7 +372,7 @@ export class ProductsService {
     // update capacity
     await this.tenantService.adjustStorageUsedBytes(
       target.schemaName,
-      -image.sizeBytes,
+      -image.storedSizeBytes,
     );
 
     await this.cache.invalidateProducts(target);

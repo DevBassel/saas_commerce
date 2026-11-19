@@ -108,6 +108,7 @@ const run = async (): Promise<void> => {
         'AddSubscriptionRefund1795105096743',
         'AddTenantProvisioningState1795105096744',
         'AddTenantStripeAccountState1795121230425',
+        'ReconcileProductImageStorage1795125000001',
       ],
     );
     assert.deepEqual(
@@ -122,6 +123,7 @@ const run = async (): Promise<void> => {
       assert.deepEqual(firstRun.executedMigrations, [
         'InitialTenant1795099463316',
         'AddOrderRefund1795105096742',
+        'AddProductImageSizes1795125000000',
       ]);
       assert.deepEqual(
         await tablesIn(platform, schemaName),

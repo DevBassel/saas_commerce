@@ -198,8 +198,8 @@ Tenant schema (`TENANT_ENTITIES`):
 - `Category` (`categories`): unique `slug`, `description`, `isActive`.
 - `Product` (`products`): unique `sku`, unique nullable `slug`, numeric(10,2) `price`, `stock`,
   `isActive`, `categoryId` FK `ON DELETE SET NULL`, images cascade insert.
-- `ProductImage` (`product_images`): FK `ON DELETE CASCADE`, unique `objectKey`, `sizeBytes`,
-  `mimeType`, `position`.
+- `ProductImage` (`product_images`): FK `ON DELETE CASCADE`, unique `objectKey`,
+  nullable `originalSizeBytes` (unknown for legacy rows), `storedSizeBytes`, `mimeType`, `position`.
 - `Cart` (`carts`, unique `userId`, FK cascade) and `CartItem` (`cart_items`, unique
   `(cartId, productId)`, FK cascade). Caps: 100 items, quantity 99.
 - `Order` (`orders`): unique `orderNumber`, `userId` FK `ON DELETE SET NULL`, `status`,
@@ -277,7 +277,8 @@ rows. There is no `seeder_runs` tracking table and no migration: seeders are saf
 - Product uploads: max 5 files per request, MIME `image/jpeg`, `image/png`, `image/webp` (no GIF),
   `MAX_FILE_SIZE`, and `MAX_PRODUCT_IMAGES` per product. Per-tenant quota is enforced against
   `Tenant.storageCapacityBytes` via `TenantService.adjustStorageUsedBytes` (pessimistic lock, clamps
-  at 0, 400 over capacity). `storageCapacityBytes` is plan-driven: it is mirrored from the assigned
+  at 0, 400 over capacity) using the optimized R2 object bytes persisted as `storedSizeBytes`.
+  `storageCapacityBytes` is plan-driven: it is mirrored from the assigned
   plan's `STORAGE_BYTES` limit on subscription assignment (see `## Subscriptions`). A partial failure
   deletes the uploaded R2 objects and image rows.
 - `storageUsedBytes` is maintained incrementally. `TenantService.getSchemaSizes`

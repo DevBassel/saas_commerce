@@ -30,13 +30,24 @@ export class ProductImage extends BaseEntity {
 
   @Column({
     type: 'bigint',
+    nullable: true,
     transformer: {
       from: (value: string | null): number | null =>
         value === null ? null : Number(value),
       to: (value: number | null): number | null => value,
     },
   })
-  sizeBytes: number;
+  originalSizeBytes: number | null;
+
+  @Column({
+    type: 'bigint',
+    transformer: {
+      from: (value: string | null): number | null =>
+        value === null ? null : Number(value),
+      to: (value: number | null): number | null => value,
+    },
+  })
+  storedSizeBytes: number;
 
   @Column()
   mimeType: string;

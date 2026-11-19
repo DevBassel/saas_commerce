@@ -6,9 +6,11 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import { R2Service } from '../r2.service';
+import { R2ImageOptimizerService } from '../image-optimizer.service';
 import { IENV, IR2, IFiles } from '../../config/env.interface';
 
 const mockSend = jest.fn() as jest.Mock<Promise<unknown>, [unknown]>;
+const mockOptimize = jest.fn();
 
 jest.mock('@aws-sdk/client-s3', () => {
   const actual = jest.requireActual('@aws-sdk/client-s3') as unknown as Record<
@@ -51,7 +53,19 @@ const buildService = (): R2Service => {
       key === 'r2' ? r2Config : key === 'files' ? filesConfig : undefined,
   } as unknown as ConfigService<IENV>;
   mockSend.mockReset();
-  return new R2Service(config);
+  mockOptimize
+    .mockReset()
+    .mockImplementation((_key: string, body: Buffer, contentType: string) =>
+      Promise.resolve({
+        body,
+        contentType,
+        extension: 'png',
+        optimized: false,
+      }),
+    );
+  return new R2Service(config, {
+    optimize: mockOptimize,
+  } as unknown as R2ImageOptimizerService);
 };
 
 const lastClientOptions = (): ClientOptions => {
@@ -67,7 +81,19 @@ const buildServiceWithR2 = (r2: IR2): R2Service => {
     getOrThrow: (key: string) => (key === 'r2' ? r2 : filesConfig),
   } as unknown as ConfigService<IENV>;
   mockSend.mockReset();
-  return new R2Service(config);
+  mockOptimize
+    .mockReset()
+    .mockImplementation((_key: string, body: Buffer, contentType: string) =>
+      Promise.resolve({
+        body,
+        contentType,
+        extension: 'png',
+        optimized: false,
+      }),
+    );
+  return new R2Service(config, {
+    optimize: mockOptimize,
+  } as unknown as R2ImageOptimizerService);
 };
 
 describe('R2Service', () => {
@@ -88,13 +114,17 @@ describe('R2Service', () => {
     const service = buildService();
     mockSend.mockResolvedValue({});
 
-    const result = await service.upload('k', Buffer.from('data'), 'image/png');
+    const result = await service.upload(
+      'k.png',
+      Buffer.from('data'),
+      'image/png',
+    );
 
-    expect(result).toEqual({ key: 'k', sizeBytes: 4 });
+    expect(result).toEqual({ key: 'k.png', sizeBytes: 4 });
     const command = sendCall<PutObjectCommand>(0);
     expect(command).toBeInstanceOf(PutObjectCommand);
     expect(command.input.Bucket).toBe('test-bucket');
-    expect(command.input.Key).toBe('k');
+    expect(command.input.Key).toBe('k.png');
     expect(command.input.ContentType).toBe('image/png');
   });
 
@@ -177,7 +207,7 @@ describe('R2Service', () => {
     mockSend.mockRejectedValue(new Error('upload failed'));
 
     await expect(
-      service.upload('k', Buffer.from('data'), 'image/png'),
+      service.upload('k.png', Buffer.from('data'), 'image/png'),
     ).rejects.toThrow('upload failed');
   });
 

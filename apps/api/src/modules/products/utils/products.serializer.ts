@@ -18,7 +18,7 @@ export const serializeProduct = (
         id: image.id,
         url: r2.publicUrl(image.objectKey),
         mimeType: image.mimeType,
-        sizeBytes: image.sizeBytes,
+        sizeBytes: image.storedSizeBytes,
         position: image.position,
       })),
   };

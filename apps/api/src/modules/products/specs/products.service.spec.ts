@@ -524,14 +524,14 @@ describe('ProductsService', () => {
               id: 5,
               objectKey: 'second.png',
               mimeType: 'image/png',
-              sizeBytes: 4,
+              storedSizeBytes: 4,
               position: 2,
             },
             {
               id: 6,
               objectKey: 'first.png',
               mimeType: 'image/png',
-              sizeBytes: 5,
+              storedSizeBytes: 5,
               position: 1,
             },
           ],
@@ -709,31 +709,44 @@ describe('ProductsService', () => {
       ]);
     });
 
-    it('rejects upload before touching R2 when the tenant quota would be exceeded', async () => {
+    it('uses optimized bytes when checking tenant storage capacity', async () => {
       const { service, productRepo, imageRepo, tenantService, r2Mocks } =
         buildMocks();
       productRepo.findOneBy.mockResolvedValue({ id: 1 });
       imageRepo.count.mockResolvedValue(0);
+      imageRepo.maximum.mockResolvedValue(0);
       tenantService.findBySchemaName.mockResolvedValue({
-        storageUsedBytes: 1000,
-        storageCapacityBytes: 1000,
+        storageUsedBytes: 0,
+        storageCapacityBytes: 100,
       });
-
-      await expect(service.uploadImages(1, [file()], TENANT)).rejects.toThrow(
-        BadRequestException,
+      r2Mocks.upload.mockResolvedValue({
+        key: 'tenants/tenant_test/products/optimized.webp',
+        sizeBytes: 50,
+      });
+      imageRepo.create.mockImplementation(
+        (data: Record<string, unknown>) => data,
       );
+      imageRepo.save.mockResolvedValue({});
+      productRepo.findOne.mockResolvedValue({ id: 1, images: [] });
 
-      expect(r2Mocks.upload).not.toHaveBeenCalled();
+      await expect(
+        service.uploadImages(1, [file({ size: 500 })], TENANT),
+      ).resolves.toBeDefined();
+
+      expect(tenantService.adjustStorageUsedBytes).toHaveBeenCalledWith(
+        'tenant_test',
+        50,
+      );
     });
 
-    it('records uploaded bytes against the tenant quota', async () => {
+    it('stores original and optimized sizes and accounts only optimized bytes', async () => {
       const { service, productRepo, imageRepo, tenantService, r2Mocks } =
         buildMocks();
       productRepo.findOneBy.mockResolvedValue({ id: 1 });
       imageRepo.count.mockResolvedValue(0);
       r2Mocks.upload.mockResolvedValue({
         key: 'tenants/tenant_test/products/uuid.png',
-        sizeBytes: 4,
+        sizeBytes: 2,
       });
       imageRepo.create.mockImplementation(
         (data: Record<string, unknown>) => data,
@@ -748,7 +761,8 @@ describe('ProductsService', () => {
             id: 5,
             objectKey: 'tenants/tenant_test/products/uuid.png',
             mimeType: 'image/png',
-            sizeBytes: 4,
+            originalSizeBytes: 4,
+            storedSizeBytes: 2,
             position: 2,
           },
         ],
@@ -758,7 +772,7 @@ describe('ProductsService', () => {
 
       expect(tenantService.adjustStorageUsedBytes).toHaveBeenCalledWith(
         'tenant_test',
-        4,
+        2,
       );
       expect(r2Mocks.upload).toHaveBeenCalledWith(
         'tenants/tenant_test/products/photo.png',
@@ -766,7 +780,12 @@ describe('ProductsService', () => {
         'image/png',
       );
       expect(imageRepo.save).toHaveBeenCalledWith([
-        expect.objectContaining({ productId: 1, position: 2, sizeBytes: 4 }),
+        expect.objectContaining({
+          productId: 1,
+          position: 2,
+          originalSizeBytes: 4,
+          storedSizeBytes: 2,
+        }),
       ]);
       expect(result.images[0]).toMatchObject({
         id: 5,
@@ -813,29 +832,41 @@ describe('ProductsService', () => {
       );
     });
 
-    it('cleans up uploaded objects when a batch upload fails', async () => {
-      const { service, productRepo, imageRepo, r2Mocks } = buildMocks();
+    it('waits for in-flight uploads and cleans up every successful object when a batch fails', async () => {
+      const { service, productRepo, imageRepo, r2Mocks, tenantService } =
+        buildMocks();
       productRepo.findOneBy.mockResolvedValue({ id: 1 });
       imageRepo.count.mockResolvedValue(0);
       imageRepo.maximum.mockResolvedValue(0);
+      let resolveLate!: (upload: { key: string; sizeBytes: number }) => void;
       r2Mocks.upload
-        .mockImplementationOnce((key: string) =>
-          Promise.resolve({ key, sizeBytes: 4 }),
-        )
-        .mockImplementationOnce(() => Promise.reject(new Error('boom')));
+        .mockImplementationOnce(() => Promise.reject(new Error('boom')))
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveLate = resolve;
+            }),
+        );
       r2Mocks.deleteMany.mockResolvedValue(undefined);
 
-      await expect(
-        service.uploadImages(
-          1,
-          [file({ originalname: 'a.png' }), file({ originalname: 'b.png' })],
-          TENANT,
-        ),
-      ).rejects.toThrow('boom');
+      const pending = service.uploadImages(
+        1,
+        [file({ originalname: 'b.png' }), file({ originalname: 'c.png' })],
+        TENANT,
+      );
+      const rejected = expect(pending).rejects.toThrow('boom');
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      resolveLate({
+        key: 'tenants/tenant_test/products/c.png',
+        sizeBytes: 3,
+      });
+      await rejected;
 
       expect(r2Mocks.deleteMany).toHaveBeenCalledWith([
-        'tenants/tenant_test/products/a.png',
+        'tenants/tenant_test/products/c.png',
       ]);
+      expect(imageRepo.save).not.toHaveBeenCalled();
+      expect(tenantService.adjustStorageUsedBytes).not.toHaveBeenCalled();
     });
   });
 
@@ -844,8 +875,8 @@ describe('ProductsService', () => {
     productRepo.findOne.mockResolvedValue({
       id: 1,
       images: [
-        { id: 5, objectKey: 'k1', position: 1 },
-        { id: 6, objectKey: 'k2', position: 2 },
+        { id: 5, objectKey: 'k1', storedSizeBytes: 4, position: 1 },
+        { id: 6, objectKey: 'k2', storedSizeBytes: 3, position: 2 },
       ],
     });
 
@@ -858,7 +889,11 @@ describe('ProductsService', () => {
 
   it('deletes a single image and its R2 object', async () => {
     const { service, imageRepo, r2Mocks, productRepo } = buildMocks();
-    imageRepo.findOneBy.mockResolvedValue({ id: 5, objectKey: 'k1' });
+    imageRepo.findOneBy.mockResolvedValue({
+      id: 5,
+      objectKey: 'k1',
+      storedSizeBytes: 4,
+    });
     productRepo.findOne.mockResolvedValue({ id: 1, images: [] });
 
     await service.deleteImage(1, 5, TENANT);
@@ -872,7 +907,8 @@ describe('ProductsService', () => {
     imageRepo.findOneBy.mockResolvedValue({
       id: 5,
       objectKey: 'k1',
-      sizeBytes: 4,
+      originalSizeBytes: 10,
+      storedSizeBytes: 4,
     });
     productRepo.findOne.mockResolvedValue({ id: 1, images: [] });
 
@@ -1150,14 +1186,14 @@ describe('ProductsService', () => {
           id: 5,
           objectKey: 'k2',
           mimeType: 'image/png',
-          sizeBytes: 4,
+          storedSizeBytes: 4,
           position: 2,
         },
         {
           id: 6,
           objectKey: 'k1',
           mimeType: 'image/png',
-          sizeBytes: 5,
+          storedSizeBytes: 5,
           position: 1,
         },
       ],

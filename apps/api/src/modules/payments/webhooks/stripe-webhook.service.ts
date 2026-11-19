@@ -113,6 +113,7 @@ export class StripeWebhookService {
 
     let processed = 0;
     let failed = 0;
+    // fix N+1 query dont forget
     for (const event of events) {
       try {
         if (await this.processStoredEvent(event.id, false)) processed += 1;
