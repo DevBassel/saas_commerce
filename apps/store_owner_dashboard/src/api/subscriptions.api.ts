@@ -1,6 +1,7 @@
 import { apiClient } from "./client";
 import type {
   BillingInterval,
+  CancelSubscriptionResponse,
   CreateSubscriptionPaymentResponse,
   Subscription,
   SubscriptionPlan,
@@ -44,9 +45,8 @@ export const subscriptionsApi = {
   },
 
   getPlans: async (): Promise<SubscriptionPlan[]> => {
-    const response = await apiClient.get<SubscriptionPlan[]>(
-      "subscription/plans",
-    );
+    const response =
+      await apiClient.get<SubscriptionPlan[]>("subscription/plans");
     return response.data;
   },
 
@@ -55,8 +55,8 @@ export const subscriptionsApi = {
     return response.data;
   },
 
-  cancelSubscription: async (): Promise<Subscription | null> => {
-    const response = await apiClient.post<Subscription | null>(
+  cancelSubscription: async (): Promise<CancelSubscriptionResponse> => {
+    const response = await apiClient.post<CancelSubscriptionResponse>(
       "payments/stripe/subscription/cancel",
     );
     return response.data;

@@ -6,8 +6,8 @@ import type { DataSource, Repository } from 'typeorm';
 import { BillingInterval } from '../../subscriptions/constants/billing-interval.enum';
 import { StripeWebhookEventStatus } from '../constants/stripe-webhook-event-status.enum';
 import { StripeWebhookEvent } from '../entities/stripe-webhook-event.entity';
-import type { OrderPaymentService } from '../services/order-payment.service';
-import type { SubscriptionPaymentService } from '../services/subscription-payment.service';
+import type { OrderPaymentService } from '../stripe/services/order/order-payment.service';
+import type { SubscriptionPaymentService } from '../stripe/services/subscription/subscription-payment.service';
 import type { StripeClientService } from '../stripe/stripe-client.service';
 import { StripeWebhookService } from '../webhooks/stripe-webhook.service';
 
@@ -593,6 +593,8 @@ describe('StripeWebhookService', () => {
           paymentIntentId: 'pi_1',
           amountRefunded: 50,
           refundReference: 're_1',
+          providerStatus: 'succeeded',
+          refundRecordId: null,
         },
       );
     });
@@ -622,6 +624,8 @@ describe('StripeWebhookService', () => {
           paymentIntentId: 'pi_2',
           amountRefunded: 0,
           refundReference: null,
+          providerStatus: 'succeeded',
+          refundRecordId: null,
         },
       );
     });
@@ -664,6 +668,7 @@ describe('StripeWebhookService', () => {
           id: 're_9',
           status: 'succeeded',
           payment_intent: 'pi_1',
+          metadata: { durable_refund_id: '42' },
         });
         stripe.paymentIntents.retrieve.mockResolvedValue(paymentIntent());
 
@@ -671,12 +676,15 @@ describe('StripeWebhookService', () => {
 
         expect(orderPayments.refundedOrderPayment).toHaveBeenCalledWith(
           ORDER_METADATA,
-          expect.objectContaining({ refundReference: 're_9' }),
+          expect.objectContaining({
+            refundReference: 're_9',
+            refundRecordId: 42,
+          }),
         );
       },
     );
 
-    it('reconciles a failed refund with a null reference', async () => {
+    it('reconciles a failed refund with its exact refund reference', async () => {
       const { service, stripe, orderPayments } = buildMocks();
       dispatch(stripe, 'refund.failed', {
         id: 're_9',
@@ -694,7 +702,7 @@ describe('StripeWebhookService', () => {
 
       expect(orderPayments.refundedOrderPayment).toHaveBeenCalledWith(
         ORDER_METADATA,
-        expect.objectContaining({ refundReference: null }),
+        expect.objectContaining({ refundReference: 're_9' }),
       );
     });
 
@@ -810,6 +818,8 @@ describe('StripeWebhookService', () => {
         {
           amountRefunded: 2900,
           refundReference: 're_sub_1',
+          providerStatus: 'succeeded',
+          refundRecordId: null,
         },
         expect.anything(),
       );

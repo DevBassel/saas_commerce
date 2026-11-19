@@ -29,6 +29,7 @@ import { ListCouponsQueryDto } from './dto/list-coupons.query.dto';
 import { UpdateCouponDto } from './dto/update-coupon.dto';
 import { Coupon } from './entities/coupon.entity';
 import { CouponRedemption } from './entities/coupon-redemption.entity';
+import { restoreCouponUsage } from './coupon-refund.helper';
 import { computeDiscount } from './utils/coupon-discount';
 import { serializeCoupon } from './utils/coupons.serializer';
 import {
@@ -383,24 +384,7 @@ export class CouponsService {
    * no-op when the order never used a coupon or was already restored.
    */
   async restoreUsage(manager: EntityManager, order: Order): Promise<void> {
-    if (order.couponId == null) return;
-
-    const couponRepo = manager.getRepository(Coupon);
-    const redemptionRepo = manager.getRepository(CouponRedemption);
-
-    const deleted = await redemptionRepo.delete({
-      orderId: order.id,
-      couponId: order.couponId,
-    });
-    if (!deleted.affected) return;
-
-    await couponRepo
-      .createQueryBuilder()
-      .update(Coupon)
-      .set({ usageCount: () => '"usageCount" - 1' })
-      .where('id = :id', { id: order.couponId })
-      .andWhere('"usageCount" > 0')
-      .execute();
+    await restoreCouponUsage(manager, order);
   }
 
   private async assertRedeemable(

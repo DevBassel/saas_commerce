@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, QueryRunner, Repository } from 'typeorm';
 import { TenantService } from '../tenant.service';
 import { Tenant } from '../entities/tenant.entity';
 import { TenantStatus } from '../enums/tenantStatus.enum';
@@ -13,11 +13,13 @@ import { TenantManagerService } from '../services/tenant-manager.service';
 import { User } from '../../users/entities/user.entity';
 import { IENV } from 'src/common/config/env.interface';
 import { TenantMigrationService } from '../services/tenant-migration.service';
+import { TenantProvisioningState } from '../enums/tenant-provisioning-state.enum';
 
 const buildMocks = () => {
   const manager = {
     findOne: jest.fn(),
     update: jest.fn(),
+    save: jest.fn((_entity: unknown, data: unknown) => Promise.resolve(data)),
   };
   const transaction = jest.fn((callback: (m: unknown) => unknown) =>
     callback(manager),
@@ -28,6 +30,7 @@ const buildMocks = () => {
     save: jest.fn((data: unknown) => data),
     create: jest.fn((data: unknown) => data),
     find: jest.fn(),
+    delete: jest.fn(),
   };
   const tenantRepo = {
     ...tenantRepoMocks,
@@ -43,8 +46,41 @@ const buildMocks = () => {
   };
   const tenantManager = tenantManagerMocks as unknown as TenantManagerService;
 
+  const cleanupManager = {
+    findOne: jest.fn(),
+    delete: jest.fn().mockResolvedValue({ affected: 1 }),
+  };
+  const cleanupQuery = jest.fn().mockResolvedValue(undefined);
+  const cleanupRunnerMocks = {
+    manager: cleanupManager,
+    isTransactionActive: false,
+    isReleased: false,
+    connect: jest.fn().mockResolvedValue(undefined),
+    startTransaction: jest.fn(function (this: {
+      isTransactionActive: boolean;
+    }) {
+      this.isTransactionActive = true;
+      return Promise.resolve();
+    }),
+    commitTransaction: jest.fn(function (this: {
+      isTransactionActive: boolean;
+    }) {
+      this.isTransactionActive = false;
+      return Promise.resolve();
+    }),
+    rollbackTransaction: jest.fn(function (this: {
+      isTransactionActive: boolean;
+    }) {
+      this.isTransactionActive = false;
+      return Promise.resolve();
+    }),
+    query: cleanupQuery,
+    release: jest.fn().mockResolvedValue(undefined),
+  };
+  const cleanupRunner = cleanupRunnerMocks as unknown as QueryRunner;
   const dataSourceMocks = {
     query: jest.fn(),
+    createQueryRunner: jest.fn(() => cleanupRunner),
   };
   const dataSource = dataSourceMocks as unknown as DataSource;
 
@@ -82,6 +118,10 @@ const buildMocks = () => {
     tenantManagerMocks,
     ownerRepo,
     dataSourceMocks,
+    cleanupManager,
+    cleanupQuery,
+    cleanupRunner,
+    cleanupRunnerMocks,
     configMocks,
     tenantMigrationMocks,
   };
@@ -91,6 +131,15 @@ const tenantRow = (overrides: Partial<Tenant> = {}): Tenant =>
   ({
     id: 1,
     schemaName: 'tenant_test',
+    status: TenantStatus.INACTIVE,
+    provisioningState: TenantProvisioningState.ACTIVE,
+    provisioningAttempts: 0,
+    provisioningOwnerEmail: null,
+    provisioningOwnerName: null,
+    provisioningOwnerPasswordHash: null,
+    provisioningFailedStep: null,
+    provisioningLastError: null,
+    provisioningFailedAt: null,
     storageUsedBytes: 100n,
     storageCapacityBytes: 1000n,
     ...overrides,
@@ -258,6 +307,7 @@ describe('TenantService.create', () => {
         slug: 'My-Shop',
         schemaName: 'tenant_my_shop',
         status: TenantStatus.INACTIVE,
+        provisioningState: TenantProvisioningState.PENDING,
       }),
     );
     expect(tenantRepoMocks.save).toHaveBeenCalledTimes(1);
@@ -329,6 +379,166 @@ describe('TenantService.create', () => {
   });
 });
 
+describe('TenantService provisioning state', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('increments attempts and clears the prior failure under a row lock', async () => {
+    const { service, manager } = buildMocks();
+    const tenant = tenantRow({
+      provisioningState: TenantProvisioningState.MIGRATED,
+      provisioningAttempts: 2,
+      provisioningFailedStep: TenantProvisioningState.SEEDED,
+      provisioningLastError: 'seed failed',
+      provisioningFailedAt: new Date(),
+    });
+    manager.findOne.mockResolvedValue(tenant);
+
+    const result = await service.startProvisioningAttempt(tenant.id);
+
+    expect(result.provisioningAttempts).toBe(3);
+    expect(result.provisioningFailedStep).toBeNull();
+    expect(result.provisioningLastError).toBeNull();
+    expect(manager.findOne).toHaveBeenCalledWith(Tenant, {
+      where: { id: tenant.id },
+      lock: { mode: 'pessimistic_write' },
+    });
+  });
+
+  it('allows only the next provisioning transition', async () => {
+    const { service, manager } = buildMocks();
+    manager.findOne.mockResolvedValue(
+      tenantRow({ provisioningState: TenantProvisioningState.MIGRATED }),
+    );
+
+    await expect(
+      service.advanceProvisioningState(1, TenantProvisioningState.SEEDED),
+    ).resolves.toMatchObject({
+      provisioningState: TenantProvisioningState.SEEDED,
+    });
+
+    manager.findOne.mockResolvedValue(
+      tenantRow({ provisioningState: TenantProvisioningState.MIGRATED }),
+    );
+    await expect(
+      service.advanceProvisioningState(
+        1,
+        TenantProvisioningState.SUBSCRIPTION_ASSIGNED,
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('activates atomically only after the owner checkpoint', async () => {
+    const { service, manager } = buildMocks();
+    manager.findOne.mockResolvedValue(
+      tenantRow({
+        ownerUserId: 9,
+        provisioningState: TenantProvisioningState.OWNER_CREATED,
+      }),
+    );
+
+    const result = await service.completeProvisioning(1);
+
+    expect(result.status).toBe(TenantStatus.ACTIVE);
+    expect(result.provisioningState).toBe(TenantProvisioningState.ACTIVE);
+  });
+
+  it('rejects activation while required provisioning steps are incomplete', async () => {
+    const { service, manager } = buildMocks();
+    manager.findOne.mockResolvedValue(
+      tenantRow({
+        ownerUserId: null,
+        provisioningState: TenantProvisioningState.SUBSCRIPTION_ASSIGNED,
+      }),
+    );
+
+    await expect(service.completeProvisioning(1)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(manager.save).not.toHaveBeenCalled();
+  });
+
+  it('persists the failed step and a bounded error message', async () => {
+    const { service, tenantRepoMocks } = buildMocks();
+
+    await service.recordProvisioningFailure(
+      1,
+      TenantProvisioningState.SEEDED,
+      new Error('seed failed'),
+    );
+
+    expect(tenantRepoMocks.update).toHaveBeenCalledWith(
+      { id: 1 },
+      expect.objectContaining({
+        provisioningFailedStep: TenantProvisioningState.SEEDED,
+        provisioningLastError: 'seed failed',
+        provisioningFailedAt: expect.any(Date) as Date,
+      }),
+    );
+  });
+
+  it('drops the schema and tenant registry row during explicit compensation', async () => {
+    const { service, tenantManagerMocks, cleanupManager, cleanupQuery } =
+      buildMocks();
+    cleanupManager.findOne.mockResolvedValue(
+      tenantRow({ provisioningState: TenantProvisioningState.MIGRATED }),
+    );
+
+    await service.cleanupFailedProvisioning(1);
+
+    expect(tenantManagerMocks.release).toHaveBeenCalledWith({
+      schemaName: 'tenant_test',
+    });
+    expect(cleanupQuery).toHaveBeenNthCalledWith(
+      1,
+      'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+      ['saas-commerce:tenant-provisioning:tenant_test'],
+    );
+    expect(cleanupQuery).toHaveBeenNthCalledWith(
+      2,
+      'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+      ['saas-commerce:tenant-migrations:tenant_test'],
+    );
+    expect(cleanupQuery).toHaveBeenNthCalledWith(
+      3,
+      'DROP SCHEMA IF EXISTS "tenant_test" CASCADE',
+    );
+    expect(cleanupManager.delete).toHaveBeenCalledWith(Tenant, { id: 1 });
+  });
+
+  it('refuses compensation for a fully provisioned tenant', async () => {
+    const { service, cleanupManager, cleanupQuery } = buildMocks();
+    cleanupManager.findOne.mockResolvedValue(
+      tenantRow({ provisioningState: TenantProvisioningState.ACTIVE }),
+    );
+
+    await expect(service.cleanupFailedProvisioning(1)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(
+      cleanupQuery.mock.calls.some(([statement]) =>
+        String(statement).startsWith('DROP SCHEMA'),
+      ),
+    ).toBe(false);
+  });
+
+  it('rolls back schema compensation when deleting the registry row fails', async () => {
+    const { service, cleanupManager, cleanupRunnerMocks } = buildMocks();
+    cleanupManager.findOne.mockResolvedValue(
+      tenantRow({ provisioningState: TenantProvisioningState.MIGRATED }),
+    );
+    cleanupManager.delete.mockRejectedValue(new Error('delete failed'));
+
+    await expect(service.cleanupFailedProvisioning(1)).rejects.toThrow(
+      'delete failed',
+    );
+
+    expect(cleanupRunnerMocks.rollbackTransaction).toHaveBeenCalledTimes(1);
+    expect(cleanupRunnerMocks.commitTransaction).not.toHaveBeenCalled();
+  });
+});
+
 describe('TenantService.toggleActiveTenant', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -370,6 +580,23 @@ describe('TenantService.toggleActiveTenant', () => {
     });
     expect(tenantManagerMocks.release).not.toHaveBeenCalled();
     expect(result).toBe('Tenant activated successfully');
+  });
+
+  it('does not activate a tenant whose provisioning is incomplete', async () => {
+    const { service, tenantRepoMocks, tenantMigrationMocks } = buildMocks();
+    tenantRepoMocks.findOneBy.mockResolvedValue(
+      tenantRow({
+        id: 7,
+        status: TenantStatus.INACTIVE,
+        provisioningState: TenantProvisioningState.SEEDED,
+      }),
+    );
+
+    await expect(service.toggleActiveTenant(7)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(tenantMigrationMocks.migrate).not.toHaveBeenCalled();
+    expect(tenantRepoMocks.update).not.toHaveBeenCalled();
   });
 
   it('does not reactivate an inactive tenant when migration fails', async () => {

@@ -689,17 +689,10 @@ describe('OrdersService', () => {
       expect(productRepo.increment).not.toHaveBeenCalled();
     });
 
-    it('refunds a paid order, restocks it and mirrors the refund', async () => {
+    it('delegates paid cancellation to the durable refund coordinator', async () => {
       const { service, orderRepo, productRepo, paymentsMocks, cacheMocks } =
         buildMocks();
       orderRepo.findOne
-        .mockResolvedValueOnce(
-          orderEntity({
-            status: OrderStatus.CONFIRMED,
-            paymentStatus: PaymentStatus.PAID,
-            items: [{ id: 1, productId: 5, quantity: 2 }],
-          }),
-        )
         .mockResolvedValueOnce(
           orderEntity({
             status: OrderStatus.CONFIRMED,
@@ -714,20 +707,21 @@ describe('OrdersService', () => {
             refundedAt: NOW,
           }),
         );
-      paymentsMocks.refundOrder.mockResolvedValue({ refundedAt: NOW });
+      paymentsMocks.refundOrder.mockResolvedValue({
+        refundStatus: 'SUCCEEDED',
+        refundedAt: NOW,
+      });
 
       const result = await service.cancel(1, requester(), TENANT);
 
       expect(paymentsMocks.refundOrder).toHaveBeenCalledTimes(1);
-      expect(orderRepo.update).toHaveBeenCalledWith(
-        { id: 1, status: OrderStatus.CONFIRMED },
-        {
-          status: OrderStatus.CANCELLED,
-          paymentStatus: PaymentStatus.REFUNDED,
-          refundedAt: NOW,
-        },
+      expect(paymentsMocks.refundOrder).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 1 }),
+        OrderStatus.CANCELLED,
+        TENANT,
       );
-      expect(productRepo.increment).toHaveBeenCalledWith({ id: 5 }, 'stock', 2);
+      expect(orderRepo.update).not.toHaveBeenCalled();
+      expect(productRepo.increment).not.toHaveBeenCalled();
       expect(result.status).toBe(OrderStatus.CANCELLED);
       expect(cacheMocks.invalidateProducts).toHaveBeenCalledWith(TENANT);
     });
@@ -921,7 +915,7 @@ describe('OrdersService', () => {
     );
 
     it.each(['cancel', 'cancelled', 'returned'])(
-      'relocks and rejects a stale paid %s after the external refund',
+      'accepts the durable coordinator result for paid %s',
       async (action) => {
         const mocks = buildMocks();
         let insideTransaction = false;
@@ -974,13 +968,21 @@ describe('OrdersService', () => {
                 TENANT,
               );
 
-        await expect(result).rejects.toBeInstanceOf(BadRequestException);
-        expect(readLocations).toEqual([true, true]);
-        expect(mocks.orderRepo.manager.transaction).toHaveBeenCalledTimes(2);
+        await expect(result).resolves.toMatchObject({
+          status:
+            action === 'returned'
+              ? OrderStatus.RETURNED
+              : OrderStatus.CANCELLED,
+          paymentStatus: PaymentStatus.REFUNDED,
+        });
+        expect(readLocations).toEqual([true, false]);
+        expect(mocks.orderRepo.manager.transaction).toHaveBeenCalledTimes(1);
         expect(mocks.orderRepo.update).not.toHaveBeenCalled();
         expect(mocks.productRepo.increment).not.toHaveBeenCalled();
         expect(mocks.couponsMocks.restoreUsage).not.toHaveBeenCalled();
-        expect(mocks.cacheMocks.invalidateProducts).not.toHaveBeenCalled();
+        expect(mocks.cacheMocks.invalidateProducts).toHaveBeenCalledWith(
+          TENANT,
+        );
       },
     );
   });

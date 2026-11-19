@@ -6,10 +6,14 @@ import {
 
 const at = (
   status: SubscriptionStatus,
-  currentPeriodEnd: Date | null = null,
+  dates: {
+    currentPeriodEnd?: Date | null;
+    trialEnd?: Date | null;
+  } = {},
 ) => ({
   status,
-  currentPeriodEnd,
+  currentPeriodEnd: dates.currentPeriodEnd ?? null,
+  trialEnd: dates.trialEnd ?? null,
 });
 
 describe('subscription state', () => {
@@ -23,26 +27,50 @@ describe('subscription state', () => {
   });
 
   describe('isSubscriptionUsable', () => {
-    it('accepts TRIALING, ACTIVE and PAST_DUE', () => {
-      expect(isSubscriptionUsable(at(SubscriptionStatus.TRIALING))).toBe(true);
-      expect(isSubscriptionUsable(at(SubscriptionStatus.ACTIVE))).toBe(true);
-      expect(isSubscriptionUsable(at(SubscriptionStatus.PAST_DUE))).toBe(true);
-    });
+    const now = new Date('2026-06-15T00:00:00.000Z');
+    const future = new Date('2026-06-30T00:00:00.000Z');
+    const past = new Date('2026-05-31T00:00:00.000Z');
 
-    it('accepts CANCELED until the period end passes', () => {
-      const now = new Date('2026-06-15T00:00:00.000Z');
-      const future = new Date('2026-06-30T00:00:00.000Z');
-      const past = new Date('2026-05-31T00:00:00.000Z');
-
+    it.each([
+      SubscriptionStatus.ACTIVE,
+      SubscriptionStatus.PAST_DUE,
+      SubscriptionStatus.CANCELED,
+    ])('%s is usable only before currentPeriodEnd', (status) => {
       expect(
-        isSubscriptionUsable(at(SubscriptionStatus.CANCELED, future), now),
+        isSubscriptionUsable(at(status, { currentPeriodEnd: future }), now),
       ).toBe(true);
       expect(
-        isSubscriptionUsable(at(SubscriptionStatus.CANCELED, past), now),
+        isSubscriptionUsable(at(status, { currentPeriodEnd: past }), now),
       ).toBe(false);
+      expect(isSubscriptionUsable(at(status), now)).toBe(false);
+    });
+
+    it('TRIALING is usable only before trialEnd', () => {
       expect(
-        isSubscriptionUsable(at(SubscriptionStatus.CANCELED, null), now),
+        isSubscriptionUsable(
+          at(SubscriptionStatus.TRIALING, { trialEnd: future }),
+          now,
+        ),
+      ).toBe(true);
+      expect(
+        isSubscriptionUsable(
+          at(SubscriptionStatus.TRIALING, { trialEnd: past }),
+          now,
+        ),
       ).toBe(false);
+      expect(isSubscriptionUsable(at(SubscriptionStatus.TRIALING), now)).toBe(
+        false,
+      );
+    });
+
+    it('keeps an ACTIVE perpetual plan usable', () => {
+      expect(
+        isSubscriptionUsable(
+          at(SubscriptionStatus.ACTIVE, { currentPeriodEnd: past }),
+          now,
+          true,
+        ),
+      ).toBe(true);
     });
 
     it('rejects the remaining statuses and a missing subscription', () => {
@@ -52,7 +80,14 @@ describe('subscription state', () => {
         SubscriptionStatus.INCOMPLETE_EXPIRED,
         SubscriptionStatus.PAUSED,
       ]) {
-        expect(isSubscriptionUsable(at(status))).toBe(false);
+        for (const end of [past, future]) {
+          expect(
+            isSubscriptionUsable(
+              at(status, { currentPeriodEnd: end, trialEnd: end }),
+              now,
+            ),
+          ).toBe(false);
+        }
       }
       expect(isSubscriptionUsable(null)).toBe(false);
     });

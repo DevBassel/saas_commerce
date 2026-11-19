@@ -44,8 +44,17 @@ export const CancelSubscriptionDialog = ({
     setSubmitting(true);
     setError(null);
     try {
-      await subscriptionsApi.cancelSubscription();
-      toast.success("Subscription cancelled and refund requested");
+      const result = await subscriptionsApi.cancelSubscription();
+      if (
+        result.refundStatus === "PENDING" ||
+        result.refundStatus === "PROCESSING"
+      ) {
+        toast.info(
+          "Refund pending. Subscription changes after Stripe confirms it.",
+        );
+      } else {
+        toast.success("Subscription cancelled and refunded");
+      }
       onCancelled();
       handleOpenChange(false);
     } catch (e) {
@@ -63,8 +72,8 @@ export const CancelSubscriptionDialog = ({
         <DialogHeader>
           <DialogTitle>Cancel subscription &amp; request refund?</DialogTitle>
           <DialogDescription>
-            This cannot be undone. Your latest payment will be refunded in full
-            and your store will immediately drop to the Free plan.
+            This cannot be undone. Your latest payment will be refunded in full.
+            Your store drops to the Free plan after Stripe confirms the refund.
             {deadlineLabel
               ? ` The refund window closes on ${deadlineLabel}.`
               : ""}
@@ -96,7 +105,7 @@ export const CancelSubscriptionDialog = ({
             {submitting ? (
               <>
                 <LoaderCircle className="animate-spin" />
-                Cancelling…
+                Requesting…
               </>
             ) : (
               "Cancel subscription & request refund"

@@ -32,6 +32,12 @@ flowchart TD
         E3["ProductsService.uploadImages"] --> ES["TenantService.adjustStorageUsedBytes<br/>against plan-synced storageCapacityBytes"]
     end
 
+    subgraph LIFECYCLE["SubscriptionLifecycleWorker — every 5 minutes"]
+        W0["Reconcile elapsed timestamps"] --> W1["expired TRIALING → ACTIVE when paid period remains<br/>otherwise INCOMPLETE_EXPIRED"]
+        W0 --> W2["expired ACTIVE → PAST_DUE"]
+        W0 --> W3["expired PAST_DUE → UNPAID"]
+    end
+
     C --> DB[("public schema:<br/>subscription_plans, _limits, _features,<br/>subscriptions, tenant_usage_counters")]
     D --> DB
     P --> DB
@@ -54,8 +60,11 @@ Rules:
   plan's `STORAGE_BYTES` into `Tenant.storageCapacityBytes`; unlimited (no row / `value IS NULL`)
   maps to `Number.MAX_SAFE_INTEGER`. Downgrades never throw: usage is preserved and the new limit
   applies immediately.
-- States: active = `ACTIVE`; usable = `TRIALING | ACTIVE | PAST_DUE`, plus `CANCELED` until
-  `currentPeriodEnd`. Non-usable → `SUBSCRIPTION_INACTIVE`.
+- States: `TRIALING` is usable only before `trialEnd`; paid `ACTIVE`, `PAST_DUE`, and `CANCELED`
+  are usable only before `currentPeriodEnd`. The `free` plan is perpetual while `ACTIVE`.
+  Non-usable → `SUBSCRIPTION_INACTIVE`.
+- The lifecycle worker runs at startup and every five minutes. Predicate-guarded updates make
+  concurrent API replicas idempotent.
 - Coupon quota is a durable calendar-month (UTC) counter; the atomic guarded upsert is the
   concurrency guard, and the public subscription row lock additionally serializes admin counting.
 - Domain errors are `HttpException` subclasses with a stable `{ code, message }` body.

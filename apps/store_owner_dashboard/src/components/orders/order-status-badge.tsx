@@ -22,6 +22,7 @@ const PAYMENT_STATUS_VARIANTS: Record<PaymentStatus, BadgeVariant> = {
   CANCELED: "outline",
   UNPAID: "outline",
   PAID: "default",
+  REFUND_PENDING: "secondary",
   PARTIALLY_REFUNDED: "secondary",
   REFUNDED: "secondary",
   FAILED: "destructive",

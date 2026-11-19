@@ -15,16 +15,36 @@ export class TenantProvisionerService {
     private readonly migrations: TenantMigrationService,
   ) {}
 
-  async provision(tenant: Tenant): Promise<DataSource> {
+  async createSchema(tenant: Tenant): Promise<void> {
     const schema = sanitizeSchemaName(tenant.schemaName);
+    await this.migrations.ensureSchema(schema);
+    this.logger.log(`Created tenant schema ${schema}`);
+  }
 
+  async migrate(tenant: Tenant): Promise<DataSource> {
+    const schema = sanitizeSchemaName(tenant.schemaName);
     await this.migrations.migrate(schema);
+    const dataSource = await this.manager.getDataSource({ schemaName: schema });
+    this.logger.log(`Migrated tenant ${tenant.slug} (schema ${schema})`);
+    return dataSource;
+  }
 
-    const ds = await this.manager.getDataSource({ schemaName: schema });
+  async seed(tenant: Tenant, dataSource?: DataSource): Promise<DataSource> {
+    const schema = sanitizeSchemaName(tenant.schemaName);
+    const target =
+      dataSource ?? (await this.manager.getDataSource({ schemaName: schema }));
+    await seedRbac(target, { roles: TENANT_ROLE_KEYS });
+    this.logger.log(`Seeded tenant ${tenant.slug} (schema ${schema})`);
+    return target;
+  }
 
-    await seedRbac(ds, { roles: TENANT_ROLE_KEYS });
-
-    this.logger.log(`Provisioned tenant ${tenant.slug} (schema ${schema})`);
-    return ds;
+  async provision(tenant: Tenant): Promise<DataSource> {
+    await this.createSchema(tenant);
+    const dataSource = await this.migrate(tenant);
+    await this.seed(tenant, dataSource);
+    this.logger.log(
+      `Provisioned tenant ${tenant.slug} (schema ${tenant.schemaName})`,
+    );
+    return dataSource;
   }
 }

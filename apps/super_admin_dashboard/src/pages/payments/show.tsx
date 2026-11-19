@@ -554,6 +554,9 @@ const chargeOrderLabel = (charge: PlatformCharge) =>
 const formatTimestamp = (value: string | null) =>
   value ? format(new Date(value), "MMM d, yyyy HH:mm") : "—";
 
+const chargeStatusLabel = (status: string) =>
+  status === "REFUND_PENDING" ? "Refund pending" : status;
+
 const ChargeSummaryCells = ({
   charge,
   trailing,
@@ -571,7 +574,7 @@ const ChargeSummaryCells = ({
     </span>
     <span>{formatCurrency(charge.amount, charge.currency)}</span>
     <span className="uppercase">{charge.currency}</span>
-    <span>{charge.status}</span>
+    <span>{chargeStatusLabel(charge.status)}</span>
     <span className="truncate font-mono text-xs">
       {charge.paymentRef ?? "—"}
     </span>
@@ -588,6 +591,7 @@ const chargeBadgeVariant = (status: string): ChargeBadgeVariant => {
     case "FAILED":
     case "CANCELED":
       return "destructive";
+    case "REFUND_PENDING":
     case "REFUNDED":
     case "PARTIALLY_REFUNDED":
       return "secondary";
@@ -659,7 +663,7 @@ const OrderHistoryTree = ({ charges }: { charges: PlatformCharge[] }) => (
         >
           <span className="font-medium">Attempt #{charge.id}</span>
           <Badge variant={chargeBadgeVariant(charge.status)}>
-            {charge.status}
+            {chargeStatusLabel(charge.status)}
           </Badge>
           <span className={cn("font-mono", "text-xs", "text-muted-foreground")}>
             {charge.paymentRef ?? "—"}

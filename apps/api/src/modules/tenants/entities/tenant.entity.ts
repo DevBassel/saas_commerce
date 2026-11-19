@@ -8,6 +8,8 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { TenantStatus } from '../enums/tenantStatus.enum';
+import { TenantProvisioningState } from '../enums/tenant-provisioning-state.enum';
+import { Exclude } from 'class-transformer';
 
 @Entity('tenants')
 export class Tenant extends BaseEntity {
@@ -31,6 +33,44 @@ export class Tenant extends BaseEntity {
 
   @Column({ type: 'enum', enum: TenantStatus, default: TenantStatus.INACTIVE })
   status: TenantStatus;
+
+  @Column({
+    type: 'enum',
+    enum: TenantProvisioningState,
+    enumName: 'tenant_provisioning_state_enum',
+    default: TenantProvisioningState.PENDING,
+  })
+  provisioningState: TenantProvisioningState;
+
+  @Column({ type: 'varchar', nullable: true })
+  @Exclude()
+  provisioningOwnerEmail: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  @Exclude()
+  provisioningOwnerName: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  @Exclude()
+  provisioningOwnerPasswordHash: string | null;
+
+  @Column({ type: 'int', default: 0 })
+  provisioningAttempts: number;
+
+  @Column({
+    type: 'enum',
+    enum: TenantProvisioningState,
+    enumName: 'tenant_provisioning_state_enum',
+    nullable: true,
+  })
+  provisioningFailedStep: TenantProvisioningState | null;
+
+  @Column({ type: 'text', nullable: true })
+  @Exclude()
+  provisioningLastError: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  provisioningFailedAt: Date | null;
 
   @Column({ type: 'int', nullable: true })
   ownerUserId?: number | null;

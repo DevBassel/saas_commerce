@@ -10,10 +10,10 @@ import {
   hostnameFromOrigin,
   isRootDomainOrigin,
 } from 'src/common/config/cors.util';
-import { RequestWithUser } from '../../auth/interfaces/RequestWithUser.interface';
-import { Tenant } from '../../tenants/entities/tenant.entity';
-import { StripeAccountStatus } from '../constants/stripe-account';
-import { StripeClientService } from '../stripe/stripe-client.service';
+import { RequestWithUser } from '../../../auth/interfaces/RequestWithUser.interface';
+import { Tenant } from '../../../tenants/entities/tenant.entity';
+import { StripeAccountStatus } from '../../constants/stripe-account';
+import { StripeClientService } from '../stripe-client.service';
 
 type BalanceSnapshot = {
   available: { amount: number; currency: string }[];

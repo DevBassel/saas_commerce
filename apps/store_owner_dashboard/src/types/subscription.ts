@@ -30,6 +30,8 @@ export type SubscriptionStatus =
 
 export type BillingInterval = "MONTHLY" | "YEARLY";
 
+export type RefundStatus = "PENDING" | "PROCESSING" | "SUCCEEDED" | "FAILED";
+
 export type LimitValueType = "BYTES" | "COUNT";
 
 export type SubscriptionPlanLimit = {
@@ -90,4 +92,9 @@ export type UsageSummary = Record<SubscriptionLimitKey, UsageValue>;
 
 export type CreateSubscriptionPaymentResponse = {
   clientSecret: string | null;
+};
+
+export type CancelSubscriptionResponse = {
+  subscription: Subscription | null;
+  refundStatus: RefundStatus | null;
 };

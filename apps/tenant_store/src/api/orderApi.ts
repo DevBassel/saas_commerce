@@ -17,6 +17,7 @@ export type PaymentStatus =
   | "PENDING"
   | "UNPAID"
   | "PAID"
+  | "REFUND_PENDING"
   | "PARTIALLY_REFUNDED"
   | "REFUNDED"
   | "FAILED";

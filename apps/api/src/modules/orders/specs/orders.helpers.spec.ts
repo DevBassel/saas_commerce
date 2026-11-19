@@ -221,25 +221,34 @@ describe('refundOrderIfPaid', () => {
 
   it('does nothing for an unpaid order', async () => {
     await expect(
-      refundOrderIfPaid(order(), { schemaName: 't' }, payments as never),
+      refundOrderIfPaid(
+        order(),
+        OrderStatus.CANCELLED,
+        { schemaName: 't' },
+        payments as never,
+      ),
     ).resolves.toBeNull();
     expect(payments.refundOrder).not.toHaveBeenCalled();
   });
 
   it('returns the refund timestamp for a paid order', async () => {
     const refundedAt = new Date('2026-03-01T00:00:00Z');
-    payments.refundOrder.mockResolvedValue({ refundedAt });
+    const refund = { refundStatus: 'SUCCEEDED', refundedAt };
+    payments.refundOrder.mockResolvedValue(refund);
 
     await expect(
       refundOrderIfPaid(
         order({ paymentStatus: PaymentStatus.PAID }),
+        OrderStatus.CANCELLED,
         { schemaName: 't' },
         payments as never,
       ),
-    ).resolves.toBe(refundedAt);
-    expect(payments.refundOrder).toHaveBeenCalledWith(expect.anything(), {
-      schemaName: 't',
-    });
+    ).resolves.toBe(refund);
+    expect(payments.refundOrder).toHaveBeenCalledWith(
+      expect.anything(),
+      OrderStatus.CANCELLED,
+      { schemaName: 't' },
+    );
   });
 
   it('throws when an order is marked paid but has no refundable payment', async () => {
@@ -248,6 +257,7 @@ describe('refundOrderIfPaid', () => {
     await expect(
       refundOrderIfPaid(
         order({ paymentStatus: PaymentStatus.PAID }),
+        OrderStatus.CANCELLED,
         { schemaName: 't' },
         payments as never,
       ),

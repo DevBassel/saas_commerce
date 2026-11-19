@@ -140,9 +140,10 @@ Self-serve checkout is **enabled** via Stripe Elements (re-introducing the purch
   **only** when `subscription.refundEligible` is true (`GET subscription` now returns the additive
   `refundEligible`/`refundDeadline` fields). The button opens `CancelSubscriptionDialog.tsx`, which
   states the action is irreversible, refunds the latest payment in full, and drops the store to the
-  Free plan; Confirm (`variant="destructive"`) calls `subscriptionsApi.cancelSubscription()` →
-  `POST payments/stripe/subscription/cancel`, toasts on success, and `refetchAll()` reloads the page
-  (the plan card flips to Free). Errors (`SUBSCRIPTION_NOT_REFUNDABLE`, `REFUND_WINDOW_EXPIRED`,
+  Free plan after Stripe confirms the refund. Confirm (`variant="destructive"`) calls
+  `subscriptionsApi.cancelSubscription()` → `POST payments/stripe/subscription/cancel`. The API
+  returns `{ subscription, refundStatus }`; `PENDING`/`PROCESSING` shows a pending toast instead of
+  claiming an immediate downgrade. `refetchAll()` reloads the page. Errors (`SUBSCRIPTION_NOT_REFUNDABLE`, `REFUND_WINDOW_EXPIRED`,
   `SUBSCRIPTION_NOT_FOUND`, `403` for an ADMIN) render inline with the dialog left open. The button
   is shown to any signed-in user; the API is the gate. Resume / re-subscribe remains **out of scope**
   (no API). Other plan changes are made by the platform (Super Admin).

@@ -14,6 +14,7 @@ import { Address } from '../../addresses/entities/address.entity';
 import { Coupon } from '../../coupons/entities/coupon.entity';
 import { CouponRedemption } from '../../coupons/entities/coupon-redemption.entity';
 import { OtpChallenge } from '../../email-otp/entities/otp-challenge.entity';
+import { OrderRefund } from '../../payments/entities/order-refund.entity';
 
 export const TENANT_ENTITIES: PostgresConnectionOptions['entities'] = [
   User,
@@ -31,4 +32,5 @@ export const TENANT_ENTITIES: PostgresConnectionOptions['entities'] = [
   Coupon,
   CouponRedemption,
   OtpChallenge,
+  OrderRefund,
 ];

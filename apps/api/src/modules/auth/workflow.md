@@ -87,11 +87,14 @@ flowchart TD
     end
 
     subgraph RS["POST /auth/register-store — @Public @Platform"]
-        S0["ValidationPipe: RegisterStoreDto<br/>storeName, storeSlug (slug format), subdomain? + user fields"] --> S1["TenantService.create<br/>schemaName = tenant_ + slug, subdomain defaults to slug"]
-        S1 --> S2["TenantProvisionerService.provision<br/>CREATE SCHEMA IF NOT EXISTS<br/>seedRbac tenant roles: STORE_OWNER, ADMIN, CUSTOMER"]
-        S2 --> S3["UsersService.create owner<br/>role = STORE_OWNER, bcrypt hash"]
-        S3 --> S4["TenantService.setOwnerUserId"]
-        S4 --> CRED
+        S0["ValidationPipe: RegisterStoreDto<br/>storeName, storeSlug (slug format), subdomain? + user fields"] --> S1["StoreProvisioningService<br/>acquire PostgreSQL advisory lock by schema"]
+        S1 --> S2["Find matching incomplete tenant or create PENDING row<br/>mismatched store/email identity => 409"]
+        S2 --> S3["Verify original owner email/name + bcrypt password claim<br/>then resume after last durable checkpoint"]
+        S3 --> S4["TENANT_CREATED → SCHEMA_CREATED → MIGRATED → SEEDED<br/>→ SUBSCRIPTION_ASSIGNED → OWNER_CREATED"]
+        S4 -->|"step fails"| SF["Keep tenant INACTIVE<br/>record failed target step, message, time, attempts<br/>release lock; same request can retry"]
+        S4 -->|"all required steps succeed"| S5["Atomically set provisioningState + tenant.status ACTIVE"]
+        S5 --> S6["Release advisory lock"]
+        S6 --> CRED
     end
 
     subgraph LI["POST /auth/login — @Public, tenant-scoped"]

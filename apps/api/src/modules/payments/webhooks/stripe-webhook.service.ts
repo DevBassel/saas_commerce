@@ -25,8 +25,8 @@ import {
 } from '../constants/payment-metadata';
 import { StripeWebhookEventStatus } from '../constants/stripe-webhook-event-status.enum';
 import { StripeWebhookEvent } from '../entities/stripe-webhook-event.entity';
-import { OrderPaymentService } from '../services/order-payment.service';
-import { SubscriptionPaymentService } from '../services/subscription-payment.service';
+import { OrderPaymentService } from '../stripe/services/order/order-payment.service';
+import { SubscriptionPaymentService } from '../stripe/services/subscription/subscription-payment.service';
 import { StripeClientService } from '../stripe/stripe-client.service';
 
 const PROCESSING_TIMEOUT_MS = 5 * 60 * 1000;
@@ -36,7 +36,11 @@ const RETRY_MAX_DELAY_MS = 60 * 60 * 1000;
 interface PreparedStripeEvent {
   event: Stripe.Event;
   refund?: {
-    context: { paymentIntentId: string; refundReference: string | null };
+    context: {
+      paymentIntentId: string;
+      refundReference: string | null;
+      refundRecordId: number | null;
+    };
     intent: Stripe.PaymentIntent;
     charge: Stripe.Charge | null;
   } | null;
@@ -147,6 +151,7 @@ export class StripeWebhookService {
             intent,
             data,
             null,
+            null,
             manager,
           );
         await this.handleOrderPaymentEvents(event, intent, data);
@@ -174,6 +179,7 @@ export class StripeWebhookService {
             intent,
             data,
             context.refundReference,
+            context.refundRecordId,
             manager,
             charge,
           );
@@ -182,6 +188,8 @@ export class StripeWebhookService {
           intent,
           data,
           context.refundReference,
+          this.refundProviderStatus(event),
+          context.refundRecordId,
           charge,
         );
         return;
@@ -431,6 +439,8 @@ export class StripeWebhookService {
     intent: Stripe.PaymentIntent,
     data: paymentMetaData,
     refundReference: string | null = null,
+    refundProviderStatus: string | null = null,
+    refundRecordId: number | null = null,
     refundCharge?: Stripe.Charge | null,
   ) {
     switch (event.type) {
@@ -455,6 +465,8 @@ export class StripeWebhookService {
           paymentIntentId: intent.id,
           amountRefunded: charge.amount_refunded,
           refundReference,
+          providerStatus: refundProviderStatus,
+          refundRecordId,
         });
       }
     }
@@ -465,6 +477,7 @@ export class StripeWebhookService {
     intent: Stripe.PaymentIntent,
     data: subscriptionPaymentMetaData,
     refundReference: string | null = null,
+    refundRecordId: number | null = null,
     manager?: EntityManager,
     refundCharge?: Stripe.Charge | null,
   ): Promise<void> {
@@ -502,6 +515,8 @@ export class StripeWebhookService {
           {
             amountRefunded: charge.amount_refunded,
             refundReference,
+            providerStatus: this.refundProviderStatus(event),
+            refundRecordId,
           },
           manager,
         );
@@ -509,9 +524,11 @@ export class StripeWebhookService {
     }
   }
 
-  private resolveRefundContext(
-    event: Stripe.Event,
-  ): { paymentIntentId: string; refundReference: string | null } | null {
+  private resolveRefundContext(event: Stripe.Event): {
+    paymentIntentId: string;
+    refundReference: string | null;
+    refundRecordId: number | null;
+  } | null {
     if (event.type === 'charge.refunded') {
       const charge = event.data.object;
       const paymentIntentId =
@@ -524,9 +541,14 @@ export class StripeWebhookService {
         );
         return null;
       }
+      const refund =
+        charge.refunds?.data?.find(
+          (candidate) => candidate.metadata?.durable_refund_id,
+        ) ?? charge.refunds?.data?.[0];
       return {
         paymentIntentId,
-        refundReference: charge.refunds?.data?.[0]?.id ?? null,
+        refundReference: refund?.id ?? null,
+        refundRecordId: this.refundRecordId(refund),
       };
     }
 
@@ -554,8 +576,27 @@ export class StripeWebhookService {
 
     return {
       paymentIntentId,
-      refundReference: refund.status === 'succeeded' ? refund.id : null,
+      refundReference: refund.id,
+      refundRecordId: this.refundRecordId(refund),
     };
+  }
+
+  private refundRecordId(refund?: Stripe.Refund): number | null {
+    const value = Number(refund?.metadata?.durable_refund_id);
+    return Number.isSafeInteger(value) && value > 0 ? value : null;
+  }
+
+  private refundProviderStatus(event: Stripe.Event): string | null {
+    if (event.type === 'charge.refunded') return 'succeeded';
+    if (
+      event.type === 'refund.created' ||
+      event.type === 'refund.updated' ||
+      event.type === 'refund.failed' ||
+      event.type === 'charge.refund.updated'
+    ) {
+      return event.data.object.status ?? null;
+    }
+    return null;
   }
 
   private async latestCharge(

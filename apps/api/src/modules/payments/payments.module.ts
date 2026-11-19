@@ -9,17 +9,25 @@ import { SubscriptionPlan } from '../subscriptions/entities/subscription-plan.en
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { TenantModule } from '../tenants/tenant.module';
 import { StripeClientService } from './stripe/stripe-client.service';
-import { OrderPaymentService } from './services/order-payment.service';
-import { SubscriptionPaymentService } from './services/subscription-payment.service';
+import { OrderPaymentService } from './stripe/services/order/order-payment.service';
+import { SubscriptionPaymentService } from './stripe/services/subscription/subscription-payment.service';
 import { StripeWebhookService } from './webhooks/stripe-webhook.service';
-import { StripeConnectService } from './services/stripe-connect.service';
+import { StripeConnectService } from './stripe/services/stripe-connect.service';
 import { StripeWebhookEvent } from './entities/stripe-webhook-event.entity';
+import { SubscriptionRefund } from './entities/subscription-refund.entity';
+import { OrderPaymentStatusService } from './stripe/services/order/order-payment-status.service';
+import { OrderPaymentIntentService } from './stripe/services/order/order-payment-intent.service';
+import { OrderRefundService } from './stripe/services/order/order-refund.service';
+import { SubscriptionPaymentStatusService } from './stripe/services/subscription/subscription-payment-status.service';
+import { SubscriptionPaymentIntentService } from './stripe/services/subscription/subscription-payment-intent.service';
+import { SubscriptionRefundService } from './stripe/services/subscription/subscription-refund.service';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       Subscription,
       SubscriptionPayment,
+      SubscriptionRefund,
       SubscriptionPlan,
       StripeWebhookEvent,
     ]),
@@ -29,7 +37,13 @@ import { StripeWebhookEvent } from './entities/stripe-webhook-event.entity';
   controllers: [PaymentsController, PlatformSubscriptionPaymentController],
   providers: [
     StripeClientService,
+    OrderPaymentIntentService,
+    OrderPaymentStatusService,
+    OrderRefundService,
     OrderPaymentService,
+    SubscriptionPaymentIntentService,
+    SubscriptionPaymentStatusService,
+    SubscriptionRefundService,
     SubscriptionPaymentService,
     StripeWebhookService,
     StripeConnectService,

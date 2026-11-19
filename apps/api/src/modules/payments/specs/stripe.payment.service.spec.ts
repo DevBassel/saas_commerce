@@ -1,15 +1,18 @@
 import StripePaymentService from '../stripe.payment.service';
+import { OrderStatus } from '../../orders/constants/order-status.enum';
 
 const orderPayments = {
   repos: jest.fn(),
   createOrderPaymentIntent: jest.fn(),
   refundOrder: jest.fn(),
+  reconcileRefunds: jest.fn(),
 };
 
 const subscriptionPayments = {
   createSubscriptionPaymentIntent: jest.fn(),
   cancelSubscriptionWithRefund: jest.fn(),
   cancelOwnSubscription: jest.fn(),
+  reconcileRefunds: jest.fn(),
 };
 
 const webhooks = {
@@ -29,6 +32,8 @@ const connect = {
   connectAccount: jest.fn(),
 };
 
+const tenants = { findAll: jest.fn() };
+
 describe('StripePaymentService', () => {
   let service: StripePaymentService;
 
@@ -39,6 +44,7 @@ describe('StripePaymentService', () => {
       subscriptionPayments as never,
       webhooks as never,
       connect as never,
+      tenants as never,
     );
   });
 
@@ -56,13 +62,19 @@ describe('StripePaymentService', () => {
 
     expect(service.repos(tenantRef)).toBe(repositories);
     expect(service.createOrderPaymentIntent(dto, user as never)).toBe(intent);
-    expect(service.refundOrder(order as never, tenantRef)).toBe(refund);
+    expect(
+      service.refundOrder(order as never, OrderStatus.CANCELLED, tenantRef),
+    ).toBe(refund);
     expect(orderPayments.repos).toHaveBeenCalledWith(tenantRef);
     expect(orderPayments.createOrderPaymentIntent).toHaveBeenCalledWith(
       dto,
       user,
     );
-    expect(orderPayments.refundOrder).toHaveBeenCalledWith(order, tenantRef);
+    expect(orderPayments.refundOrder).toHaveBeenCalledWith(
+      order,
+      OrderStatus.CANCELLED,
+      tenantRef,
+    );
   });
 
   it('delegates subscription payment operations', () => {
@@ -95,6 +107,40 @@ describe('StripePaymentService', () => {
 
     expect(service.webHook(request as never, 'sig')).toBe(result);
     expect(webhooks.webHook).toHaveBeenCalledWith(request, 'sig');
+  });
+
+  it('reconciles platform and every tenant refund queue', async () => {
+    subscriptionPayments.reconcileRefunds.mockResolvedValue({
+      attempted: 1,
+      processed: 1,
+      failed: 0,
+    });
+    tenants.findAll.mockResolvedValue([
+      { schemaName: 'tenant_a' },
+      { schemaName: 'tenant_b' },
+    ]);
+    orderPayments.reconcileRefunds
+      .mockResolvedValueOnce({ attempted: 2, processed: 1, failed: 0 })
+      .mockResolvedValueOnce({ attempted: 1, processed: 0, failed: 1 });
+
+    await expect(service.reconcileRefunds(50)).resolves.toEqual({
+      attempted: 4,
+      processed: 2,
+      failed: 1,
+      subscriptions: { attempted: 1, processed: 1, failed: 0 },
+      orders: { attempted: 3, processed: 1, failed: 1 },
+    });
+    expect(subscriptionPayments.reconcileRefunds).toHaveBeenCalledWith(50);
+    expect(orderPayments.reconcileRefunds).toHaveBeenNthCalledWith(
+      1,
+      { schemaName: 'tenant_a' },
+      50,
+    );
+    expect(orderPayments.reconcileRefunds).toHaveBeenNthCalledWith(
+      2,
+      { schemaName: 'tenant_b' },
+      50,
+    );
   });
 
   it('delegates Stripe Connect operations', () => {

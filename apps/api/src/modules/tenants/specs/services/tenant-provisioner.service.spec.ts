@@ -24,15 +24,27 @@ const buildMocks = () => {
   const ds = { marker: 'tenant-ds' } as unknown as DataSource;
   const getDataSource = jest.fn().mockResolvedValue(ds);
   const manager = { getDataSource } as unknown as TenantManagerService;
+  const ensureSchema = jest.fn().mockResolvedValue(undefined);
   const migrate = jest.fn().mockResolvedValue({
     schemaName: tenant.schemaName,
     executedMigrations: [],
   });
-  const migrations = { migrate } as unknown as TenantMigrationService;
+  const migrations = {
+    ensureSchema,
+    migrate,
+  } as unknown as TenantMigrationService;
 
   const service = new TenantProvisionerService(manager, migrations);
 
-  return { service, manager, migrations, migrate, getDataSource, ds };
+  return {
+    service,
+    manager,
+    migrations,
+    ensureSchema,
+    migrate,
+    getDataSource,
+    ds,
+  };
 };
 
 describe('TenantProvisionerService', () => {
@@ -41,24 +53,29 @@ describe('TenantProvisionerService', () => {
   });
 
   it('runs tenant migrations before opening the runtime datasource', async () => {
-    const { service, migrate, getDataSource } = buildMocks();
+    const { service, ensureSchema, migrate, getDataSource } = buildMocks();
 
     await service.provision(tenant);
 
+    expect(ensureSchema).toHaveBeenCalledWith('tenant_acme');
     expect(migrate).toHaveBeenCalledWith('tenant_acme');
+    expect(ensureSchema.mock.invocationCallOrder[0]).toBeLessThan(
+      migrate.mock.invocationCallOrder[0],
+    );
     expect(migrate.mock.invocationCallOrder[0]).toBeLessThan(
       getDataSource.mock.invocationCallOrder[0],
     );
   });
 
   it('sanitizes the schema name before issuing the SQL', async () => {
-    const { service, migrate, getDataSource } = buildMocks();
+    const { service, ensureSchema, migrate, getDataSource } = buildMocks();
 
     await service.provision({
       slug: 'acme',
       schemaName: 'Tenant-Acme!',
     } as Tenant);
 
+    expect(ensureSchema).toHaveBeenCalledWith('tenant_acme_');
     expect(migrate).toHaveBeenCalledWith('tenant_acme_');
     expect(getDataSource).toHaveBeenCalledWith({
       schemaName: 'tenant_acme_',
@@ -93,11 +110,12 @@ describe('TenantProvisionerService', () => {
   });
 
   it('is idempotent for an already-provisioned tenant', async () => {
-    const { service, migrate, getDataSource } = buildMocks();
+    const { service, ensureSchema, migrate, getDataSource } = buildMocks();
 
     await service.provision(tenant);
     await expect(service.provision(tenant)).resolves.toBeDefined();
 
+    expect(ensureSchema).toHaveBeenCalledTimes(2);
     expect(migrate).toHaveBeenCalledTimes(2);
     expect(getDataSource).toHaveBeenCalledTimes(2);
     expect(seedRbacMock).toHaveBeenCalledTimes(2);

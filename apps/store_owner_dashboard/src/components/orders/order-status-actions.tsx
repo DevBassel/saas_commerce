@@ -49,10 +49,12 @@ export const OrderStatusActions = ({ order }: { order: Order }) => {
   const [cancelling, setCancelling] = useState(false);
 
   const manageable = canManageOrders(roleKey);
-  const cancellable = canCancelOrder(order.status, roleKey);
+  const refundPending = order.paymentStatus === "REFUND_PENDING";
+  const cancellable = !refundPending && canCancelOrder(order.status, roleKey);
   const isSubmitting = busyStatus !== null || cancelling;
 
   const isOptionEnabled = (status: OrderStatus): boolean => {
+    if (refundPending) return false;
     if (status === order.status) return false;
     if (!nextStatuses(order.status).includes(status)) return false;
     if (status === "CANCELLED") return cancellable;
@@ -69,18 +71,28 @@ export const OrderStatusActions = ({ order }: { order: Order }) => {
     });
 
   const handleTransition = async (status: OrderStatus) => {
-    if (!manageable || isSubmitting) return;
+    if (!manageable || refundPending || isSubmitting) return;
     setBusyStatus(status);
     try {
-      await ordersApi.updateStatus(order.id, status);
+      const updated = await ordersApi.updateStatus(order.id, status);
       refresh();
-      open?.({
-        type: "success",
-        message: "Order updated",
-        description: `${order.orderNumber} is now ${ORDER_STATUS_LABELS[
-          status
-        ].toLowerCase()}.`,
-      });
+      if (updated.paymentStatus === "REFUND_PENDING") {
+        open?.({
+          type: "success",
+          message: "Refund pending",
+          description: `${order.orderNumber} updates to ${ORDER_STATUS_LABELS[
+            status
+          ].toLowerCase()} after Stripe confirms the refund.`,
+        });
+      } else {
+        open?.({
+          type: "success",
+          message: "Order updated",
+          description: `${order.orderNumber} is now ${ORDER_STATUS_LABELS[
+            status
+          ].toLowerCase()}.`,
+        });
+      }
     } catch (error) {
       open?.({
         type: "error",
@@ -96,10 +108,20 @@ export const OrderStatusActions = ({ order }: { order: Order }) => {
     if (!cancellable || isSubmitting) return;
     setCancelling(true);
     try {
-      await ordersApi.cancel(order.id);
+      const updated = await ordersApi.cancel(order.id);
       setCancelOpen(false);
       refresh();
-      open?.({ type: "success", message: "Order cancelled" });
+      open?.({
+        type: "success",
+        message:
+          updated.paymentStatus === "REFUND_PENDING"
+            ? "Refund pending"
+            : "Order cancelled",
+        description:
+          updated.paymentStatus === "REFUND_PENDING"
+            ? `${order.orderNumber} cancels after Stripe confirms the refund.`
+            : undefined,
+      });
     } catch (error) {
       open?.({
         type: "error",

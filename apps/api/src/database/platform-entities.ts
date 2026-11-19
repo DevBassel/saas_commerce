@@ -3,6 +3,7 @@ import { CurrencyChangeRequest } from '../modules/currency-requests/entities/cur
 import { StripeWebhookEvent } from '../modules/payments/entities/stripe-webhook-event.entity';
 import { SubscriptionPayment } from '../modules/payments/entities/subscription-payment.entity';
 import { Subscription } from '../modules/payments/entities/subscription.entity';
+import { SubscriptionRefund } from '../modules/payments/entities/subscription-refund.entity';
 import { Permission } from '../modules/rbac/entities/permission.entity';
 import { Role } from '../modules/rbac/entities/role.entity';
 import { SubscriptionPlanFeature } from '../modules/subscriptions/entities/subscription-plan-feature.entity';
@@ -23,6 +24,7 @@ export const PLATFORM_ENTITIES: PostgresConnectionOptions['entities'] = [
   SubscriptionPlanFeature,
   Subscription,
   SubscriptionPayment,
+  SubscriptionRefund,
   TenantUsageCounter,
   StripeWebhookEvent,
 ];

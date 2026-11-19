@@ -5,6 +5,7 @@ import { SubscriptionUsageService } from './subscription-usage.service';
 import { SubscriptionLimitKey } from '../constants/subscription-limit-key.enum';
 import { SubscriptionFeatureKey } from '../constants/subscription-feature-key.enum';
 import { isSubscriptionUsable } from '../utils/subscription-state';
+import { FREE_PLAN_SLUG } from '../constants/subscription.constants';
 
 @Injectable()
 export class SubscriptionEntitlementsService {
@@ -58,8 +59,16 @@ export class SubscriptionEntitlementsService {
 
   /** A tenant with no subscription row is treated as free and usable. */
   async assertUsable(ref: TenantRef): Promise<void> {
-    const { subscription } = await this.subscriptions.getPlanForTenantRef(ref);
-    if (subscription && !isSubscriptionUsable(subscription))
+    const { plan, subscription } =
+      await this.subscriptions.getPlanForTenantRef(ref);
+    if (
+      subscription &&
+      !isSubscriptionUsable(
+        subscription,
+        new Date(),
+        plan?.slug === FREE_PLAN_SLUG,
+      )
+    )
       throw new BadRequestException({
         code: 'SUBSCRIPTION_INACTIVE',
         message: 'Subscription is not active',

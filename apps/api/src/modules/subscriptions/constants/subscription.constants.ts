@@ -16,6 +16,9 @@ export const FREE_PLAN_SLUG = 'free';
  */
 export const SUBSCRIPTION_REFUND_WINDOW_DAYS = 7;
 
+/** Frequency for reconciling elapsed trial and billing periods. */
+export const SUBSCRIPTION_LIFECYCLE_INTERVAL_MS = 5 * 60 * 1000;
+
 export const SUBSCRIPTION_SORTABLE_FIELDS = [
   'name',
   'slug',

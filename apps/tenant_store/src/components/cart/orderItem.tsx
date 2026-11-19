@@ -88,6 +88,7 @@ const PAYMENT_LABELS: Record<PaymentStatus, string> = {
   PENDING: "Pending payment",
   UNPAID: "Unpaid",
   PAID: "Paid",
+  REFUND_PENDING: "Refund pending",
   PARTIALLY_REFUNDED: "Partially refunded",
   REFUNDED: "Refunded",
   FAILED: "Failed",
@@ -103,18 +104,24 @@ export default function OrderItem({ order }: { order: IOrder }) {
 
   const meta = STATUS_META[order.status];
   const StatusIcon = meta.icon;
-  const canCancel = OWNER_CANCELLABLE.includes(order.status);
+  const canCancel =
+    OWNER_CANCELLABLE.includes(order.status) &&
+    order.paymentStatus !== "REFUND_PENDING";
   const canReturn = order.status === "DELIVERED";
   const address = order.deliveryAddress;
 
-  const run = async (
-    action: () => Promise<unknown>,
-    successMessage: string,
+  const run = async <T,>(
+    action: () => Promise<T>,
+    successMessage: string | ((result: T) => string),
   ) => {
     setBusy(true);
     try {
-      await action();
-      toast.success(successMessage);
+      const result = await action();
+      toast.success(
+        typeof successMessage === "function"
+          ? successMessage(result)
+          : successMessage,
+      );
       router.refresh();
     } catch (error) {
       handleError(error);
@@ -124,7 +131,13 @@ export default function OrderItem({ order }: { order: IOrder }) {
   };
 
   const confirmCancel = async () => {
-    await run(() => CancelOrder(order.id), "Order cancelled");
+    await run(
+      () => CancelOrder(order.id),
+      (result) =>
+        result.paymentStatus === "REFUND_PENDING"
+          ? "Refund requested. Order cancels after Stripe confirms it."
+          : "Order cancelled",
+    );
     setCancelOpen(false);
   };
 

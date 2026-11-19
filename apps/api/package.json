@@ -37,7 +37,8 @@
     "migration:run:prod": "node dist/database/migrate.js --scope all",
     "migration:verify": "ts-node -r tsconfig-paths/register test/verify-typeorm-migrations.ts",
     "migrate:stripe-webhooks": "ts-node -r tsconfig-paths/register test/migrate-stripe-webhook-events.ts",
-    "reconcile:stripe-webhooks": "ts-node -r tsconfig-paths/register test/reconcile-stripe-webhooks.ts"
+    "reconcile:stripe-webhooks": "ts-node -r tsconfig-paths/register test/reconcile-stripe-webhooks.ts",
+    "reconcile:stripe-refunds": "ts-node -r tsconfig-paths/register test/reconcile-stripe-refunds.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1131.0",

@@ -11,6 +11,8 @@ import { SubscriptionPlansService } from './services/subscription-plans.service'
 import { SubscriptionService } from './services/subscription.service';
 import { SubscriptionUsageService } from './services/subscription-usage.service';
 import { SubscriptionEntitlementsService } from './services/subscription-entitlements.service';
+import { SubscriptionLifecycleService } from './services/subscription-lifecycle.service';
+import { SubscriptionLifecycleWorker } from './services/subscription-lifecycle.worker';
 import { PlatformSubscriptionPlansController } from './controllers/platform-subscription-plans.controller';
 import { PlatformTenantSubscriptionController } from './controllers/platform-tenant-subscription.controller';
 import { SubscriptionController } from './controllers/subscription.controller';
@@ -37,6 +39,8 @@ import { SubscriptionController } from './controllers/subscription.controller';
     SubscriptionService,
     SubscriptionUsageService,
     SubscriptionEntitlementsService,
+    SubscriptionLifecycleService,
+    SubscriptionLifecycleWorker,
   ],
   exports: [
     SubscriptionPlansService,

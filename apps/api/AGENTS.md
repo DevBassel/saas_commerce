@@ -53,7 +53,7 @@ npx ts-node -r tsconfig-paths/register test/seed-load-test.ts  # seeds >=10 tena
   and the public-schema TypeORM DataSource.
   `PUBLIC_ENTITIES = [Tenant, User, Role, Permission, CurrencyChangeRequest, SubscriptionPlan,
   SubscriptionPlanLimit, SubscriptionPlanFeature, Subscription, SubscriptionPayment,
-  TenantUsageCounter, StripeWebhookEvent]`.
+  SubscriptionRefund, TenantUsageCounter, StripeWebhookEvent]`.
 - `src/common/` — `config/` (env schema, typed groups, `cors.util.ts`, `data-source.factory.ts`),
   `logger/` (pino to rotating file, TypeORM daily logger), `storage/` (`R2Service` on
   `@aws-sdk/client-s3`), `health/` (`GET health`), `cache/`, `http/` (route templates),
@@ -97,7 +97,8 @@ the `/api/v1` global prefix. This does not change any API route, guard, or tenan
   `SUPER_ADMIN` role. The platform user table is named `user` (singular), not `users`.
 - **Tenant schema `tenant_<slug>`**: isolated `user`, `roles`, `permissions`, `user_permissions`,
   `products`, `product_images`, `categories`, `carts`, `cart_items`, `orders`, `order_items`,
-  `payments`, `addresses`, `coupons`, `coupon_redemptions`. The same email may exist across tenants.
+  `payments`, `order_refunds`, `addresses`, `coupons`, `coupon_redemptions`. The same email may exist
+  across tenants.
 - **Resolution** (`TenantResolutionService`, shared by middleware and guard): `x-tenant-id` →
   `x-tenant-slug` → subdomain of `Host` minus `APP_ROOT_DOMAIN`.
 - **TenantMiddleware** acts only on API paths (`/api/v1`, `/api/v1/**`, `/api/v1-json*`). On a hit it
@@ -168,7 +169,8 @@ Never add a tenant entity to `PUBLIC_ENTITIES` in `src/core.module.ts`. Add it t
 Public schema:
 
 - `Tenant` (`tenants`): `id`, `name`, unique `slug`/`schemaName`/`subdomain` (subdomain nullable),
-  `status` (`active | inactive`), `ownerUserId`, `storageUsedBytes`, `storageCapacityBytes`,
+  `status` (`active | inactive`), durable `provisioningState`, retry/failure metadata,
+  `ownerUserId`, `storageUsedBytes`, `storageCapacityBytes`,
   `stripeAccountId` (unique, nullable), `paymentsPaused`, `payoutsPaused`, `stripePayoutsInterval`,
   `currency` (varchar(3), default `usd`). There are **no** `stripeChargesEnabled` /
   `stripePayoutsEnabled` / `stripeDetailsSubmitted` columns.
@@ -179,7 +181,8 @@ Public schema:
   (`subscription_plan_limits` / `subscription_plan_features`, unique `(planId, key)`, FK cascade),
   `Subscription` (`subscriptions`, numeric `tenantId` unique, `planId` FK `ON DELETE RESTRICT`),
   `SubscriptionPayment` (`subscription_payments`, FK `subscriptionId` `ON DELETE CASCADE`, non-FK
-  `planId`/`billingInterval` snapshot; a public ledger mirroring tenant `Payment`), and
+  `planId`/`billingInterval` snapshot; a public ledger mirroring tenant `Payment`),
+  `SubscriptionRefund` (`subscription_refunds`, one durable outgoing refund per payment), and
   `TenantUsageCounter` (`tenant_usage_counters`, unique `(tenantId, metric, periodStart)`).
 - `StripeWebhookEvent` (`stripe_webhook_events`): public durable inbox with unique `stripeEventId`,
   Stripe creation time/resource ordering, JSON payload, attempts, retry time, errors, and
@@ -210,6 +213,9 @@ Tenant schema (`TENANT_ENTITIES`):
 - `Payment` (`payments`): FK `orderId` `ON DELETE CASCADE`, `provider`, `status`, numeric(10,2)
   `amount`/`refundedAmount`, `currency`, `paymentRef`, `providerReference`, `refundReference`,
   `failureReason`, `paidAt`, `refundedAt`. There is **no** `applicationFeeAmount` column.
+- `OrderRefund` (`order_refunds`): one durable outgoing refund per Payment. It stores the source and
+  target Order status, stable Stripe idempotency key, provider refund id/status, retry metadata, and
+  `PENDING | PROCESSING | SUCCEEDED | FAILED` state.
 - `Address` (`addresses`): FK `userId` cascade, partial unique index ensuring one default per user.
 - `Coupon` (`coupons`): unique `code`, `discountType` (`PERCENTAGE | FIXED_AMOUNT`),
   numeric(10,2) `discountValue`/`minOrderAmount`/`maxDiscountAmount`, optional `usageLimit`/
@@ -239,8 +245,19 @@ rows. There is no `seeder_runs` tracking table and no migration: seeders are saf
 - **Tenant seeders**: `permissions`, `roles` (`STORE_OWNER`, `ADMIN`, `CUSTOMER`), and the **opt-in**
   `categories` (`BASE_CATEGORIES`, skipped by "run all"). Tenant seeders receive the DataSource
   returned by `TenantManagerService` for the resolved tenant — never the public DataSource.
-- `TenantProvisionerService.provision(tenant)`: `CREATE SCHEMA IF NOT EXISTS` → tenant DataSource →
-  `seedRbac` for the tenant roles. Provision and boot do **not** create base categories; run
+- Store registration is serialized across replicas by a PostgreSQL advisory lock and persisted as
+  `PENDING → TENANT_CREATED → SCHEMA_CREATED → MIGRATED → SEEDED → SUBSCRIPTION_ASSIGNED →
+  OWNER_CREATED → ACTIVE`. `StoreProvisioningService` resumes from the last completed checkpoint
+  only after verifying the original owner email/name and bcrypt password claim; it records the
+  failed target step/error/attempt and
+  activates atomically only after the owner checkpoint. A mismatched email/store identity cannot
+  claim an incomplete registration. `cleanup(tenantId)` is the explicit compensation path for a
+  non-active attempt: it releases the tenant DataSource, drops the schema, and deletes the public
+  tenant row (subscription rows cascade); it refuses active or previously completed tenants.
+  Legacy ownerless rows are marked as requiring this cleanup because they have no secure retry
+  credential claim.
+- `TenantProvisionerService` exposes idempotent schema creation, migration, and RBAC seeding steps;
+  `provision(tenant)` remains their compatibility wrapper. Provision and boot do **not** create base categories; run
   `seed --tenants --name categories` to opt in. All seeding logic lives under
   `src/modules/seeding/` (`helpers/` for shared upsert helpers, `seeders/` for registered seeders);
   there are no seed services in the feature modules.
@@ -302,8 +319,11 @@ single shared Stripe SDK client. `PaymentsModule` imports `TenantModule` and reu
   persists a `SubscriptionPayment` (`status = PENDING`, `paymentRef = intent.id`).
 - `POST /payments/stripe/subscription/cancel` (`subscriptions:manage`, tenant-scoped) is the
   self-serve counterpart: it refunds the tenant's latest **PAID** `SubscriptionPayment` on the
-  platform account (shared private helper, idempotency key `refund-subscription-{paymentId}`), then
-  downgrades to the free plan. It is allowed only within
+  platform account. It first creates a durable `SubscriptionRefund`, marks the ledger
+  `REFUND_PENDING`, and uses `refund:subscription:{paymentId}:v1`. Only a confirmed `succeeded`
+  refund atomically marks the ledger `REFUNDED` and downgrades to the free plan. The route returns
+  `{ subscription, refundStatus }`, so a `PENDING`/`PROCESSING` response is not presented as a
+  completed downgrade. It is allowed only within
   `SUBSCRIPTION_REFUND_WINDOW_DAYS` (7) days of that payment's `paidAt` (fallback `createdAt`).
   Errors use `{ code, message }`: `404 SUBSCRIPTION_NOT_FOUND`, `409 SUBSCRIPTION_NOT_REFUNDABLE`
   (no paid purchase), `409 REFUND_WINDOW_EXPIRED`. An already-refunded repeat is a `200` no-op
@@ -315,6 +335,10 @@ single shared Stripe SDK client. `PaymentsModule` imports `TenantModule` and reu
   terminal-state guards prevent late failure/cancel events from regressing paid/refunded state.
   Refund events reconcile Stripe's current cumulative amount. Failures record exponential retry metadata; run
   `pnpm --filter saas_store_api reconcile:stripe-webhooks` to retry due/stale rows from stored JSON.
+  Run `pnpm --filter saas_store_api reconcile:stripe-refunds` to submit or poll incomplete outgoing
+  OrderRefund and SubscriptionRefund records with their stable Stripe idempotency keys.
+  Application-created Stripe Refund objects carry `durable_refund_id`; refund webhooks must match
+  that id or the stored provider refund id before changing a durable refund record.
   Processing classifies each event by parsing `metadata.data.kind` and dispatches to one of two handlers:
   - `handleOrderPaymentEvents` — order intents (metadata has no `kind`); updates the tenant
     `Payment`/`Order` exactly as before (byte-identical path).
@@ -330,9 +354,10 @@ single shared Stripe SDK client. `PaymentsModule` imports `TenantModule` and reu
     idempotent). `successSubscriptionPayment` early-returns when the ledger row is already `PAID`, so
     Stripe redeliveries do not reset the subscription period.
 - Only `publishableKey` is ever returned; secrets are never serialized or logged.
-- Production with schema synchronization disabled must run
-  `pnpm --filter saas_store_api migrate:stripe-webhooks` before accepting webhooks. The migration is
-  idempotent and creates the public inbox plus its unique and reconciliation indexes.
+- Production must run both platform and tenant TypeORM migrations before deploying this refund
+  workflow. They add `REFUND_PENDING`, `subscription_refunds`, and `order_refunds`. Their rollback
+  refuses to run while durable refund rows exist; it never discards recovery state or converts an
+  in-flight refund back to `PAID`.
 - Permission keys depend on the shared union: `payments:create|read|manage` (CUSTOMER get
   create+read, ADMIN all three, STORE_OWNER/SUPER_ADMIN inherit all keys).
 
@@ -370,7 +395,8 @@ Connect destination-charge flow.
 - Entities: `SubscriptionPlan`, `SubscriptionPlanLimit`, `SubscriptionPlanFeature`, `Subscription`
   (one per tenant via unique `tenantId`), `SubscriptionPayment` (`subscription_payments`, the public
   plan-payment ledger; written as `PENDING` by `POST /payments/stripe/subscription`, then reconciled
-  by the subscription webhook handler — `PAID`/`CANCELED`/`FAILED`/`REFUNDED`/`PARTIALLY_REFUNDED`),
+  by the subscription webhook handler — `PAID`/`CANCELED`/`FAILED`/`REFUND_PENDING`/`REFUNDED`/
+  `PARTIALLY_REFUNDED`), `SubscriptionRefund` (`subscription_refunds`, durable outgoing refunds),
   `TenantUsageCounter`. All public — never
   add them to `TENANT_ENTITIES`.
 - Plan limits: `STORAGE_BYTES`, `DATABASE_BYTES`, `STORE_ADMINS`, `COUPONS_PER_MONTH`, `PRODUCTS`;
@@ -385,8 +411,11 @@ Connect destination-charge flow.
   5000 products, $299/$2990), and `enterprise` (no limit rows = unlimited, all features,
   $999/$9990). All seed prices are `usd` and are re-synced by the idempotent `subscription-plans`
   seeder, so re-running the seed backfills prices on an existing database.
-- States: active = `ACTIVE`; usable = `TRIALING | ACTIVE | PAST_DUE`, plus `CANCELED` until
-  `currentPeriodEnd`. Not usable → `SUBSCRIPTION_INACTIVE`.
+- States: active = `ACTIVE`; `TRIALING` is usable only before `trialEnd`; paid `ACTIVE`, `PAST_DUE`,
+  and `CANCELED` are usable only before `currentPeriodEnd`; the `free` plan remains perpetual while
+  `ACTIVE`. Not usable → `SUBSCRIPTION_INACTIVE`. `SubscriptionLifecycleWorker` runs on bootstrap
+  and every five minutes: expired trial → `ACTIVE` when its paid period remains, otherwise
+  `INCOMPLETE_EXPIRED`; expired paid `ACTIVE` → `PAST_DUE`; expired `PAST_DUE` → `UNPAID`.
 - Routes (Super Admin, `@Platform @Roles([SUPER_ADMIN])`): `GET|POST /platform/subscription-plans`,
   `GET|PATCH|DELETE /platform/subscription-plans/:id`,
   `GET /platform/tenants/:id/subscription` (current plan + subscription; falls back to `free`),
@@ -440,8 +469,8 @@ Connect destination-charge flow.
   gates the tenant purchase + cancel/refund routes (`POST /payments/stripe/subscription[/cancel]`;
   STORE_OWNER only, ADMIN has read only, SUPER_ADMIN bypasses).
 - The DB gate runs only at checkout; product create is gated by the `PRODUCTS` count limit, and
-  other writes are not gated (known limitation). Public-schema subscription tables are created by
-  `synchronize`, not migrations.
+  other writes are not gated (known limitation). Production schema changes use platform and tenant
+  TypeORM migrations.
 
 ## Storefront and catalog endpoints
 
@@ -459,8 +488,8 @@ Connect destination-charge flow.
 
 ## Caching
 
-Server-side, opt-in caching backed by Redis (the only cache store); no browser cache, queue, or
-background worker. `REDIS_URL` is required at boot. The existing global `ThrottlerGuard` remains
+Server-side, opt-in caching backed by Redis (the only cache store); no browser cache or queue.
+The only in-process background worker reconciles subscription lifecycle timestamps. `REDIS_URL` is required at boot. The existing global `ThrottlerGuard` remains
 unchanged and applies to every request, including cache hits.
 
 - `src/common/cache/` — `redis-cache.store.ts` implements `CacheStore` over ioredis with a namespace
@@ -483,7 +512,8 @@ unchanged and applies to every request, including cache hits.
   shared `platform:subscription-plans` namespace so both read routes clear together.
 - Invalidation is post-write only: product writes/images, category writes (categories + products),
   checkout, order cancel, `ManageOrderService.updateStatus` for `CANCELLED`/`RETURNED`, and plan
-  writes. `requestReturn` does not touch stock and does not invalidate. Invalidation errors are
+  writes. Durable refund finalization also invalidates products after committed stock restoration,
+  including webhook and reconciliation paths. `requestReturn` does not touch stock and does not invalidate. Invalidation errors are
   logged and never fail the mutation.
 - `ResponseCacheInterceptor` forces `Cache-Control: private, no-store` on tenant/private responses,
   `public, no-store` on the public plan catalog, and `private, no-store` on errors/non-cacheable
@@ -539,8 +569,8 @@ Access config through `ConfigService<IENV>` typed groups and `getOrThrow<IX>('gr
 - Validate DTOs with class-validator; the global pipe rejects unknown body fields.
 - Use `TenantManagerService.getRepository(entity, tenant)` for tenant data and `@InjectRepository`
   (public DataSource) for public data.
-- `DB_SYNCHRONIZE_TENANTS` (default `false`) is the production opt-in for tenant `synchronize` until
-  a migrations system exists. Tenant schemas are created from entity metadata, not migrations.
+- `DB_SYNCHRONIZE_TENANTS` (default `false`) is a development compatibility option. Production runs
+  platform and tenant TypeORM migrations; new tenant provisioning runs tenant migrations before seeding.
 - `src/...` imports resolve through `tsconfig.json` `baseUrl` (no `paths`) and Jest's
   `moduleNameMapper`. `strict` is off; `strictNullChecks` on, `noImplicitAny` off.
 - ESLint is flat config (`eslint.config.mjs`) with prettier; `lint` auto-fixes, so it mutates files.

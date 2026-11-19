@@ -14,11 +14,18 @@ import { TenantManagerService } from '../../tenants/services/tenant-manager.serv
 import { Tenant } from '../../tenants/entities/tenant.entity';
 import { OrderPermissionKey } from '../../orders/constants/order-permissions.enum';
 import { Order } from '../../orders/entities/order.entity';
+import { OrderStatus } from '../../orders/constants/order-status.enum';
+import { Product } from '../../products/entities/product.entity';
 import { Payment } from '../entities/payment.entity';
+import { OrderRefund } from '../entities/order-refund.entity';
 import { PaymentStatus } from '../constants/payment-status.enum';
+import { RefundStatus } from '../constants/refund-status.enum';
 import { PaymentsProviders } from '../constants/payments-providers';
-import { OrderPaymentService } from '../services/order-payment.service';
+import { OrderPaymentService } from '../stripe/services/order/order-payment.service';
 import { StripeClientService } from '../stripe/stripe-client.service';
+import { OrderPaymentStatusService } from '../stripe/services/order/order-payment-status.service';
+import { OrderPaymentIntentService } from '../stripe/services/order/order-payment-intent.service';
+import { OrderRefundService } from '../stripe/services/order/order-refund.service';
 
 jest.mock('stripe', () => {
   class StripeInvalidRequestError extends Error {
@@ -58,6 +65,7 @@ const stripe = {
   },
   refunds: {
     create: jest.fn(),
+    retrieve: jest.fn(),
   },
 };
 
@@ -81,6 +89,7 @@ const order = (overrides: Partial<Order> = {}): Order =>
     id: 1,
     userId: 7,
     total: 25,
+    status: OrderStatus.CONFIRMED,
     paymentStatus: PaymentStatus.UNPAID,
     createdAt: new Date(),
     ...overrides,
@@ -111,6 +120,7 @@ const buildConfig = (applicationFeeBps = 0): ConfigService<IENV> =>
 const buildMocks = (config = buildConfig()) => {
   const paymentRepo = {
     findOne: jest.fn(),
+    findOneBy: jest.fn(),
     save: jest.fn((data: unknown) => data),
     update: jest.fn(),
     merge: jest.fn((entity: unknown, data: unknown) => {
@@ -119,8 +129,18 @@ const buildMocks = (config = buildConfig()) => {
     }),
     manager: { transaction: jest.fn() },
   };
+  const refundRepo = {
+    findOne: jest.fn(),
+    findOneBy: jest.fn(),
+    create: jest.fn((data: unknown) => data),
+    save: jest.fn((data: unknown) => ({ id: 9, ...(data as object) })),
+    update: jest.fn(),
+    createQueryBuilder: jest.fn(),
+  };
+  const productRepo = { increment: jest.fn() };
   const orderRepo = {
     findOne: jest.fn(),
+    update: jest.fn().mockResolvedValue({ affected: 1 }),
     save: jest.fn((data: unknown) => data),
     merge: jest.fn((entity: unknown, data: unknown) => {
       Object.assign(entity as object, data as object);
@@ -136,7 +156,20 @@ const buildMocks = (config = buildConfig()) => {
     save: jest.fn((_entity: unknown, data: unknown) => data),
     update: jest.fn(),
     withRepository: jest.fn((repo: unknown) =>
-      repo === paymentRepo ? paymentRepo : orderRepo,
+      repo === paymentRepo
+        ? paymentRepo
+        : repo === refundRepo
+          ? refundRepo
+          : orderRepo,
+    ),
+    getRepository: jest.fn((entity: unknown) =>
+      entity === Payment
+        ? paymentRepo
+        : entity === OrderRefund
+          ? refundRepo
+          : entity === Product
+            ? productRepo
+            : orderRepo,
     ),
   };
   paymentRepo.manager.transaction.mockImplementation(
@@ -147,20 +180,36 @@ const buildMocks = (config = buildConfig()) => {
   );
   const tenantManager = {
     getRepository: jest.fn((entity: unknown) =>
-      Promise.resolve(entity === Payment ? paymentRepo : orderRepo),
+      Promise.resolve(
+        entity === Payment
+          ? paymentRepo
+          : entity === OrderRefund
+            ? refundRepo
+            : orderRepo,
+      ),
     ),
   };
+  const cache = { invalidateProducts: jest.fn() };
+  const stripeClient = { client: stripe } as unknown as StripeClientService;
   const service = new OrderPaymentService(
-    config,
     tenantManager as unknown as TenantManagerService,
-    { client: stripe } as unknown as StripeClientService,
+    new OrderPaymentIntentService(config, stripeClient),
+    new OrderPaymentStatusService(),
+    new OrderRefundService(
+      tenantManager as unknown as TenantManagerService,
+      stripeClient,
+      cache as never,
+    ),
   );
   return {
     service,
     paymentRepo,
     orderRepo,
+    refundRepo,
+    productRepo,
     manager,
     tenantManager,
+    cache,
   };
 };
 
@@ -169,6 +218,7 @@ const payment = (overrides: Record<string, unknown> = {}) => ({
   orderId: 1,
   paymentRef: 'pi_1',
   amount: 100,
+  currency: 'usd',
   refundedAmount: 0,
   refundReference: null,
   refundedAt: null,
@@ -182,6 +232,7 @@ describe('OrderPaymentService', () => {
     stripe.paymentIntents.create.mockReset();
     stripe.paymentIntents.retrieve.mockReset();
     stripe.refunds.create.mockReset();
+    stripe.refunds.retrieve.mockReset();
   });
 
   it('resolves repositories with the tenant schema from metadata', async () => {
@@ -203,9 +254,19 @@ describe('OrderPaymentService', () => {
     const tenantManager = {
       getRepository: jest.fn(),
     } as unknown as TenantManagerService;
-    const service = new OrderPaymentService({} as never, tenantManager, {
-      client: {},
-    } as StripeClientService);
+    const service = new OrderPaymentService(
+      tenantManager,
+      new OrderPaymentIntentService(
+        {} as never,
+        { client: {} } as StripeClientService,
+      ),
+      new OrderPaymentStatusService(),
+      new OrderRefundService(
+        tenantManager,
+        { client: {} } as StripeClientService,
+        { invalidateProducts: jest.fn() } as never,
+      ),
+    );
 
     await expect(
       (
@@ -546,80 +607,396 @@ describe('OrderPaymentService', () => {
       paymentRepo.findOne.mockResolvedValue(null);
 
       await expect(
-        service.refundOrder(order(), { schemaName: TENANT }),
+        service.refundOrder(
+          order({ paymentStatus: PaymentStatus.PAID }),
+          OrderStatus.CANCELLED,
+          { schemaName: TENANT },
+        ),
       ).resolves.toBeNull();
-      expect(paymentRepo.findOne).toHaveBeenCalledWith({
-        where: { orderId: 1, status: PaymentStatus.PAID },
-        order: { id: 'DESC' },
-      });
       expect(stripe.refunds.create).not.toHaveBeenCalled();
     });
 
     it('rejects a paid payment without a payment reference', async () => {
       const { service, paymentRepo } = buildMocks();
-      paymentRepo.findOne.mockResolvedValue({ id: 5, paymentRef: null });
+      paymentRepo.findOne.mockResolvedValue(
+        payment({ id: 5, paymentRef: null, status: PaymentStatus.PAID }),
+      );
 
       await expect(
-        service.refundOrder(order(), { schemaName: TENANT }),
+        service.refundOrder(
+          order({ paymentStatus: PaymentStatus.PAID }),
+          OrderStatus.CANCELLED,
+          { schemaName: TENANT },
+        ),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(stripe.refunds.create).not.toHaveBeenCalled();
       expect(paymentRepo.update).not.toHaveBeenCalled();
     });
 
-    it('creates an idempotent reverse-transfer refund and marks the payment REFUNDED', async () => {
-      const { service, paymentRepo } = buildMocks();
-      paymentRepo.findOne.mockResolvedValue({
+    it('returns an existing successful refund without another Stripe call', async () => {
+      const { service, paymentRepo, orderRepo, refundRepo } = buildMocks();
+      const completedAt = new Date('2026-01-01T00:00:00Z');
+      paymentRepo.findOne.mockResolvedValue(
+        payment({ id: 5, status: PaymentStatus.REFUND_PENDING }),
+      );
+      orderRepo.findOne.mockResolvedValue(
+        order({ paymentStatus: PaymentStatus.REFUND_PENDING }),
+      );
+      refundRepo.findOne.mockResolvedValue({
+        id: 9,
+        paymentId: 5,
+        status: RefundStatus.SUCCEEDED,
+        completedAt,
+      });
+
+      await expect(
+        service.refundOrder(order(), OrderStatus.CANCELLED, {
+          schemaName: TENANT,
+        }),
+      ).resolves.toEqual({
+        refundStatus: RefundStatus.SUCCEEDED,
+        refundedAt: completedAt,
+      });
+      expect(stripe.refunds.create).not.toHaveBeenCalled();
+      expect(stripe.refunds.retrieve).not.toHaveBeenCalled();
+    });
+
+    it('rejects an existing failed refund without another Stripe call', async () => {
+      const { service, paymentRepo, orderRepo, refundRepo } = buildMocks();
+      paymentRepo.findOne.mockResolvedValue(
+        payment({ id: 5, status: PaymentStatus.REFUND_PENDING }),
+      );
+      orderRepo.findOne.mockResolvedValue(
+        order({ paymentStatus: PaymentStatus.REFUND_PENDING }),
+      );
+      refundRepo.findOne.mockResolvedValue({
+        id: 9,
+        paymentId: 5,
+        status: RefundStatus.FAILED,
+      });
+
+      await expect(
+        service.refundOrder(order(), OrderStatus.CANCELLED, {
+          schemaName: TENANT,
+        }),
+      ).rejects.toThrow('Refund could not be processed');
+      expect(stripe.refunds.create).not.toHaveBeenCalled();
+      expect(stripe.refunds.retrieve).not.toHaveBeenCalled();
+    });
+
+    it('persists PENDING before Stripe then finalizes payment, order, and stock atomically', async () => {
+      const {
+        service,
+        paymentRepo,
+        orderRepo,
+        refundRepo,
+        productRepo,
+        cache,
+      } = buildMocks();
+      const paid = payment({
         id: 5,
+        orderId: 1,
         paymentRef: 'pi_1',
         amount: 25,
+        currency: 'usd',
+        status: PaymentStatus.PAID,
       });
-      stripe.refunds.create.mockResolvedValue({ id: 're_1' });
+      const currentOrder = order({
+        paymentStatus: PaymentStatus.PAID,
+        items: [{ productId: 7, quantity: 2 } as never],
+      });
+      const refundRecord = {
+        id: 9,
+        paymentId: 5,
+        orderId: 1,
+        sourceOrderStatus: OrderStatus.CONFIRMED,
+        targetOrderStatus: OrderStatus.CANCELLED,
+        amount: 25,
+        currency: 'usd',
+        idempotencyKey: 'refund:order:tenant_acme:5:v1',
+        status: RefundStatus.PROCESSING,
+        attempts: 0,
+        providerRefundId: 're_1',
+        completedAt: null,
+      } as OrderRefund;
+      paymentRepo.findOne.mockResolvedValue(paid);
+      paymentRepo.findOneBy.mockResolvedValue(paid);
+      orderRepo.findOne.mockResolvedValue(currentOrder);
+      refundRepo.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValue(refundRecord);
+      refundRepo.findOneBy.mockResolvedValue(refundRecord);
+      refundRepo.save.mockResolvedValue({
+        ...refundRecord,
+        status: RefundStatus.PENDING,
+        providerRefundId: null,
+      } as never);
+      stripe.refunds.create.mockResolvedValue({
+        id: 're_1',
+        status: 'succeeded',
+        amount: 2500,
+      });
 
-      const result = await service.refundOrder(order(), {
-        schemaName: TENANT,
-      });
+      const result = await service.refundOrder(
+        currentOrder,
+        OrderStatus.CANCELLED,
+        { schemaName: TENANT },
+      );
 
       expect(stripe.refunds.create).toHaveBeenCalledWith(
         {
           payment_intent: 'pi_1',
           reverse_transfer: true,
           refund_application_fee: true,
+          metadata: {
+            durable_refund_id: '9',
+            durable_refund_kind: 'order',
+            tenant_schema: TENANT,
+          },
         },
-        { idempotencyKey: 'refund-5' },
+        { idempotencyKey: 'refund:order:tenant_acme:5:v1' },
+      );
+      expect(refundRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: RefundStatus.PENDING,
+          targetOrderStatus: OrderStatus.CANCELLED,
+        }),
       );
       expect(paymentRepo.update).toHaveBeenCalledWith(
         { id: 5 },
+        { status: PaymentStatus.REFUND_PENDING },
+      );
+      expect(paymentRepo.update).toHaveBeenCalledWith(
+        { id: 5 },
+        expect.objectContaining({ status: PaymentStatus.REFUNDED }),
+      );
+      expect(orderRepo.update).toHaveBeenCalledWith(
+        { id: 1, status: OrderStatus.CONFIRMED },
         expect.objectContaining({
-          status: PaymentStatus.REFUNDED,
-          refundedAmount: 25,
-          refundReference: 're_1',
-          refundedAt: expect.any(Date) as Date,
+          status: OrderStatus.CANCELLED,
+          paymentStatus: PaymentStatus.REFUNDED,
         }),
       );
+      expect(productRepo.increment).toHaveBeenCalledWith({ id: 7 }, 'stock', 2);
+      expect(result).toMatchObject({ refundStatus: RefundStatus.SUCCEEDED });
       expect(result?.refundedAt).toBeInstanceOf(Date);
+      expect(cache.invalidateProducts).toHaveBeenCalledWith({
+        schemaName: TENANT,
+      });
     });
 
-    it('maps StripeInvalidRequestError to a 400 without updating the payment', async () => {
-      const { service, paymentRepo } = buildMocks();
-      paymentRepo.findOne.mockResolvedValue({ id: 5, paymentRef: 'pi_1' });
+    it('keeps order REFUND_PENDING when Stripe returns pending', async () => {
+      const { service, paymentRepo, orderRepo, refundRepo } = buildMocks();
+      const paid = payment({
+        id: 5,
+        paymentRef: 'pi_1',
+        amount: 25,
+        currency: 'usd',
+        status: PaymentStatus.PAID,
+      });
+      paymentRepo.findOne.mockResolvedValue(paid);
+      paymentRepo.findOneBy.mockResolvedValue(paid);
+      orderRepo.findOne.mockResolvedValue(
+        order({ paymentStatus: PaymentStatus.PAID }),
+      );
+      refundRepo.findOne.mockResolvedValue(null);
+      stripe.refunds.create.mockResolvedValue({
+        id: 're_pending',
+        status: 'pending',
+        amount: 2500,
+      });
+
+      await expect(
+        service.refundOrder(
+          order({ paymentStatus: PaymentStatus.PAID }),
+          OrderStatus.CANCELLED,
+          { schemaName: TENANT },
+        ),
+      ).resolves.toEqual({
+        refundStatus: RefundStatus.PROCESSING,
+        refundedAt: null,
+      });
+      expect(paymentRepo.update).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ status: PaymentStatus.REFUNDED }),
+      );
+      expect(orderRepo.update).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ status: OrderStatus.CANCELLED }),
+      );
+    });
+
+    it('retains provider refund data when atomic local finalization fails', async () => {
+      const { service, paymentRepo, orderRepo, refundRepo, manager } =
+        buildMocks();
+      const paid = payment({
+        id: 5,
+        paymentRef: 'pi_1',
+        amount: 25,
+        currency: 'usd',
+        status: PaymentStatus.PAID,
+      });
+      paymentRepo.findOne.mockResolvedValue(paid);
+      paymentRepo.findOneBy.mockResolvedValue(paid);
+      orderRepo.findOne.mockResolvedValue(
+        order({ paymentStatus: PaymentStatus.PAID }),
+      );
+      refundRepo.findOne.mockResolvedValue(null);
+      stripe.refunds.create.mockResolvedValue({
+        id: 're_1',
+        status: 'succeeded',
+        amount: 2500,
+      });
+      paymentRepo.manager.transaction
+        .mockImplementationOnce(
+          (callback: (value: typeof manager) => unknown) => callback(manager),
+        )
+        .mockRejectedValueOnce(new Error('coupon restoration failed'));
+
+      await expect(
+        service.refundOrder(
+          order({ paymentStatus: PaymentStatus.PAID }),
+          OrderStatus.CANCELLED,
+          { schemaName: TENANT },
+        ),
+      ).rejects.toThrow('coupon restoration failed');
+      expect(refundRepo.update).toHaveBeenCalledWith(
+        { id: 9 },
+        expect.objectContaining({
+          providerRefundId: 're_1',
+          providerStatus: 'succeeded',
+          status: RefundStatus.PROCESSING,
+        }),
+      );
+      expect(paymentRepo.update).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ status: PaymentStatus.REFUNDED }),
+      );
+    });
+
+    it('keeps durable PENDING state when Stripe outcome is unknown', async () => {
+      const { service, paymentRepo, orderRepo, refundRepo } = buildMocks();
+      const paid = payment({
+        id: 5,
+        paymentRef: 'pi_1',
+        amount: 25,
+        currency: 'usd',
+        status: PaymentStatus.PAID,
+      });
+      paymentRepo.findOne.mockResolvedValue(paid);
+      paymentRepo.findOneBy.mockResolvedValue(paid);
+      orderRepo.findOne.mockResolvedValue(
+        order({ paymentStatus: PaymentStatus.PAID }),
+      );
+      refundRepo.findOne.mockResolvedValue(null);
+      stripe.refunds.create.mockRejectedValue(new Error('network'));
+
+      await expect(
+        service.refundOrder(
+          order({ paymentStatus: PaymentStatus.PAID }),
+          OrderStatus.CANCELLED,
+          { schemaName: TENANT },
+        ),
+      ).resolves.toEqual({
+        refundStatus: RefundStatus.PENDING,
+        refundedAt: null,
+      });
+      expect(refundRepo.update).toHaveBeenCalledWith(
+        { id: 9 },
+        expect.objectContaining({
+          status: RefundStatus.PENDING,
+          lastError: 'network',
+          nextRetryAt: expect.any(Date) as Date,
+        }),
+      );
+    });
+
+    it('reverts REFUND_PENDING after a definitive Stripe rejection', async () => {
+      const { service, paymentRepo, orderRepo, refundRepo } = buildMocks();
+      const paid = payment({
+        id: 5,
+        paymentRef: 'pi_1',
+        amount: 25,
+        currency: 'usd',
+        status: PaymentStatus.PAID,
+      });
+      const refundRecord = {
+        id: 9,
+        paymentId: 5,
+        orderId: 1,
+        status: RefundStatus.PENDING,
+        attempts: 0,
+      } as OrderRefund;
+      paymentRepo.findOne.mockResolvedValue(paid);
+      paymentRepo.findOneBy.mockResolvedValue(paid);
+      orderRepo.findOne.mockResolvedValue(
+        order({ paymentStatus: PaymentStatus.PAID }),
+      );
+      refundRepo.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValue(refundRecord);
+      refundRepo.findOneBy.mockResolvedValue(refundRecord);
+      refundRepo.save.mockResolvedValue(refundRecord as never);
       stripe.refunds.create.mockRejectedValue(new InvalidRequest('nope'));
 
       await expect(
-        service.refundOrder(order(), { schemaName: TENANT }),
+        service.refundOrder(
+          order({ paymentStatus: PaymentStatus.PAID }),
+          OrderStatus.CANCELLED,
+          { schemaName: TENANT },
+        ),
       ).rejects.toThrow('Refund could not be processed');
-      expect(paymentRepo.update).not.toHaveBeenCalled();
+      expect(paymentRepo.update).toHaveBeenCalledWith(
+        { id: 5, status: PaymentStatus.REFUND_PENDING },
+        { status: PaymentStatus.PAID },
+      );
+      expect(orderRepo.update).toHaveBeenCalledWith(
+        { id: 1, paymentStatus: PaymentStatus.REFUND_PENDING },
+        { paymentStatus: PaymentStatus.PAID },
+      );
     });
+  });
 
-    it('propagates non-Stripe errors without updating the payment', async () => {
-      const { service, paymentRepo } = buildMocks();
-      paymentRepo.findOne.mockResolvedValue({ id: 5, paymentRef: 'pi_1' });
-      const boom = new Error('network');
-      stripe.refunds.create.mockRejectedValue(boom);
+  describe('reconcileRefunds', () => {
+    it('polls a stored provider refund and clamps the batch limit', async () => {
+      const { service, paymentRepo, refundRepo } = buildMocks();
+      const refundRecord = {
+        id: 9,
+        paymentId: 5,
+        orderId: 1,
+        idempotencyKey: 'refund:order:tenant_acme:5:v1',
+        providerRefundId: 're_pending',
+        status: RefundStatus.PROCESSING,
+        attempts: 2,
+      } as OrderRefund;
+      const query = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([refundRecord]),
+      };
+      refundRepo.createQueryBuilder.mockReturnValue(query);
+      paymentRepo.findOneBy.mockResolvedValue(
+        payment({ id: 5, paymentRef: 'pi_1', status: PaymentStatus.PAID }),
+      );
+      stripe.refunds.retrieve.mockResolvedValue({
+        id: 're_pending',
+        status: 'pending',
+        failure_reason: null,
+      });
 
       await expect(
-        service.refundOrder(order(), { schemaName: TENANT }),
-      ).rejects.toBe(boom);
-      expect(paymentRepo.update).not.toHaveBeenCalled();
+        service.reconcileRefunds({ schemaName: TENANT }, 5000),
+      ).resolves.toEqual({ attempted: 1, processed: 0, failed: 0 });
+
+      expect(query.take).toHaveBeenCalledWith(1000);
+      expect(stripe.refunds.retrieve).toHaveBeenCalledWith('re_pending');
+      expect(stripe.refunds.create).not.toHaveBeenCalled();
+      expect(refundRepo.update).toHaveBeenCalledWith(
+        { id: 9 },
+        expect.objectContaining({ attempts: 3 }),
+      );
     });
   });
 
@@ -673,30 +1050,33 @@ describe('OrderPaymentService', () => {
       expect(orderRepo.save).not.toHaveBeenCalled();
     });
 
-    it('repairs paid timestamps without overwriting refund status', async () => {
-      const { service, paymentRepo, orderRepo } = buildMocks();
-      paymentRepo.findOne.mockResolvedValue(
-        payment({ status: PaymentStatus.REFUNDED, paidAt: null }),
-      );
-      orderRepo.findOne.mockResolvedValue(
-        order({ paymentStatus: PaymentStatus.REFUNDED, paidAt: null }),
-      );
+    it.each([PaymentStatus.REFUNDED, PaymentStatus.REFUND_PENDING])(
+      'repairs paid timestamps without overwriting %s',
+      async (status) => {
+        const { service, paymentRepo, orderRepo } = buildMocks();
+        paymentRepo.findOne.mockResolvedValue(
+          payment({ status, paidAt: null }),
+        );
+        orderRepo.findOne.mockResolvedValue(
+          order({ paymentStatus: status, paidAt: null }),
+        );
 
-      await service.successOrderPayment(META, 'pi_1');
+        await service.successOrderPayment(META, 'pi_1');
 
-      expect(paymentRepo.save).toHaveBeenCalledWith(
-        expect.objectContaining({
-          status: PaymentStatus.REFUNDED,
-          paidAt: expect.any(Date) as Date,
-        }),
-      );
-      expect(orderRepo.save).toHaveBeenCalledWith(
-        expect.objectContaining({
-          paymentStatus: PaymentStatus.REFUNDED,
-          paidAt: expect.any(Date) as Date,
-        }),
-      );
-    });
+        expect(paymentRepo.save).toHaveBeenCalledWith(
+          expect.objectContaining({
+            status,
+            paidAt: expect.any(Date) as Date,
+          }),
+        );
+        expect(orderRepo.save).toHaveBeenCalledWith(
+          expect.objectContaining({
+            paymentStatus: status,
+            paidAt: expect.any(Date) as Date,
+          }),
+        );
+      },
+    );
   });
 
   describe('canceledPayment', () => {
@@ -741,20 +1121,19 @@ describe('OrderPaymentService', () => {
       expect(orderRepo.save).not.toHaveBeenCalled();
     });
 
-    it('does not let a late cancel overwrite a PAID payment', async () => {
-      const { service, paymentRepo, orderRepo } = buildMocks();
-      paymentRepo.findOne.mockResolvedValue(
-        payment({ status: PaymentStatus.PAID }),
-      );
-      orderRepo.findOne.mockResolvedValue(
-        order({ paymentStatus: PaymentStatus.PAID }),
-      );
+    it.each([PaymentStatus.PAID, PaymentStatus.REFUND_PENDING])(
+      'does not let a late cancel overwrite %s',
+      async (status) => {
+        const { service, paymentRepo, orderRepo } = buildMocks();
+        paymentRepo.findOne.mockResolvedValue(payment({ status }));
+        orderRepo.findOne.mockResolvedValue(order({ paymentStatus: status }));
 
-      await service.cancelOrderPayment(META, 'pi_1');
+        await service.cancelOrderPayment(META, 'pi_1');
 
-      expect(paymentRepo.save).not.toHaveBeenCalled();
-      expect(orderRepo.save).not.toHaveBeenCalled();
-    });
+        expect(paymentRepo.save).not.toHaveBeenCalled();
+        expect(orderRepo.save).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe('failedPayment', () => {
@@ -799,20 +1178,19 @@ describe('OrderPaymentService', () => {
       expect(orderRepo.save).not.toHaveBeenCalled();
     });
 
-    it('does not let a late failure overwrite a PAID payment', async () => {
-      const { service, paymentRepo, orderRepo } = buildMocks();
-      paymentRepo.findOne.mockResolvedValue(
-        payment({ status: PaymentStatus.PAID }),
-      );
-      orderRepo.findOne.mockResolvedValue(
-        order({ paymentStatus: PaymentStatus.PAID }),
-      );
+    it.each([PaymentStatus.PAID, PaymentStatus.REFUND_PENDING])(
+      'does not let a late failure overwrite %s',
+      async (status) => {
+        const { service, paymentRepo, orderRepo } = buildMocks();
+        paymentRepo.findOne.mockResolvedValue(payment({ status }));
+        orderRepo.findOne.mockResolvedValue(order({ paymentStatus: status }));
 
-      await service.failedOrderPayment(META, 'pi_1');
+        await service.failedOrderPayment(META, 'pi_1');
 
-      expect(paymentRepo.save).not.toHaveBeenCalled();
-      expect(orderRepo.save).not.toHaveBeenCalled();
-    });
+        expect(paymentRepo.save).not.toHaveBeenCalled();
+        expect(orderRepo.save).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe('refundedPayment status derivation', () => {
@@ -899,6 +1277,94 @@ describe('OrderPaymentService', () => {
       expect(mocks.paymentRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({ refundReference: 're_new' }),
       );
+    });
+
+    it('ignores an unrelated refund event while a durable refund is pending', async () => {
+      const mocks = buildMocks();
+      mocks.paymentRepo.findOne.mockResolvedValue(
+        payment({ status: PaymentStatus.REFUND_PENDING }),
+      );
+      mocks.orderRepo.findOne.mockResolvedValue(
+        order({ paymentStatus: PaymentStatus.REFUND_PENDING }),
+      );
+      mocks.refundRepo.findOne.mockResolvedValue({
+        id: 9,
+        paymentId: 1,
+        providerRefundId: 're_local',
+        status: RefundStatus.PROCESSING,
+      });
+
+      await mocks.service.refundedOrderPayment(
+        META,
+        refund({
+          amountRefunded: 0,
+          refundReference: 're_other',
+          refundRecordId: 77,
+          providerStatus: 'failed',
+        }),
+      );
+
+      expect(mocks.refundRepo.update).not.toHaveBeenCalled();
+      expect(mocks.paymentRepo.update).not.toHaveBeenCalled();
+      expect(mocks.orderRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('finalizes an exactly matched durable refund webhook', async () => {
+      const mocks = buildMocks();
+      const paid = payment({
+        id: 5,
+        orderId: 1,
+        amount: 25,
+        status: PaymentStatus.REFUND_PENDING,
+      });
+      const currentOrder = order({
+        paymentStatus: PaymentStatus.REFUND_PENDING,
+        items: [{ productId: 7, quantity: 2 } as never],
+      });
+      const localRefund = {
+        id: 9,
+        paymentId: 5,
+        orderId: 1,
+        sourceOrderStatus: OrderStatus.CONFIRMED,
+        targetOrderStatus: OrderStatus.CANCELLED,
+        providerRefundId: 're_1',
+        status: RefundStatus.PROCESSING,
+        completedAt: null,
+      } as OrderRefund;
+      mocks.paymentRepo.findOne.mockResolvedValue(paid);
+      mocks.orderRepo.findOne.mockResolvedValue(currentOrder);
+      mocks.refundRepo.findOne.mockResolvedValue(localRefund);
+      mocks.refundRepo.findOneBy.mockResolvedValue(localRefund);
+
+      await expect(
+        mocks.service.refundedOrderPayment(
+          META,
+          refund({
+            amountRefunded: 2500,
+            refundReference: 're_1',
+            refundRecordId: 9,
+            providerStatus: 'succeeded',
+          }),
+        ),
+      ).resolves.toMatchObject({
+        paymentId: 5,
+        orderId: 1,
+        status: PaymentStatus.REFUNDED,
+        refundedAmount: 25,
+      });
+
+      expect(mocks.productRepo.increment).toHaveBeenCalledWith(
+        { id: 7 },
+        'stock',
+        2,
+      );
+      expect(mocks.refundRepo.update).toHaveBeenCalledWith(
+        { id: 9 },
+        expect.objectContaining({ status: RefundStatus.SUCCEEDED }),
+      );
+      expect(mocks.cache.invalidateProducts).toHaveBeenCalledWith({
+        schemaName: TENANT,
+      });
     });
 
     it('throws NotFound when the payment is missing', async () => {

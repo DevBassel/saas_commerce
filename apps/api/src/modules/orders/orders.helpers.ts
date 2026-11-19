@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
 import { TenantRef } from '../tenants/utils/tenant.utils';
 import { R2Service } from '../../common/storage/r2.service';
@@ -8,6 +8,7 @@ import { Product } from '../products/entities/product.entity';
 import { Order } from './entities/order.entity';
 import { OrderItem } from './entities/order-item.entity';
 import { OrderStatus } from './constants/order-status.enum';
+import type { OrderRefundResult } from '../payments/stripe/services/order/order-payment.service';
 import {
   SerializedDeliveryAddress,
   SerializedOrder,
@@ -91,18 +92,21 @@ export function serializeOrderItem(
  */
 export async function refundOrderIfPaid(
   order: Order,
+  targetStatus: OrderStatus,
   tenant: TenantRef,
   payments: StripePaymentService,
-): Promise<Date | null> {
+): Promise<OrderRefundResult | null> {
+  if (order.paymentStatus === PaymentStatus.REFUND_PENDING)
+    throw new ConflictException('Refund is already pending');
   if (order.paymentStatus !== PaymentStatus.PAID) return null;
 
-  const result = await payments.refundOrder(order, tenant);
+  const result = await payments.refundOrder(order, targetStatus, tenant);
   if (!result) {
     throw new BadRequestException(
       'Order is marked paid but has no refundable payment',
     );
   }
-  return result.refundedAt;
+  return result;
 }
 
 export function findOrderForUpdate(

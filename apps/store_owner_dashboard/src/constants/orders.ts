@@ -17,6 +17,7 @@ export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
   CANCELED: "Canceled",
   UNPAID: "Unpaid",
   PAID: "Paid",
+  REFUND_PENDING: "Refund pending",
   PARTIALLY_REFUNDED: "Partially refunded",
   REFUNDED: "Refunded",
   FAILED: "Failed",

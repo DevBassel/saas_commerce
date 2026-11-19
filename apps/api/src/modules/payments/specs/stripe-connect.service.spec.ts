@@ -4,7 +4,7 @@ import Stripe from 'stripe';
 import { IENV } from 'src/common/config/env.interface';
 import { RequestWithUser } from '../../auth/interfaces/RequestWithUser.interface';
 import { Tenant } from '../../tenants/entities/tenant.entity';
-import { StripeConnectService } from '../services/stripe-connect.service';
+import { StripeConnectService } from '../stripe/services/stripe-connect.service';
 import { StripeClientService } from '../stripe/stripe-client.service';
 
 jest.mock('stripe', () => {

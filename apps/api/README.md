@@ -555,8 +555,8 @@ or version key weakens invalidation to the entry TTL.
 | Log or memory email transport | Development delivery seam and deterministic tests.                                       | `src/modules/email/transports`                                     | `EMAIL_PROVIDER=log` or `memory`.                                                           |
 | Pino and rotating files       | Structured application logs and TypeORM query/error logs.                                | `src/common/logger`                                                | `LOG_LEVEL` and filesystem permissions.                                                     |
 
-There is no BullMQ, message broker, background worker, SMS provider, or recurring Stripe Billing
-integration.
+There is no BullMQ, message broker, SMS provider, or recurring Stripe Billing integration. The
+in-process subscription lifecycle worker only reconciles local subscription timestamps.
 
 ## Configuration and environment variables
 

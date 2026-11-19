@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -65,7 +66,6 @@ export class ManageOrderService {
       next === OrderStatus.CANCELLED || next === OrderStatus.RETURNED;
     const applyTransition = async (
       manager: EntityManager,
-      refundedAt?: Date | null,
     ): Promise<{ order: Order; needsRefund: boolean }> => {
       const found = await findOrderForUpdate(manager, id);
       if (!found) throw new NotFoundException('Order not found');
@@ -76,20 +76,14 @@ export class ManageOrderService {
           `Cannot change order status from ${found.status} to ${next}`,
         );
       }
-      if (
-        restockable &&
-        found.paymentStatus === PaymentStatus.PAID &&
-        refundedAt === undefined
-      ) {
+      if (found.paymentStatus === PaymentStatus.REFUND_PENDING) {
+        throw new ConflictException('Refund is already pending');
+      }
+      if (restockable && found.paymentStatus === PaymentStatus.PAID) {
         return { order: found, needsRefund: true };
       }
 
-      const order = await transitionOrderStatus(
-        manager,
-        found,
-        next,
-        refundedAt,
-      );
+      const order = await transitionOrderStatus(manager, found, next);
       if (restockable) {
         await restockOrderItems(manager, found.items ?? []);
         await this.coupons.restoreUsage(manager, found);
@@ -101,16 +95,14 @@ export class ManageOrderService {
       applyTransition(manager),
     );
     if (result.needsRefund) {
-      // Never retain an Order lock during Stripe calls; the final transaction
-      // must validate the current row again before applying any side effects.
-      const refundedAt = await refundOrderIfPaid(
-        result.order,
-        target,
-        this.payments,
-      );
-      result = await orderRepo.manager.transaction((manager) =>
-        applyTransition(manager, refundedAt),
-      );
+      // Refund coordinator acquires fresh locks and owns all final side effects.
+      await refundOrderIfPaid(result.order, next, target, this.payments);
+      const refreshed = await orderRepo.findOne({
+        where: { id },
+        relations: { items: true },
+      });
+      if (!refreshed) throw new NotFoundException('Order not found');
+      result = { order: refreshed, needsRefund: false };
     }
 
     if (restockable) await this.cache.invalidateProducts(target);

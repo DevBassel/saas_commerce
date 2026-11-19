@@ -196,7 +196,9 @@ is never used for routing or fetching here.
   key is missing, `stripePromise` is null and the UI shows "Payments are not configured".
 - Orders: `GET /orders`, `GET /orders/:id`, `PATCH /orders/:id/cancel` (owner may cancel `PENDING`
   or `CONFIRMED`), `PATCH /orders/:id/return` (only `DELIVERED`). `OrderPaymentWatcher.tsx` polls
-  pending orders after `?payment=return`.
+  pending orders after `?payment=return`. A paid cancellation may return
+  `paymentStatus = REFUND_PENDING`; the order card hides Cancel and reports that Stripe confirmation is pending
+  instead of claiming the order is already cancelled.
 - Auth flows: login via `signIn("credentials", { redirect: false })`; register posts
   `/auth/register` then routes to `/verify-email`; logout posts `/auth/logout` then `signOut`.
 

@@ -243,5 +243,33 @@ describe('SubscriptionEntitlementsService', () => {
         BadRequestException,
       );
     });
+
+    it('rejects an ACTIVE paid subscription after its period ends', async () => {
+      const { service, subscriptions } = buildMocks();
+      subscriptions.getPlanForTenantRef.mockResolvedValue({
+        plan: { slug: 'pro' },
+        subscription: {
+          status: SubscriptionStatus.ACTIVE,
+          currentPeriodEnd: new Date('2000-01-01T00:00:00.000Z'),
+        },
+      });
+
+      await expect(service.assertUsable(TENANT)).rejects.toMatchObject({
+        response: { code: 'SUBSCRIPTION_INACTIVE' },
+      });
+    });
+
+    it('keeps the ACTIVE free plan usable after its synthetic period ends', async () => {
+      const { service, subscriptions } = buildMocks();
+      subscriptions.getPlanForTenantRef.mockResolvedValue({
+        plan: { slug: 'free' },
+        subscription: {
+          status: SubscriptionStatus.ACTIVE,
+          currentPeriodEnd: new Date('2000-01-01T00:00:00.000Z'),
+        },
+      });
+
+      await expect(service.assertUsable(TENANT)).resolves.toBeUndefined();
+    });
   });
 });

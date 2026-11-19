@@ -24,16 +24,23 @@ Resolution order is `x-tenant-id` → `x-tenant-slug` → subdomain (`resolveSub
 
 ```mermaid
 flowchart TD
-    REG["AuthService.registerStore"] --> TC["TenantService.create<br/>name, slug, subdomain = slug<br/>schemaName = buildSchemaName(slug) = tenant_slug<br/>storageCapacityBytes = TENANT_STORAGE_CAPACITY_BYTES"]
-    TC --> TC1{"schemaName already exists?"} -->|"yes"| TC1E["409 Schema name already exists"]
-    TC1 -->|"no"| TC2{"schemaName.length >= 63?"} -->|"yes"| TC2W["warn: truncated slugs can collide"]
-    TC2 --> PROV["TenantProvisionerService.provision"]
-    TC2W --> PROV
-    PROV --> SAN["sanitizeSchemaName<br/>lowercase, a-z 0-9 underscore, max 63 chars"]
-    SAN --> DDL["CREATE SCHEMA IF NOT EXISTS<br/>via public DataSource"]
-    DDL --> GDS["TenantManagerService.getDataSource"]
-    GDS --> SEED["seedRbac on tenant DataSource<br/>TENANT_ROLE_KEYS: STORE_OWNER, ADMIN, CUSTOMER + permissions<br/>(no base categories; the 'categories' seeder is opt-in)"]
-    SEED --> DONE["log: Provisioned tenant slug (schema)"]
+    REG["AuthService.registerStore"] --> LOCK["StoreProvisioningService<br/>pg_advisory_lock by generated schema"]
+    LOCK --> TC{"matching tenant row exists?"}
+    TC -->|"no"| NEWTEN["create INACTIVE tenant<br/>provisioningState = PENDING<br/>record owner email/name + bcrypt password claim"]
+    TC -->|"yes, owner identity + password match"| RESUME["resume from durable provisioningState"]
+    TC -->|"yes, request identity differs"| CONFLICT["409 provisioning request mismatch"]
+    NEWTEN --> RESUME
+    RESUME --> TCREATED["TENANT_CREATED"]
+    TCREATED --> DDL["SCHEMA_CREATED<br/>CREATE SCHEMA IF NOT EXISTS"]
+    DDL --> MIG["MIGRATED<br/>run pending tenant migrations"]
+    MIG --> GDS["TenantManagerService.getDataSource"]
+    GDS --> SEED["SEEDED<br/>seedRbac: STORE_OWNER, ADMIN, CUSTOMER + permissions<br/>(base categories remain opt-in)"]
+    SEED --> SUB["SUBSCRIPTION_ASSIGNED<br/>idempotently ensure free plan"]
+    SUB --> OWNER["OWNER_CREATED<br/>create or verify matching owner + set ownerUserId"]
+    OWNER --> ACTIVE["transaction: provisioningState + status = ACTIVE"]
+    ACTIVE --> UNLOCK["release advisory lock and issue credentials"]
+    RESUME -->|"any target step fails"| FAILED["keep last completed checkpoint + INACTIVE<br/>record failed step, error, failedAt, attempt<br/>release lock; exact request can retry"]
+    FAILED --> CLEANUP["optional explicit compensation<br/>release DataSource → DROP SCHEMA CASCADE → delete tenant row<br/>refused for completed/active tenants"]
 
     subgraph MGR["TenantManagerService — per-schema DataSource cache (cap 100, LRU)"]
         GA["getDataSource(tenant)"] --> CH{"cached DataSource?"}
@@ -65,12 +72,15 @@ flowchart TD
     end
 
     subgraph WRITES["TenantService writes"]
-        CREATE["create(dto) — schemaName uniqueness + capacity from env"]
+        CREATE["create(dto, ownerEmail) — schemaName uniqueness,<br/>PENDING checkpoint + capacity from env"]
+        STATE["startProvisioningAttempt / advanceProvisioningState /<br/>recordProvisioningFailure / completeProvisioning"]
+        CLEAN["cleanupFailedProvisioning — non-active only:<br/>release DataSource + drop schema + delete tenant"]
         OWNER["setOwnerUserId(id, ownerUserId)"]
         TOGGLE["toggleActiveTenant(id)"]
         TOGGLE --> T1{"status ACTIVE?"}
         T1 -->|"yes"| T2["status = INACTIVE + TenantManager.release(tenant)"]
-        T1 -->|"no"| T3["status = ACTIVE"]
+        T1 -->|"no + provisioningState ACTIVE"| T3["run migrations, status = ACTIVE"]
+        T1 -->|"no + provisioning incomplete"| T3E["409 provisioning incomplete"]
         CURRENCY["updateCurrency(id, currency)"]
         CONTROLS["updatePaymentControls(id, { paymentsPaused,<br/>payoutsPaused, stripePayoutsInterval })"]
         STRIPE["updateStripeAccountState(id, { stripeAccountId,<br/>stripeChargesEnabled, stripePayoutsEnabled, stripeDetailsSubmitted })"]
@@ -78,4 +88,4 @@ flowchart TD
     end
 ```
 
-`storageCapacityBytes` is set at tenant creation from `TENANT_STORAGE_CAPACITY_BYTES`; `storageUsedBytes` is then maintained incrementally by `adjustStorageUsedBytes` on every product image upload/delete (never recomputed from `pg_total_relation_size` in normal operation).
+`storageCapacityBytes` starts from `TENANT_STORAGE_CAPACITY_BYTES`, then `SUBSCRIPTION_ASSIGNED` mirrors the free plan's `STORAGE_BYTES` limit. `storageUsedBytes` is maintained incrementally by `adjustStorageUsedBytes` on every product image upload/delete (never recomputed from `pg_total_relation_size` in normal operation).

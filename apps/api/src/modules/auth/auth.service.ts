@@ -17,11 +17,8 @@ import { RoleKey } from 'src/common/constants/RoleKey.enum';
 import { randomUUID } from 'crypto';
 import { compare, hash } from 'bcrypt';
 import { TenantService } from '../tenants/tenant.service';
-import { TenantProvisionerService } from '../tenants/services/tenant-provisioner.service';
-import { TenantStatus } from '../tenants/enums/tenantStatus.enum';
 import { assertTenantActive } from '../tenants/utils/tenant-policy';
 import { requireTenantContext } from '../tenants/utils/tenant-scope';
-import { SubscriptionService } from '../subscriptions/services/subscription.service';
 import { TenantIdentity, tenantRefFromPayload } from './tenant-ref.util';
 import { EmailOtpService } from '../email-otp/email-otp.service';
 import { OtpPurpose } from '../email-otp/constants/otp-purpose.enum';
@@ -29,6 +26,7 @@ import { OtpErrorCode, otpError } from '../email-otp/constants/otp.constants';
 import { RequestOtpDto } from '../email-otp/dto/request-otp.dto';
 import { VerifyOtpDto } from '../email-otp/dto/verify-otp.dto';
 import { ConfirmPasswordResetDto } from './dto/confirm-password-reset.dto';
+import { StoreProvisioningService } from './store-provisioning.service';
 
 @Injectable()
 export class AuthService {
@@ -39,8 +37,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService<IENV>,
     private readonly tenantService: TenantService,
-    private readonly provisioner: TenantProvisionerService,
-    private readonly subscriptions: SubscriptionService,
+    private readonly storeProvisioning: StoreProvisioningService,
     private readonly emailOtp: EmailOtpService,
   ) {}
 
@@ -76,32 +73,7 @@ export class AuthService {
   }
 
   async registerStore(userData: RegisterStoreDto) {
-    const tenant = await this.tenantService.create({
-      name: userData.storeName,
-      slug: userData.storeSlug,
-      subdomain: userData.subdomain,
-    });
-
-    await this.provisioner.provision(tenant);
-
-    // Assign the free plan before creating the owner so the owner counts
-    // against the plan's STORE_ADMINS limit and storage is plan-driven.
-    await this.subscriptions.ensureFreeSubscription(tenant);
-
-    const owner = await this.userService.create(
-      {
-        name: userData.name,
-        email: userData.email,
-        password: userData.password,
-      },
-      RoleKey.STORE_OWNER,
-      tenant,
-    );
-
-    await this.tenantService.setOwnerUserId(tenant.id, owner.id);
-
-    await this.tenantService.activate(tenant.id);
-    tenant.status = TenantStatus.ACTIVE;
+    const { tenant, owner } = await this.storeProvisioning.provision(userData);
     return this.returnUserCredential(owner, tenant);
   }
 

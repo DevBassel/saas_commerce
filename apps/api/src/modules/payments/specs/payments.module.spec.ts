@@ -7,12 +7,18 @@ import { TenantCacheService } from '../../../common/cache/tenant-cache.service';
 import { TenantManagerService } from '../../tenants/services/tenant-manager.service';
 import { TenantModule } from '../../tenants/tenant.module';
 import PaymentsModule from '../payments.module';
-import { OrderPaymentService } from '../services/order-payment.service';
-import { StripeConnectService } from '../services/stripe-connect.service';
-import { SubscriptionPaymentService } from '../services/subscription-payment.service';
+import { OrderPaymentService } from '../stripe/services/order/order-payment.service';
+import { StripeConnectService } from '../stripe/services/stripe-connect.service';
+import { SubscriptionPaymentService } from '../stripe/services/subscription/subscription-payment.service';
+import { SubscriptionPaymentStatusService } from '../stripe/services/subscription/subscription-payment-status.service';
+import { SubscriptionPaymentIntentService } from '../stripe/services/subscription/subscription-payment-intent.service';
+import { SubscriptionRefundService } from '../stripe/services/subscription/subscription-refund.service';
 import { StripeClientService } from '../stripe/stripe-client.service';
 import StripePaymentService from '../stripe.payment.service';
 import { StripeWebhookService } from '../webhooks/stripe-webhook.service';
+import { OrderPaymentStatusService } from '../stripe/services/order/order-payment-status.service';
+import { OrderPaymentIntentService } from '../stripe/services/order/order-payment-intent.service';
+import { OrderRefundService } from '../stripe/services/order/order-refund.service';
 
 describe('PaymentsModule dependency injection', () => {
   it('compiles PaymentsModule with mocked application infrastructure', async () => {
@@ -53,7 +59,13 @@ describe('PaymentsModule dependency injection', () => {
     expect(moduleRef.get(StripePaymentService)).toBeDefined();
     expect(moduleRef.get(StripeClientService)).toBeDefined();
     expect(moduleRef.get(OrderPaymentService)).toBeDefined();
+    expect(moduleRef.get(OrderPaymentIntentService)).toBeDefined();
+    expect(moduleRef.get(OrderPaymentStatusService)).toBeDefined();
+    expect(moduleRef.get(OrderRefundService)).toBeDefined();
     expect(moduleRef.get(SubscriptionPaymentService)).toBeDefined();
+    expect(moduleRef.get(SubscriptionPaymentIntentService)).toBeDefined();
+    expect(moduleRef.get(SubscriptionPaymentStatusService)).toBeDefined();
+    expect(moduleRef.get(SubscriptionRefundService)).toBeDefined();
     expect(moduleRef.get(StripeWebhookService)).toBeDefined();
     expect(moduleRef.get(StripeConnectService)).toBeDefined();
   });

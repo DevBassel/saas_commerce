@@ -31,6 +31,60 @@ export class TenantMigrationService {
     return migration;
   }
 
+  async ensureSchema(schemaName: string): Promise<void> {
+    const schema = assertTenantSchemaName(schemaName);
+    const lockRunner = this.platformDataSource.createQueryRunner();
+    const lockName = `saas-commerce:tenant-migrations:${schema}`;
+    let locked = false;
+    let operationError: unknown;
+
+    try {
+      await lockRunner.connect();
+      await this.acquireLock(lockRunner, lockName);
+      locked = true;
+      await lockRunner.query(`CREATE SCHEMA IF NOT EXISTS "${schema}"`);
+      await this.manager.release({ schemaName: schema });
+      this.logger.log(`Tenant schema ${schema} is ready`);
+    } catch (error) {
+      operationError = error;
+      this.logger.error(
+        `Tenant schema creation failed for ${schema}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
+
+    const cleanupErrors: unknown[] = [];
+    try {
+      if (locked) await this.releaseLock(lockRunner, lockName);
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+    try {
+      if (!lockRunner.isReleased) await lockRunner.release();
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+
+    const cleanupError =
+      cleanupErrors.length > 0
+        ? new AggregateError(
+            cleanupErrors,
+            `Tenant schema creation cleanup failed for ${schema}`,
+          )
+        : undefined;
+    if (operationError) {
+      if (cleanupError) {
+        this.logger.error(cleanupError.message, cleanupError.stack);
+      }
+      throw operationError instanceof Error
+        ? operationError
+        : new Error('Non-Error tenant schema creation failure', {
+            cause: operationError,
+          });
+    }
+    if (cleanupError) throw cleanupError;
+  }
+
   private async runMigrations(
     schemaName: string,
   ): Promise<TenantMigrationResult> {

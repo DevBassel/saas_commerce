@@ -67,13 +67,9 @@ const buildMocks = () => {
   };
   const tenantService = {
     findBySchemaName: jest.fn(),
-    create: jest.fn(),
-    setOwnerUserId: jest.fn().mockResolvedValue(undefined),
-    activate: jest.fn().mockResolvedValue(undefined),
   };
-  const provisioner = { provision: jest.fn().mockResolvedValue(undefined) };
-  const subscriptions = {
-    ensureFreeSubscription: jest.fn().mockResolvedValue(undefined),
+  const storeProvisioning = {
+    provision: jest.fn(),
   };
   const emailOtp = {
     request: jest.fn().mockResolvedValue({
@@ -82,7 +78,7 @@ const buildMocks = () => {
     }),
     verify: jest.fn(),
   };
-  return { userService, tenantService, provisioner, subscriptions, emailOtp };
+  return { userService, tenantService, storeProvisioning, emailOtp };
 };
 
 const buildService = (mocks: ReturnType<typeof buildMocks>) =>
@@ -91,8 +87,7 @@ const buildService = (mocks: ReturnType<typeof buildMocks>) =>
     jwt,
     config as never,
     mocks.tenantService as never,
-    mocks.provisioner as never,
-    mocks.subscriptions as never,
+    mocks.storeProvisioning as never,
     mocks.emailOtp as never,
   );
 
@@ -245,78 +240,40 @@ describe('AuthService', () => {
   });
 
   describe('registerStore', () => {
-    it('provisions the store, creates the owner and issues credentials in order', async () => {
+    it('delegates durable provisioning before issuing credentials', async () => {
       const order: string[] = [];
       const tenant = { id: 3, schemaName: 'tenant_acme' } as Tenant;
       const owner = makeUser({
         id: 9,
         role: { key: RoleKey.STORE_OWNER } as never,
       });
-      mocks.tenantService.create.mockImplementation(() => {
-        order.push('create');
-        return Promise.resolve(tenant);
-      });
-      mocks.provisioner.provision.mockImplementation(() => {
+      mocks.storeProvisioning.provision.mockImplementation(() => {
         order.push('provision');
-        return Promise.resolve();
-      });
-      mocks.userService.create.mockImplementation(() => {
-        order.push('owner');
-        return Promise.resolve(owner);
-      });
-      mocks.tenantService.setOwnerUserId.mockImplementation(() => {
-        order.push('setOwner');
-        return Promise.resolve();
+        return Promise.resolve({ tenant, owner });
       });
       mocks.userService.updateSession.mockImplementation(() => {
         order.push('session');
         return Promise.resolve();
       });
-      mocks.tenantService.activate.mockImplementation(() => {
-        order.push('activate');
-        return Promise.resolve();
-      });
 
-      const result = await service.registerStore({
+      const dto = {
         storeName: 'Acme',
         storeSlug: 'acme',
         subdomain: 'acme',
         name: 'Owner',
         email: 'owner@test.dev',
         password: 'password1',
-      });
+      };
+      const result = await service.registerStore(dto);
 
-      expect(order).toEqual([
-        'create',
-        'provision',
-        'owner',
-        'setOwner',
-        'activate',
-        'session',
-      ]);
-      expect(mocks.tenantService.create).toHaveBeenCalledWith({
-        name: 'Acme',
-        slug: 'acme',
-        subdomain: 'acme',
-      });
-      expect(mocks.userService.create).toHaveBeenCalledWith(
-        { name: 'Owner', email: 'owner@test.dev', password: 'password1' },
-        RoleKey.STORE_OWNER,
-        tenant,
-      );
-      expect(mocks.tenantService.setOwnerUserId).toHaveBeenCalledWith(3, 9);
-      expect(mocks.tenantService.activate).toHaveBeenCalledWith(3);
+      expect(order).toEqual(['provision', 'session']);
+      expect(mocks.storeProvisioning.provision).toHaveBeenCalledWith(dto);
       expect(result.id).toBe(9);
       expect(result.refresh_token).toEqual(expect.any(String));
     });
 
-    it('does not activate the tenant when provisioning fails', async () => {
-      mocks.tenantService.create.mockResolvedValue({
-        id: 3,
-        schemaName: 'tenant_acme',
-        status: TenantStatus.INACTIVE,
-      });
-      mocks.provisioner.provision.mockRejectedValue(
+    it('does not issue credentials when provisioning fails', async () => {
+      mocks.storeProvisioning.provision.mockRejectedValue(
         new Error('migration failed'),
       );
 
@@ -331,8 +288,7 @@ describe('AuthService', () => {
         }),
       ).rejects.toThrow('migration failed');
 
-      expect(mocks.tenantService.activate).not.toHaveBeenCalled();
-      expect(mocks.userService.create).not.toHaveBeenCalled();
+      expect(mocks.userService.updateSession).not.toHaveBeenCalled();
     });
   });
 

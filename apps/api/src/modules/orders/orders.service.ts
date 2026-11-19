@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -350,7 +351,6 @@ export class OrdersService {
 
     const cancelOrder = async (
       manager: EntityManager,
-      refundedAt?: Date | null,
     ): Promise<Order | null> => {
       const order = await findOrderForUpdate(manager, id);
       if (!order || (!manage && order.userId !== requester.id)) {
@@ -365,19 +365,13 @@ export class OrdersService {
           `Order cannot be cancelled from ${order.status}`,
         );
       }
-      if (
-        order.paymentStatus === PaymentStatus.PAID &&
-        refundedAt === undefined
-      ) {
+      if (order.paymentStatus === PaymentStatus.REFUND_PENDING)
+        throw new ConflictException('Refund is already pending');
+      if (order.paymentStatus === PaymentStatus.PAID) {
         return order;
       }
 
-      await transitionOrderStatus(
-        manager,
-        order,
-        OrderStatus.CANCELLED,
-        refundedAt,
-      );
+      await transitionOrderStatus(manager, order, OrderStatus.CANCELLED);
       await restockOrderItems(manager, order.items ?? []);
       await this.coupons.restoreUsage(manager, order);
       return null;
@@ -387,15 +381,12 @@ export class OrdersService {
       cancelOrder(manager),
     );
     if (refundSource) {
-      // Stripe stays outside DB locks. Re-lock and revalidate afterward rather
-      // than using the pre-refund snapshot to decide whether to restore stock.
-      const refundedAt = await refundOrderIfPaid(
+      // Refund coordinator acquires fresh locks and owns all final side effects.
+      await refundOrderIfPaid(
         refundSource,
+        OrderStatus.CANCELLED,
         target,
         this.payments,
-      );
-      await orderRepo.manager.transaction((manager) =>
-        cancelOrder(manager, refundedAt),
       );
     }
 

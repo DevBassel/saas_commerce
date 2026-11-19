@@ -1,24 +1,29 @@
-import { Injectable, type RawBodyRequest } from '@nestjs/common';
+import { Injectable, Logger, type RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
 import { RequestWithUser } from '../auth/interfaces/RequestWithUser.interface';
 import { Order } from '../orders/entities/order.entity';
+import { OrderStatus } from '../orders/constants/order-status.enum';
 import { Tenant } from '../tenants/entities/tenant.entity';
+import { TenantService } from '../tenants/tenant.service';
 import { TenantRef } from '../tenants/utils/tenant.utils';
 import { StripeAccountStatus } from './constants/stripe-account';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { CreateSubDto } from './dto/create-sub.dto';
-import { OrderPaymentService } from './services/order-payment.service';
-import { StripeConnectService } from './services/stripe-connect.service';
-import { SubscriptionPaymentService } from './services/subscription-payment.service';
+import { OrderPaymentService } from './stripe/services/order/order-payment.service';
+import { StripeConnectService } from './stripe/services/stripe-connect.service';
+import { SubscriptionPaymentService } from './stripe/services/subscription/subscription-payment.service';
 import { StripeWebhookService } from './webhooks/stripe-webhook.service';
 
 @Injectable()
 export default class StripePaymentService {
+  private readonly logger = new Logger(StripePaymentService.name);
+
   constructor(
     private readonly orderPayments: OrderPaymentService,
     private readonly subscriptionPayments: SubscriptionPaymentService,
     private readonly webhooks: StripeWebhookService,
     private readonly connect: StripeConnectService,
+    private readonly tenants: TenantService,
   ) {}
 
   repos(tenant?: TenantRef) {
@@ -46,8 +51,43 @@ export default class StripePaymentService {
     return this.webhooks.reconcileEvents(limit);
   }
 
-  refundOrder(order: Order, tenant?: TenantRef) {
-    return this.orderPayments.refundOrder(order, tenant);
+  async reconcileRefunds(limit = 100) {
+    const subscriptions =
+      await this.subscriptionPayments.reconcileRefunds(limit);
+    const tenants = await this.tenants.findAll();
+    const orders = { attempted: 0, processed: 0, failed: 0 };
+
+    for (const tenant of tenants) {
+      try {
+        const result = await this.orderPayments.reconcileRefunds(
+          { schemaName: tenant.schemaName },
+          limit,
+        );
+        orders.attempted += result.attempted;
+        orders.processed += result.processed;
+        orders.failed += result.failed;
+      } catch (error) {
+        orders.attempted += 1;
+        orders.failed += 1;
+        this.logger.error(
+          `Refund reconciliation failed for ${tenant.schemaName}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+
+    return {
+      attempted: subscriptions.attempted + orders.attempted,
+      processed: subscriptions.processed + orders.processed,
+      failed: subscriptions.failed + orders.failed,
+      subscriptions,
+      orders,
+    };
+  }
+
+  refundOrder(order: Order, targetStatus: OrderStatus, tenant?: TenantRef) {
+    return this.orderPayments.refundOrder(order, targetStatus, tenant);
   }
 
   cancelSubscriptionWithRefund(tenantId: number) {

@@ -65,6 +65,24 @@ describe('TenantMigrationService', () => {
     jest.clearAllMocks();
   });
 
+  it('creates a tenant schema idempotently without running migrations', async () => {
+    const { service, query, runMigrations, managerRelease } = buildMocks();
+
+    await service.ensureSchema('tenant_acme');
+
+    expect(query).toHaveBeenNthCalledWith(
+      1,
+      'SELECT pg_advisory_lock(hashtextextended($1, 0))',
+      ['saas-commerce:tenant-migrations:tenant_acme'],
+    );
+    expect(query).toHaveBeenNthCalledWith(
+      2,
+      'CREATE SCHEMA IF NOT EXISTS "tenant_acme"',
+    );
+    expect(managerRelease).toHaveBeenCalledWith({ schemaName: 'tenant_acme' });
+    expect(runMigrations).not.toHaveBeenCalled();
+  });
+
   it('locks, creates the schema and executes pending migrations safely', async () => {
     const { service, query, release, runMigrations, destroy, managerRelease } =
       buildMocks();
