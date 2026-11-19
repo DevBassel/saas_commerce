@@ -28,6 +28,7 @@ const expectedPlatformTables = [
   'subscription_plan_features',
   'subscription_plan_limits',
   'subscription_plans',
+  'subscription_refunds',
   'subscriptions',
   'tenant_usage_counters',
   'tenants',
@@ -44,6 +45,7 @@ const expectedTenantTables = [
   'coupons',
   'order_items',
   'orders',
+  'order_refunds',
   'otp_challenges',
   'payments',
   'permissions',
@@ -101,7 +103,12 @@ const run = async (): Promise<void> => {
     });
     assert.deepEqual(
       firstPlatformRun.map((migration) => migration.name),
-      ['InitialPlatform1795099462973'],
+      [
+        'InitialPlatform1795099462973',
+        'AddSubscriptionRefund1795105096743',
+        'AddTenantProvisioningState1795105096744',
+        'AddTenantStripeAccountState1795121230425',
+      ],
     );
     assert.deepEqual(
       await tablesIn(platform, PLATFORM_SCHEMA),
@@ -114,6 +121,7 @@ const run = async (): Promise<void> => {
       const firstRun = await tenantMigrations.migrate(schemaName);
       assert.deepEqual(firstRun.executedMigrations, [
         'InitialTenant1795099463316',
+        'AddOrderRefund1795105096742',
       ]);
       assert.deepEqual(
         await tablesIn(platform, schemaName),

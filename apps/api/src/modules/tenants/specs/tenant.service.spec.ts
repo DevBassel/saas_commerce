@@ -5,7 +5,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DataSource, QueryRunner, Repository } from 'typeorm';
+import {
+  DataSource,
+  getMetadataArgsStorage,
+  QueryRunner,
+  Repository,
+} from 'typeorm';
 import { TenantService } from '../tenant.service';
 import { Tenant } from '../entities/tenant.entity';
 import { TenantStatus } from '../enums/tenantStatus.enum';
@@ -239,6 +244,21 @@ describe('TenantService.adjustStorageUsedBytes', () => {
 });
 
 describe('TenantService Stripe Connect state', () => {
+  it('maps every persisted Connect state property on Tenant', () => {
+    const mappedProperties = getMetadataArgsStorage()
+      .filterColumns(Tenant)
+      .map((column) => column.propertyName);
+
+    expect(mappedProperties).toEqual(
+      expect.arrayContaining([
+        'stripeAccountId',
+        'stripeChargesEnabled',
+        'stripePayoutsEnabled',
+        'stripeDetailsSubmitted',
+      ]),
+    );
+  });
+
   it('finds a tenant by its Stripe account id', async () => {
     const { service, tenantRepoMocks } = buildMocks();
     const row = tenantRow({ stripeAccountId: 'acct_123' });

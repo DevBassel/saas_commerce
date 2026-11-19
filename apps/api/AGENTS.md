@@ -171,9 +171,9 @@ Public schema:
 - `Tenant` (`tenants`): `id`, `name`, unique `slug`/`schemaName`/`subdomain` (subdomain nullable),
   `status` (`active | inactive`), durable `provisioningState`, retry/failure metadata,
   `ownerUserId`, `storageUsedBytes`, `storageCapacityBytes`,
-  `stripeAccountId` (unique, nullable), `paymentsPaused`, `payoutsPaused`, `stripePayoutsInterval`,
-  `currency` (varchar(3), default `usd`). There are **no** `stripeChargesEnabled` /
-  `stripePayoutsEnabled` / `stripeDetailsSubmitted` columns.
+  `stripeAccountId` (unique, nullable), `stripeChargesEnabled`, `stripePayoutsEnabled`,
+  `stripeDetailsSubmitted`, `paymentsPaused`, `payoutsPaused`, `stripePayoutsInterval`, `currency`
+  (varchar(3), default `usd`).
 - `CurrencyChangeRequest` (`currency_change_requests`): public entity with a partial unique index
   preventing more than one pending request per tenant.
 - Subscription entities (all **public**, see `## Subscriptions`): `SubscriptionPlan`

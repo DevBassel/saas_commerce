@@ -94,6 +94,15 @@ export class Tenant extends BaseEntity {
   stripeAccountId: string | null;
 
   @Column({ type: 'boolean', default: false })
+  stripeChargesEnabled: boolean;
+
+  @Column({ type: 'boolean', default: false })
+  stripePayoutsEnabled: boolean;
+
+  @Column({ type: 'boolean', default: false })
+  stripeDetailsSubmitted: boolean;
+
+  @Column({ type: 'boolean', default: false })
   paymentsPaused: boolean;
 
   @Column({ type: 'boolean', default: false })
