@@ -136,11 +136,15 @@ Never add a tenant entity to `PUBLIC_ENTITIES` in `src/core.module.ts`. Add it t
 - **PermissionGuard**: `@Public` skip; `SUPER_ADMIN` bypass; then `@Roles()`; then `@Permissions()`
   where all listed permissions are required.
 - JWT claims (`jwt-payload.dto.ts`): `type` (`access` | `refresh`), `id`, `role`, `jti?`,
-  `tenantId | null`, `tenantSchema | null`. Access tokens omit `jti`; refresh tokens include it.
+  `tokenVersion`, `tenantId | null`, `tenantSchema | null`. Access tokens omit `jti`; refresh tokens
+  include it. `JwtGuard` rejects a token whose version differs from the current user row, so
+  credential revocation applies immediately to already-issued access tokens. Legacy tokens without
+  the claim map to version `0` for migration compatibility and fail after the first revocation.
   Separate access/refresh secrets and `issuer`/`audience` (Joi requires issuer/audience in
   production). Refresh rotates `jti`, re-checks the tenant registry and status, and rejects a stored
-  `user.jti` mismatch with 401.
-- `POST /auth/logout` clears the tenant `user.jti`; `POST /auth/logout/platform` clears the public one.
+  `user.jti` or `tokenVersion` mismatch with 401.
+- `POST /auth/logout` and `POST /auth/logout/platform` atomically clear `user.jti` and increment
+  `tokenVersion`; password reset does the same while replacing the password hash.
 - Roles: `SUPER_ADMIN` (rank 5), `STORE_OWNER` (4), `ADMIN` (3), `CUSTOMER` (0), with rank-based
   guards against privilege escalation in `UsersService`.
 
@@ -192,7 +196,7 @@ Tenant schema (`TENANT_ENTITIES`):
 
 - `User` (`user`): unique `email`, `password` (`@Exclude`), nullable `roleId` FK to `Role`
   (`ON DELETE SET NULL`), many-to-many direct permissions via `user_permissions`, `emailVerified`,
-  `jti` (`@Exclude`).
+  `jti` and `tokenVersion` (both `@Exclude`).
 - `Role` (`roles`, unique `key`, `isSystem`, M2M `role_permissions`), `Permission`
   (`permissions`, unique `key`).
 - `Category` (`categories`): unique `slug`, `description`, `isActive`.

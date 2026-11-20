@@ -51,6 +51,7 @@ const makeUser = (overrides: Partial<User> = {}): User =>
   ({
     id: 1,
     jti: 'abc',
+    tokenVersion: 0,
     role: { key: RoleKey.STORE_OWNER },
     ...overrides,
   }) as unknown as User;
@@ -59,6 +60,8 @@ const buildMocks = () => {
   const userService = {
     updateSession: jest.fn().mockResolvedValue(undefined),
     updateSessionPublic: jest.fn().mockResolvedValue(undefined),
+    revokeSessions: jest.fn().mockResolvedValue(undefined),
+    revokeSessionsPublic: jest.fn().mockResolvedValue(undefined),
     markEmailVerified: jest.fn().mockResolvedValue(undefined),
     updatePassword: jest.fn().mockResolvedValue(undefined),
     findOne: jest.fn(),
@@ -93,7 +96,13 @@ const buildService = (mocks: ReturnType<typeof buildMocks>) =>
 
 const signRefresh = (payload: Record<string, unknown>) =>
   jwt.sign(
-    { type: 'refresh', id: 1, role: RoleKey.SUPER_ADMIN, ...payload },
+    {
+      type: 'refresh',
+      id: 1,
+      role: RoleKey.SUPER_ADMIN,
+      tokenVersion: 0,
+      ...payload,
+    },
     {
       secret: jwtConfig.refreshSecret,
       expiresIn: '7d',
@@ -169,6 +178,13 @@ describe('AuthService', () => {
       expect(result.id).toBe(1);
       expect(result.access_token).toEqual(expect.any(String));
       expect(result.refresh_token).toEqual(expect.any(String));
+      expect(
+        jwt.verify(result.access_token, {
+          secret: jwtConfig.accessSecret,
+          issuer: jwtConfig.issuer,
+          audience: jwtConfig.audience,
+        }),
+      ).toMatchObject({ tokenVersion: 0 });
       expect(mocks.userService.updateSessionPublic).toHaveBeenCalledWith(
         1,
         expect.any(String),
@@ -191,19 +207,12 @@ describe('AuthService', () => {
   describe('logout', () => {
     it('clears the stored session for a platform logout', async () => {
       await service.logout(1);
-      expect(mocks.userService.updateSessionPublic).toHaveBeenCalledWith(
-        1,
-        null,
-      );
+      expect(mocks.userService.revokeSessionsPublic).toHaveBeenCalledWith(1);
     });
 
     it('clears the stored session for a tenant logout', async () => {
       await service.logout(1, TENANT);
-      expect(mocks.userService.updateSession).toHaveBeenCalledWith(
-        1,
-        null,
-        TENANT,
-      );
+      expect(mocks.userService.revokeSessions).toHaveBeenCalledWith(1, TENANT);
     });
   });
 
@@ -448,6 +457,18 @@ describe('AuthService', () => {
       await expect(
         service.refresh_user_credentials(signRefresh({ jti: 'abc' })),
       ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('rejects a refresh token issued before the user token version changed', async () => {
+      mocks.userService.findOnePublic.mockResolvedValue(
+        makeUser({ tokenVersion: 2 }),
+      );
+
+      await expect(
+        service.refresh_user_credentials(
+          signRefresh({ jti: 'abc', tokenVersion: 1 }),
+        ),
+      ).rejects.toThrow('Token revoked');
     });
 
     it('rejects a refresh token without a jti claim', async () => {

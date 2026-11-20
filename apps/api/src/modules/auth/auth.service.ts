@@ -150,7 +150,13 @@ export class AuthService {
       : await this.userService.findOnePublic({ id: verifyToken.id });
     if (!user) throw new NotFoundException();
 
-    if (!verifyToken.jti || verifyToken.jti !== user.jti)
+    const tokenVersion = verifyToken.tokenVersion ?? 0;
+    if (
+      !Number.isSafeInteger(tokenVersion) ||
+      tokenVersion !== user.tokenVersion ||
+      !verifyToken.jti ||
+      verifyToken.jti !== user.jti
+    )
       throw new UnauthorizedException('Token revoked');
 
     return this.returnUserCredential(user, tenant);
@@ -158,9 +164,9 @@ export class AuthService {
 
   async logout(userId: number, tenant?: TenantIdentity) {
     if (tenant) {
-      await this.userService.updateSession(userId, null, tenant);
+      await this.userService.revokeSessions(userId, tenant);
     } else {
-      await this.userService.updateSessionPublic(userId, null);
+      await this.userService.revokeSessionsPublic(userId);
     }
     return { success: true, msg: 'logout success' };
   }
@@ -169,6 +175,7 @@ export class AuthService {
     const payload = {
       id: user.id,
       role: user.role?.key ?? RoleKey.CUSTOMER,
+      tokenVersion: user.tokenVersion,
       tenantId: tenant?.id ?? null,
       tenantSchema: tenant?.schemaName ?? null,
     };

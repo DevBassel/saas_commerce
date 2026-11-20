@@ -1,7 +1,12 @@
 import { ForbiddenException } from '@nestjs/common';
 import { tenantRefFromPayload } from '../tenant-ref.util';
 
-const base = { type: 'access' as const, id: 1, role: 'CUSTOMER' };
+const base = {
+  type: 'access' as const,
+  id: 1,
+  role: 'CUSTOMER',
+  tokenVersion: 0,
+};
 
 describe('tenantRefFromPayload', () => {
   it('returns undefined for a platform token with both claims null', () => {

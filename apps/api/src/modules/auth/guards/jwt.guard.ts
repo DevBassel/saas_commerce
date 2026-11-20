@@ -97,6 +97,13 @@ export class JwtGuard implements CanActivate {
         );
     if (!user) throw new NotFoundException('User not found');
 
+    const tokenVersion = payload.tokenVersion ?? 0;
+    if (
+      !Number.isSafeInteger(tokenVersion) ||
+      tokenVersion !== user.tokenVersion
+    )
+      throw new UnauthorizedException('Token revoked');
+
     const directPermissions =
       user.permissions?.map((p) => p.key as PermissionKey) ?? [];
     const rolePermissions =

@@ -15,6 +15,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useSidebar } from "@/hooks/use-sidebar";
 import { LogOutIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { authApi } from "@/api/auth.api";
 
 export const Header = () => {
   const { isMobile } = useSidebar();
@@ -38,7 +39,7 @@ function DesktopHeader() {
         "bg-sidebar",
         "pr-3",
         "justify-end",
-        "z-40"
+        "z-40",
       )}
     >
       <ThemeToggle />
@@ -67,7 +68,7 @@ function MobileHeader() {
         "bg-sidebar",
         "pr-3",
         "justify-between",
-        "z-40"
+        "z-40",
       )}
     >
       <SidebarTrigger
@@ -104,7 +105,7 @@ function MobileHeader() {
             {
               "opacity-0": !open,
               "opacity-100": open,
-            }
+            },
           )}
         >
           {title.text}
@@ -135,7 +136,8 @@ const UserDropdown = () => {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem
-          onClick={() => {
+          onClick={async () => {
+            await authApi.logout();
             logout();
           }}
         >

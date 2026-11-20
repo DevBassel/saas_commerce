@@ -221,7 +221,18 @@ export class UsersService {
 
   async updateSession(id: number, jti: string | null, tenant?: TenantRef) {
     const { userRepo } = await this.repos(tenant);
-    await userRepo.update({ id }, { jti } as never);
+    await userRepo.update({ id }, { jti });
+  }
+
+  async revokeSessions(id: number, tenant?: TenantRef) {
+    const { userRepo } = await this.repos(tenant);
+    await userRepo.update(
+      { id },
+      {
+        jti: null,
+        tokenVersion: () => '"tokenVersion" + 1',
+      },
+    );
   }
 
   async markEmailVerified(id: number, tenant?: TenantRef) {
@@ -230,15 +241,19 @@ export class UsersService {
   }
 
   /**
-   * Replaces the password hash and revokes every existing refresh token by
-   * clearing the stored `jti` (a refresh must match it to be accepted).
+   * Replaces the password hash and revokes every existing access and refresh
+   * token in the same atomic update.
    */
   async updatePassword(id: number, passwordHash: string, tenant?: TenantRef) {
     const { userRepo } = await this.repos(tenant);
-    await userRepo.update({ id }, {
-      password: passwordHash,
-      jti: null,
-    } as never);
+    await userRepo.update(
+      { id },
+      {
+        password: passwordHash,
+        jti: null,
+        tokenVersion: () => '"tokenVersion" + 1',
+      },
+    );
   }
 
   async clearSession(id: number, tenant?: TenantRef) {
@@ -246,7 +261,17 @@ export class UsersService {
   }
 
   async updateSessionPublic(id: number, jti: string | null) {
-    await this.userRepo.update({ id }, { jti } as never);
+    await this.userRepo.update({ id }, { jti });
+  }
+
+  async revokeSessionsPublic(id: number) {
+    await this.userRepo.update(
+      { id },
+      {
+        jti: null,
+        tokenVersion: () => '"tokenVersion" + 1',
+      },
+    );
   }
 
   async assignRole(

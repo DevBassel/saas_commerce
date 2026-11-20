@@ -182,6 +182,61 @@ describe('UsersService.create', () => {
   });
 });
 
+describe('UsersService credential revocation', () => {
+  const tokenVersionUpdate = (update: jest.Mock) => {
+    const typed = update as jest.Mock<
+      unknown,
+      [unknown, { tokenVersion?: unknown }]
+    >;
+    return typed.mock.calls[0][1].tokenVersion;
+  };
+
+  it('atomically changes the password, clears refresh state, and increments the token version', async () => {
+    const { service, userRepo } = buildMocks();
+
+    await service.updatePassword(5, 'new-hash', TENANT);
+
+    expect(userRepo.update).toHaveBeenCalledWith(
+      { id: 5 },
+      expect.objectContaining({
+        password: 'new-hash',
+        jti: null,
+      }),
+    );
+    const increment = tokenVersionUpdate(userRepo.update);
+    expect(typeof increment).toBe('function');
+    expect((increment as () => string)()).toBe('"tokenVersion" + 1');
+  });
+
+  it('clears tenant refresh state and increments the token version', async () => {
+    const { service, userRepo } = buildMocks();
+
+    await service.revokeSessions(5, TENANT);
+
+    expect(userRepo.update).toHaveBeenCalledWith(
+      { id: 5 },
+      expect.objectContaining({ jti: null }),
+    );
+    const increment = tokenVersionUpdate(userRepo.update);
+    expect(typeof increment).toBe('function');
+    expect((increment as () => string)()).toBe('"tokenVersion" + 1');
+  });
+
+  it('clears platform refresh state and increments the token version', async () => {
+    const { service, userRepo } = buildMocks();
+
+    await service.revokeSessionsPublic(5);
+
+    expect(userRepo.update).toHaveBeenCalledWith(
+      { id: 5 },
+      expect.objectContaining({ jti: null }),
+    );
+    const increment = tokenVersionUpdate(userRepo.update);
+    expect(typeof increment).toBe('function');
+    expect((increment as () => string)()).toBe('"tokenVersion" + 1');
+  });
+});
+
 describe('UsersService.assignRole', () => {
   const STALE = [{ id: 99, key: 'product.read', name: 'product.read' }];
 

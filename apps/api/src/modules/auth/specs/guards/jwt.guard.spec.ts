@@ -71,6 +71,7 @@ describe('JwtGuard', () => {
         type: 'access',
         id: 1,
         role: RoleKey.CUSTOMER,
+        tokenVersion: 0,
         tenantId: null,
         tenantSchema: null,
         ...payload,
@@ -246,6 +247,7 @@ describe('JwtGuard', () => {
       name: 'Jane',
       email: 'jane@test.dev',
       emailVerified: true,
+      tokenVersion: 0,
       role: {
         id: 3,
         key: RoleKey.ADMIN,
@@ -284,11 +286,74 @@ describe('JwtGuard', () => {
     expect((request as { tenant?: Tenant }).tenant).toEqual(tenantEntity());
   });
 
+  it('rejects an access token issued before the user token version changed', async () => {
+    userService.findOne.mockResolvedValue({
+      id: 1,
+      name: 'Jane',
+      email: 'jane@test.dev',
+      emailVerified: true,
+      tokenVersion: 2,
+      role: null,
+      permissions: [],
+    });
+    const token = sign({
+      tokenVersion: 1,
+      tenantId: 10,
+      tenantSchema: 'tenant_acme',
+    });
+
+    await expect(
+      buildGuard().canActivate(
+        buildContext({
+          headers: { authorization: `Bearer ${token}` },
+          tenant: tenantEntity(),
+        }),
+      ),
+    ).rejects.toThrow('Token revoked');
+  });
+
+  it('treats a legacy access token without a version as version zero', async () => {
+    userService.findOne.mockResolvedValue({
+      id: 1,
+      name: 'Jane',
+      email: 'jane@test.dev',
+      emailVerified: true,
+      tokenVersion: 0,
+      role: null,
+      permissions: [],
+    });
+    const token = jwt.sign(
+      {
+        type: 'access',
+        id: 1,
+        role: RoleKey.CUSTOMER,
+        tenantId: 10,
+        tenantSchema: 'tenant_acme',
+      },
+      {
+        secret: JWT.accessSecret,
+        issuer: JWT.issuer,
+        audience: JWT.audience,
+        expiresIn: '1h',
+      },
+    );
+
+    await expect(
+      buildGuard().canActivate(
+        buildContext({
+          headers: { authorization: `Bearer ${token}` },
+          tenant: tenantEntity(),
+        }),
+      ),
+    ).resolves.toBe(true);
+  });
+
   it('resolves a platform token through findOnePublic', async () => {
     userService.findOnePublic.mockResolvedValue({
       id: 5,
       name: 'Super',
       email: 'super@test.dev',
+      tokenVersion: 0,
       role: { id: 99, key: RoleKey.SUPER_ADMIN, permissions: [] },
       permissions: [],
     });
@@ -316,6 +381,7 @@ describe('JwtGuard', () => {
       id: 1,
       name: 'Jane',
       email: 'jane@test.dev',
+      tokenVersion: 0,
       role: null,
       permissions: [],
     });

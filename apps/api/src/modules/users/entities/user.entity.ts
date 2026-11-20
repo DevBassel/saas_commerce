@@ -45,9 +45,13 @@ export class User extends BaseEntity {
   @Column({ default: false })
   emailVerified: boolean;
 
-  @Column({ default: null, nullable: true })
+  @Column({ type: 'varchar', default: null, nullable: true })
   @Exclude()
-  jti: string;
+  jti: string | null;
+
+  @Column({ type: 'int', default: 0 })
+  @Exclude()
+  tokenVersion: number;
 
   @CreateDateColumn()
   createdAt: Date;

@@ -47,7 +47,9 @@ flowchart TD
         JPU --> JU{"User found?"}
         JRT --> JU
         JU -->|"no"| JUE["404 User not found"]
-        JU -->|"yes"| JATT["request.user = id, name, email, role<br/>permissions = direct + role permissions (deduped)<br/>request.tenant = resolved tenant"]
+        JU -->|"yes"| JV{"payload.tokenVersion<br/>== user.tokenVersion ?"}
+        JV -->|"no"| JVE["401 Token revoked"]
+        JV -->|"yes"| JATT["request.user = id, name, email, role<br/>permissions = direct + role permissions (deduped)<br/>request.tenant = resolved tenant"]
     end
 
     JATT --> G0
@@ -71,7 +73,7 @@ flowchart TD
     GSKIP --> VP{"ValidationPipe<br/>whitelist + forbidNonWhitelisted + transform"}
     VP -->|"invalid or unknown fields"| VPE["400 Bad Request"]
     VP -->|"valid"| CTRL["Controller handler"]
-    CTRL --> CSI["ClassSerializerInterceptor<br/>strips @Exclude fields (password, jti)"]
+    CTRL --> CSI["ClassSerializerInterceptor<br/>strips @Exclude fields (password, jti, tokenVersion)"]
     CSI --> RESP["Response"]
 ```
 
@@ -127,13 +129,13 @@ flowchart TD
         F2D -->|"no"| F3
         F2B -->|"no (platform)"| F3{"user by token id<br/>in token tenant schema, or public"}
         F3 -->|"none"| F3E["404 Not Found"]
-        F3 -->|"found"| F4{"payload.jti == user.jti ?"}
+        F3 -->|"found"| F4{"payload.jti == user.jti<br/>and tokenVersion matches?"}
         F4 -->|"no"| F4E["401 Token revoked"]
         F4 -->|"yes"| CRED
     end
 
     subgraph CR["returnUserCredential (AuthService)"]
-        CRED["jti = randomUUID()"] --> C2["sign access_token<br/>type=access, id, role, tenantId, tenantSchema"]
+        CRED["jti = randomUUID()"] --> C2["sign access_token<br/>type=access, id, role, tokenVersion, tenantId, tenantSchema"]
         C2 --> C3["sign refresh_token<br/>type=refresh, jti + same claims"]
         C3 --> C4{"tenant context?"}
         C4 -->|"tenant"| C1["UsersService.updateSession(id, jti)"]
@@ -143,10 +145,9 @@ flowchart TD
     end
 
     subgraph LO["Logout"]
-        LO1["POST /auth/logout"] --> LO2["AuthService.logout(userId, tenant)<br/>UsersService.updateSession(id, null)"]
-        LO3["POST /auth/logout/platform"] --> LO4["AuthService.logout(userId)<br/>UsersService.updateSessionPublic(id, null)"]
+        LO1["POST /auth/logout"] --> LO2["AuthService.logout(userId, tenant)<br/>clear jti + increment tokenVersion"]
+        LO3["POST /auth/logout/platform"] --> LO4["AuthService.logout(userId)<br/>clear jti + increment tokenVersion"]
     end
 ```
 
 `POST /auth/register`, `POST /auth/register-store`, and `POST /auth/login/platform` are throttled to 5 requests/min; the rest of the API is 20 requests/min.
-

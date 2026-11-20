@@ -605,11 +605,16 @@ Never commit `.env` or log secret values.
 | ------------------------ | ------------------------------------------------------------------------------------------------------------- |
 | `JWT_ACCESS_SECRET`      | Access-token signing secret. Required; production requires a non-placeholder value of at least 32 characters. |
 | `JWT_REFRESH_SECRET`     | Refresh-token signing secret. Same production rules as access secret.                                         |
-| `JWT_ACCESS_EXPIRES_IN`  | Access-token lifetime accepted by the JWT library, for example `5h`.                                          |
+| `JWT_ACCESS_EXPIRES_IN`  | Short access-token lifetime accepted by the JWT library; recommended example: `15m`.                          |
 | `JWT_REFRESH_EXPIRES_IN` | Refresh-token lifetime, for example `7d`.                                                                     |
 | `JWT_ISSUER`             | Verified on access and refresh tokens; required in production.                                                |
 | `JWT_AUDIENCE`           | Verified on access and refresh tokens; required in production.                                                |
 | `BCRYPT_ROUNDS`          | Password-hash work factor. Example default: `12`.                                                             |
+
+Run the user-token-version migrations before deploying this auth code. Replicas running the old
+guard do not enforce immediate revocation, so use a non-overlapping cutover or drain every old
+replica before relying on the guarantee. Rotate the access-token secret during a compromise
+cutover when old replicas cannot be drained atomically.
 
 ### Redis cache
 

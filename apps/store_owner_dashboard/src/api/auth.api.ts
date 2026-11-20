@@ -28,7 +28,9 @@ export type RegisterUserResponse = {
 };
 
 export const authApi = {
-  loginTenant: async (payload: TenantLoginPayload): Promise<TenantLoginResponse> => {
+  loginTenant: async (
+    payload: TenantLoginPayload,
+  ): Promise<TenantLoginResponse> => {
     const response = await apiClient.post<TenantLoginResponse>(
       "auth/login",
       payload,
@@ -45,4 +47,6 @@ export const authApi = {
     );
     return response.data;
   },
+
+  logout: async () => await apiClient.post("auth/logout"),
 };
