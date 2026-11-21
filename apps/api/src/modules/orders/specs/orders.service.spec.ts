@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
@@ -28,6 +29,38 @@ describe('OrdersService', () => {
   });
 
   describe('checkout', () => {
+    it('rejects checkout when the store has no Stripe account', async () => {
+      const { service, orderRepo, paymentsMocks, tenantMocks } = buildMocks();
+      tenantMocks.findBySchemaName.mockResolvedValue({
+        schemaName: TENANT.schemaName,
+        stripeAccountId: null,
+      });
+
+      await expect(service.checkout(7, {}, TENANT)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+
+      expect(paymentsMocks.getAccountStatus).not.toHaveBeenCalled();
+      expect(orderRepo.manager.transaction).not.toHaveBeenCalled();
+    });
+
+    it('rejects checkout when Stripe onboarding is incomplete', async () => {
+      const { service, orderRepo, paymentsMocks } = buildMocks();
+      paymentsMocks.getAccountStatus.mockResolvedValue({
+        connected: true,
+        accountId: 'acct_1',
+        chargesEnabled: false,
+        payoutsEnabled: false,
+        detailsSubmitted: true,
+      });
+
+      await expect(service.checkout(7, {}, TENANT)).rejects.toThrow(
+        'Stripe setup must be completed before creating orders',
+      );
+
+      expect(orderRepo.manager.transaction).not.toHaveBeenCalled();
+    });
+
     it('rejects an empty cart without writing anything', async () => {
       const {
         service,

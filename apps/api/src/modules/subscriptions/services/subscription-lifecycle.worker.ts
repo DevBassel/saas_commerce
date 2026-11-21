@@ -18,6 +18,7 @@ export class SubscriptionLifecycleWorker
   constructor(private readonly lifecycle: SubscriptionLifecycleService) {}
 
   onApplicationBootstrap(): void {
+    if (process.env.SEED_CLI === 'true') return;
     void this.reconcileNow();
     this.timer = setInterval(
       () => void this.reconcileNow(),

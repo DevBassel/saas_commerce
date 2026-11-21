@@ -7,6 +7,7 @@ import { Cart } from '../cart/entities/cart.entity';
 import { CartItem } from '../cart/entities/cart-item.entity';
 import { Address } from '../addresses/entities/address.entity';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
+import { TenantService } from '../tenants/tenant.service';
 import { R2Service } from '../../common/storage/r2.service';
 import { OrderStatus } from './constants/order-status.enum';
 import { OrderPermissionKey } from './constants/order-permissions.enum';
@@ -157,6 +158,20 @@ export const buildMocks = () => {
 
   const paymentsMocks = {
     refundOrder: jest.fn(),
+    getAccountStatus: jest.fn().mockResolvedValue({
+      connected: true,
+      accountId: 'acct_1',
+      chargesEnabled: true,
+      payoutsEnabled: true,
+      detailsSubmitted: true,
+    }),
+  };
+
+  const tenantMocks = {
+    findBySchemaName: jest.fn().mockResolvedValue({
+      schemaName: TENANT.schemaName,
+      stripeAccountId: 'acct_1',
+    }),
   };
 
   const couponsMocks = {
@@ -175,6 +190,7 @@ export const buildMocks = () => {
     tenantManager,
     r2,
     paymentsMocks as unknown as StripePaymentService,
+    tenantMocks as unknown as TenantService,
     couponsMocks as unknown as CouponsService,
     {
       assertCanUseDatabase: jest.fn().mockResolvedValue(undefined),
@@ -203,6 +219,7 @@ export const buildMocks = () => {
     entityManager,
     r2Mocks,
     paymentsMocks,
+    tenantMocks,
     couponsMocks,
     cacheMocks,
   };

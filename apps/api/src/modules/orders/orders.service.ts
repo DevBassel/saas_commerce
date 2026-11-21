@@ -11,6 +11,7 @@ import {
   Repository,
 } from 'typeorm';
 import { TenantManagerService } from '../tenants/services/tenant-manager.service';
+import { TenantService } from '../tenants/tenant.service';
 import { TenantRef } from '../tenants/utils/tenant.utils';
 import { resolveTenantScope } from '../tenants/utils/tenant-scope';
 import { withUniqueRetry } from '../../common/db/unique-retry';
@@ -88,6 +89,7 @@ export class OrdersService {
     private readonly tenantManager: TenantManagerService,
     private readonly r2: R2Service,
     private readonly payments: StripePaymentService,
+    private readonly tenants: TenantService,
     private readonly coupons: CouponsService,
     private readonly entitlements: SubscriptionEntitlementsService,
     private readonly cache: TenantCacheService,
@@ -109,6 +111,7 @@ export class OrdersService {
   ): Promise<SerializedOrder> {
     const { target, orderRepo } = await this.repos(tenant);
 
+    await this.assertStoreCanAcceptOrders(target);
     await this.entitlements.assertCanUseDatabase(target);
 
     const order = await withUniqueRetry(() =>
@@ -442,6 +445,26 @@ export class OrdersService {
       throw new BadRequestException('Delivery address required');
     }
     return address;
+  }
+
+  private async assertStoreCanAcceptOrders(tenant: TenantRef): Promise<void> {
+    const tenantRow = await this.tenants.findBySchemaName(tenant.schemaName);
+    if (!tenantRow?.stripeAccountId) {
+      throw new ConflictException(
+        'Checkout Not Working must be completed your store config before creating orders',
+      );
+    }
+
+    const status = await this.payments.getAccountStatus(tenantRow);
+    if (
+      !status.connected ||
+      !status.chargesEnabled ||
+      !status.detailsSubmitted
+    ) {
+      throw new ConflictException(
+        'Checkout Not Working must be completed your store config before creating orders',
+      );
+    }
   }
 
   private canManage(requester: Requester): boolean {

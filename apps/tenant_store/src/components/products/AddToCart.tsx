@@ -10,10 +10,12 @@ import { useTenantRouter } from "@/lib/tenant/nav";
 import { Minus, Plus, ShoppingCart } from "lucide-react";
 import { useCurrency } from "@/components/currency/currency-provider";
 import { formatMoney } from "@/lib/money";
+import { useSession } from "next-auth/react";
 
 export default function AddToCart({ product }: { product: IProduct }) {
   const router = useTenantRouter();
   const currency = useCurrency();
+  const { status } = useSession();
   const [quantity, setQuantity] = useState(1);
   const [submitting, setSubmitting] = useState(false);
 
@@ -21,6 +23,12 @@ export default function AddToCart({ product }: { product: IProduct }) {
   const soldOut = product.stock <= 0;
 
   const submit = async () => {
+    if (status === "unauthenticated") {
+      const callbackUrl = encodeURIComponent(`/products/${product.id}`);
+      router.push(`/login?callbackUrl=${callbackUrl}`);
+      return;
+    }
+
     setSubmitting(true);
     try {
       await AddToCartRequest({ productId: product.id, quantity });
@@ -83,7 +91,7 @@ export default function AddToCart({ product }: { product: IProduct }) {
         size="lg"
         className="w-full"
         onClick={submit}
-        disabled={submitting || soldOut}
+        disabled={status === "loading" || submitting || soldOut}
       >
         <ShoppingCart className="size-4" />
         {soldOut ? "Sold out" : "Add to cart"}

@@ -3,6 +3,7 @@ import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   DeleteObjectsCommand,
+  HeadObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
@@ -13,6 +14,7 @@ import { R2Upload } from './interfaces/r2.interface';
 import { R2ImageOptimizerService } from './image-optimizer.service';
 
 const R2_DELETE_BATCH_LIMIT = 50;
+const R2_HEAD_BATCH_LIMIT = 10;
 
 @Injectable()
 export class R2Service implements OnModuleDestroy {
@@ -100,6 +102,40 @@ export class R2Service implements OnModuleDestroy {
     }
 
     this.logger.debug(`Deleted ${unique.length} objects`);
+  }
+
+  async objectsExist(keys: string[]): Promise<boolean> {
+    const unique = [...new Set(keys)];
+    let missing = false;
+    for (let i = 0; i < unique.length; i += R2_HEAD_BATCH_LIMIT) {
+      const results = await Promise.allSettled(
+        unique.slice(i, i + R2_HEAD_BATCH_LIMIT).map((key) =>
+          this.client.send(
+            new HeadObjectCommand({
+              Bucket: this.config.bucket,
+              Key: key,
+            }),
+          ),
+        ),
+      );
+      for (const result of results) {
+        if (result.status !== 'rejected') continue;
+        const reason = result.reason as {
+          name?: string;
+          $metadata?: { httpStatusCode?: number };
+        };
+        if (
+          reason?.$metadata?.httpStatusCode === 404 ||
+          reason?.name === 'NotFound' ||
+          reason?.name === 'NoSuchKey'
+        ) {
+          missing = true;
+          continue;
+        }
+        throw result.reason;
+      }
+    }
+    return !missing;
   }
 
   publicUrl(key: string): string {

@@ -3,14 +3,17 @@ import type { ComponentType, SVGProps } from "react";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { useTheme } from "next-themes";
 import {
   House,
   LogIn,
   LogOut,
   Menu,
+  Moon,
   Package,
   ShoppingCartIcon,
   Store,
+  Sun,
   UserPlus,
 } from "lucide-react";
 import {
@@ -47,6 +50,7 @@ export function NavBar() {
   const router = useTenantRouter();
   const pathname = usePathname();
   const { data: session } = useSession();
+  const { setTheme } = useTheme();
   const user = session?.user;
   const [open, setOpen] = useState(false);
 
@@ -58,7 +62,7 @@ export function NavBar() {
   return (
     <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur supports-backdrop-filter:bg-background/60">
       <div className="container mx-auto flex h-16 items-center gap-4 px-4">
-        <Link href={user ? "/" : "/login"} className="flex items-center gap-2">
+        <Link href={"/"} className="flex items-center gap-2">
           <span className="flex size-9 items-center justify-center rounded-xl bg-primary text-primary-foreground">
             <Store className="size-5" />
           </span>
@@ -82,6 +86,23 @@ export function NavBar() {
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Toggle color theme"
+            title="Toggle color theme"
+            onClick={() =>
+              setTheme(
+                document.documentElement.classList.contains("dark")
+                  ? "light"
+                  : "dark",
+              )
+            }
+          >
+            <Sun className="size-5 scale-100 rotate-0 transition-transform dark:scale-0 dark:-rotate-90" />
+            <Moon className="absolute size-5 scale-0 rotate-90 transition-transform dark:scale-100 dark:rotate-0" />
+          </Button>
+
           {user && (
             <Link
               href="/cart"

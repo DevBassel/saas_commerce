@@ -1,0 +1,275 @@
+{
+  "node_count": 3202,
+  "unverified_node_count": 0,
+  "raw_edge_count": 9801,
+  "non_object_edges": 0,
+  "missing_endpoint_edges": 0,
+  "dangling_endpoint_edges": 0,
+  "external_reference_edges": 28,
+  "self_loop_edges": 2,
+  "valid_candidate_edges": 9773,
+  "exact_duplicate_edges": 0,
+  "directed_unique_endpoint_pairs": 9176,
+  "directed_same_endpoint_collapsed_edges": 597,
+  "undirected_unique_endpoint_pairs": 9159,
+  "undirected_same_endpoint_collapsed_edges": 614,
+  "same_endpoint_group_count": 323,
+  "relation_variant_groups": 165,
+  "source_file_variant_groups": 0,
+  "source_location_variant_groups": 152,
+  "context_variant_groups": 8,
+  "post_build_graph_type": "Graph",
+  "post_build_node_count": 3209,
+  "post_build_edge_count": 9187,
+  "post_build_error": "",
+  "producer_suppression": {
+    "path": "C:\\Users\\bassel\\AppData\\Roaming\\uv\\tools\\graphifyy\\Lib\\site-packages\\graphify\\extract.py",
+    "total_sites": 12,
+    "sites": [
+      {
+        "line": 1829,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids = {n[\"id\"] for n in nodes}"
+      },
+      {
+        "line": 2393,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids = {n[\"id\"] for n in nodes}"
+      },
+      {
+        "line": 2395,
+        "name": "seen_doc_refs",
+        "tuple_arity": 0,
+        "sample": "seen_doc_refs: set[str] = set()"
+      },
+      {
+        "line": 3062,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids: set[str] = {n[\"id\"] for n in nodes}"
+      },
+      {
+        "line": 3209,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids = {n.get(\"id\") for n in nodes}"
+      },
+      {
+        "line": 4350,
+        "name": "seen_keys",
+        "tuple_arity": 0,
+        "sample": "seen_keys: set[tuple] = set()"
+      },
+      {
+        "line": 4536,
+        "name": "seen_keys",
+        "tuple_arity": 0,
+        "sample": "seen_keys: set[tuple] = set()"
+      },
+      {
+        "line": 7947,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids: set[str] = set()"
+      },
+      {
+        "line": 8055,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids: set[str] = set()"
+      },
+      {
+        "line": 8134,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids: set[str] = set()"
+      },
+      {
+        "line": 8659,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids: set[str] = set()"
+      },
+      {
+        "line": 8660,
+        "name": "seen_edges",
+        "tuple_arity": 4,
+        "sample": "seen_edges: set[tuple[str, str, str, str | None]] = set()"
+      }
+    ],
+    "error": ""
+  },
+  "examples": [
+    {
+      "source": "src_modules_tenants_entities_tenant_entity_tenant",
+      "target": "src_modules_tenants_entities_tenant_entity_ts_column",
+      "edge_count": 24,
+      "relations": [
+        "references"
+      ],
+      "source_files": [
+        "src/modules/tenants/entities/tenant.entity.ts"
+      ],
+      "source_locations": [
+        "L102",
+        "L105",
+        "L108",
+        "L111",
+        "L114",
+        "L19",
+        "L22",
+        "L26",
+        "L30",
+        "L34",
+        "L37",
+        "L45",
+        "L49",
+        "L53",
+        "L57",
+        "L60",
+        "L68",
+        "L72",
+        "L75",
+        "L78",
+        "L84",
+        "L89",
+        "L96",
+        "L99"
+      ],
+      "contexts": [
+        "decorator"
+      ]
+    },
+    {
+      "source": "src_modules_orders_entities_order_entity_order",
+      "target": "src_modules_orders_entities_order_entity_ts_column",
+      "edge_count": 22,
+      "relations": [
+        "references"
+      ],
+      "source_files": [
+        "src/modules/orders/entities/order.entity.ts"
+      ],
+      "source_locations": [
+        "L100",
+        "L103",
+        "L106",
+        "L109",
+        "L30",
+        "L34",
+        "L42",
+        "L45",
+        "L48",
+        "L51",
+        "L54",
+        "L62",
+        "L65",
+        "L68",
+        "L71",
+        "L74",
+        "L77",
+        "L80",
+        "L88",
+        "L91",
+        "L94",
+        "L97"
+      ],
+      "contexts": [
+        "decorator"
+      ]
+    },
+    {
+      "source": "src_modules_payments_entities_subscription_payment_entity_subscriptionpayment",
+      "target": "src_modules_payments_entities_subscription_payment_entity_ts_column",
+      "edge_count": 16,
+      "relations": [
+        "references"
+      ],
+      "source_files": [
+        "src/modules/payments/entities/subscription-payment.entity.ts"
+      ],
+      "source_locations": [
+        "L26",
+        "L34",
+        "L38",
+        "L45",
+        "L48",
+        "L51",
+        "L54",
+        "L57",
+        "L60",
+        "L63",
+        "L66",
+        "L69",
+        "L72",
+        "L75",
+        "L78",
+        "L81"
+      ],
+      "contexts": [
+        "decorator"
+      ]
+    },
+    {
+      "source": "src_modules_payments_entities_order_refund_entity_orderrefund",
+      "target": "src_modules_payments_entities_order_refund_entity_ts_column",
+      "edge_count": 14,
+      "relations": [
+        "references"
+      ],
+      "source_files": [
+        "src/modules/payments/entities/order-refund.entity.ts"
+      ],
+      "source_locations": [
+        "L23",
+        "L31",
+        "L39",
+        "L42",
+        "L45",
+        "L48",
+        "L51",
+        "L55",
+        "L59",
+        "L62",
+        "L65",
+        "L68",
+        "L71",
+        "L74"
+      ],
+      "contexts": [
+        "decorator"
+      ]
+    },
+    {
+      "source": "src_modules_payments_entities_stripe_webhook_event_entity_stripewebhookevent",
+      "target": "src_modules_payments_entities_stripe_webhook_event_entity_ts_column",
+      "edge_count": 13,
+      "relations": [
+        "references"
+      ],
+      "source_files": [
+        "src/modules/payments/entities/stripe-webhook-event.entity.ts"
+      ],
+      "source_locations": [
+        "L30",
+        "L33",
+        "L36",
+        "L39",
+        "L42",
+        "L45",
+        "L52",
+        "L55",
+        "L58",
+        "L61",
+        "L64",
+        "L67",
+        "L70"
+      ],
+      "contexts": [
+        "decorator"
+      ]
+    }
+  ]
+}

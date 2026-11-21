@@ -18,12 +18,14 @@ import { SubscriptionBackfillSeeder } from './seeders/platform/subscription-back
 import { TenantPermissionsSeeder } from './seeders/tenant/permissions.seeder';
 import { TenantRolesSeeder } from './seeders/tenant/roles.seeder';
 import { CategoriesSeeder } from './seeders/tenant/categories.seeder';
+import { AuthModule } from '../auth/auth.module';
+import { DemoTenantSeedService } from './demo-tenant/demo-tenant.seed.service';
 
 // Nest has no native multi-providers, so each seeder class is a normal provider
 // and the arrays are assembled by the factory tokens below. Adding a seeder =
 // add it to `providers` and to the matching factory.
 @Module({
-  imports: [TenantModule, SubscriptionsModule],
+  imports: [TenantModule, SubscriptionsModule, AuthModule],
   providers: [
     PlatformPermissionsSeeder,
     PlatformRolesSeeder,
@@ -33,6 +35,7 @@ import { CategoriesSeeder } from './seeders/tenant/categories.seeder';
     TenantPermissionsSeeder,
     TenantRolesSeeder,
     CategoriesSeeder,
+    DemoTenantSeedService,
     {
       provide: PLATFORM_SEEDERS,
       useFactory: (
@@ -63,6 +66,6 @@ import { CategoriesSeeder } from './seeders/tenant/categories.seeder';
     SeedingService,
     SeedingBootstrapService,
   ],
-  exports: [SeedingService, SeederRegistry],
+  exports: [SeedingService, SeederRegistry, DemoTenantSeedService],
 })
 export class SeedingModule {}

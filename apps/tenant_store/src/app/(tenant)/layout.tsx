@@ -9,7 +9,7 @@ import { TenantSlugProvider } from "@/lib/tenant/nav";
 import { fontVariables } from "@/lib/fonts";
 import "../globals.css";
 import { cn } from "@/lib/utils";
-import { Toaster } from "sonner";
+import { Toaster } from "@/components/ui/sonner";
 import { NavBar } from "@/components/NavBar";
 
 /**
@@ -66,7 +66,7 @@ export default async function TenantLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={cn("antialiased", fontVariables, "font-sans", "dark")}
+      className={cn("antialiased", fontVariables, "font-sans")}
     >
       <body
         className="min-h-dvh bg-background text-foreground"
@@ -88,7 +88,7 @@ export default async function TenantLayout({
               </div>
             </CurrencyProvider>
           </TenantSlugProvider>
-          <Toaster theme="dark" richColors />
+          <Toaster richColors />
         </Providers>
       </body>
     </html>

@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Compiled output
+dist/
+**/dist/
+build/
+**/build/
+
+# Framework output
+.next/
+**/.next/
+.turbo/
+coverage/
+
+# Generated files
+*.generated.ts
+*.generated.js
+*.map
+
+# Temporary files
+tmp/
+temp/

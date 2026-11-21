@@ -254,6 +254,6 @@ export default proxy;
 
 export const config = {
   matcher: [
-    "/((?!api/auth|_next/static|_next/image|favicon\\.ico|robots\\.txt|sitemap\\.xml).*)",
+    "/((?!api/auth|_next/static|_next/image|assets/|favicon\\.ico|robots\\.txt|sitemap\\.xml).*)",
   ],
 };
