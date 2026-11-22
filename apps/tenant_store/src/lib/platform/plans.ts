@@ -1,9 +1,13 @@
-import type { IPlanLimit, ISubscriptionPlan } from "@/api/plansApi";
+import type {
+  IPlanFeature,
+  IPlanLimit,
+  ISubscriptionPlan,
+} from "@/api/plansApi";
 
 /**
- * Display helpers for the public `/plans` page. The plan data itself is fetched
+ * Display helpers for public platform pricing. The plan data itself is fetched
  * from `GET /platform/subscription-plans` (see `src/api/plansApi.ts`); this
- * module only turns raw limits/features into human-readable strings.
+ * module only turns raw limits, features, and prices into display values.
  */
 
 const LIMIT_LABELS: Record<string, string> = {
@@ -28,6 +32,15 @@ const FEATURE_LABELS: Record<string, string> = {
   PRIORITY_SUPPORT: "Priority support",
 };
 
+function humanizeKey(key: string): string {
+  return key
+    .toLowerCase()
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 /** Formats a byte count as MB/GB/TB, or "Unlimited" for a null limit. */
 export function formatBytes(value: number | null): string {
   if (value == null) return "Unlimited";
@@ -44,33 +57,63 @@ export function formatBytes(value: number | null): string {
 
 /** Human label for a single plan limit, e.g. "10 products" or "500 MB storage". */
 export function formatLimit(limit: IPlanLimit): string {
-  const label = LIMIT_LABELS[limit.key] ?? limit.key.toLowerCase();
+  const label = LIMIT_LABELS[limit.key] ?? humanizeKey(limit.key).toLowerCase();
   if (limit.value == null) return `Unlimited ${label}`;
   const value =
     limit.type === "BYTES" ? formatBytes(limit.value) : String(limit.value);
   return `${value} ${label}`;
 }
 
-/** Enabled feature labels for a plan. */
-export function planFeatureLabels(plan: ISubscriptionPlan): string[] {
-  return (plan.features ?? [])
-    .filter((feature) => feature.enabled)
-    .map((feature) => FEATURE_LABELS[feature.key] ?? feature.key);
+export function formatFeature(feature: IPlanFeature): {
+  label: string;
+  enabled: boolean;
+} {
+  return {
+    label: FEATURE_LABELS[feature.key] ?? humanizeKey(feature.key),
+    enabled: feature.enabled,
+  };
 }
 
-/** A short price line; the API seeds price 0, so fall back to Free/Custom. */
-export function planPrice(plan: ISubscriptionPlan): {
+export function isFreePlan(plan: ISubscriptionPlan): boolean {
+  return plan.monthlyPrice <= 0 && plan.yearlyPrice <= 0;
+}
+
+function formatPrice(amount: number, currency: string): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: (currency || "usd").toUpperCase(),
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
+/** Every configured paid billing option, or a single free option. */
+export function planPrices(plan: ISubscriptionPlan): Array<{
+  interval: "free" | "monthly" | "yearly";
   amount: string;
   cadence: string;
-} {
+}> {
+  const prices: Array<{
+    interval: "monthly" | "yearly";
+    amount: string;
+    cadence: string;
+  }> = [];
+
   if (plan.monthlyPrice > 0) {
-    const amount = new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: (plan.currency || "usd").toUpperCase(),
-      maximumFractionDigits: 0,
-    }).format(plan.monthlyPrice);
-    return { amount, cadence: "per month" };
+    prices.push({
+      interval: "monthly",
+      amount: formatPrice(plan.monthlyPrice, plan.currency),
+      cadence: "per month",
+    });
   }
-  if (plan.slug === "enterprise") return { amount: "Custom", cadence: "talk to us" };
-  return { amount: "Free", cadence: "forever" };
+  if (plan.yearlyPrice > 0) {
+    prices.push({
+      interval: "yearly",
+      amount: formatPrice(plan.yearlyPrice, plan.currency),
+      cadence: "per year",
+    });
+  }
+
+  return prices.length > 0
+    ? prices
+    : [{ interval: "free", amount: "Free", cadence: "to get started" }];
 }

@@ -57,12 +57,13 @@ export default function VerifyEmailForm() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [resending, setResending] = useState(false);
-  const [verificationState, setVerificationState] =
-    useState<VerificationState>({
+  const [verificationState, setVerificationState] = useState<VerificationState>(
+    {
       loaded: false,
       context: null,
       remainingSeconds: 0,
-    });
+    },
+  );
 
   useEffect(() => {
     const context = readVerificationContext();
@@ -150,10 +151,7 @@ export default function VerifyEmailForm() {
     }
   };
 
-  if (
-    !email &&
-    (status === "loading" || !verificationState.loaded)
-  ) {
+  if (!email && (status === "loading" || !verificationState.loaded)) {
     return (
       <Card className="mx-auto w-full max-w-md">
         <CardHeader className="items-center gap-2 text-center">
@@ -253,7 +251,7 @@ export default function VerifyEmailForm() {
           >
             {remainingSeconds > 0
               ? `Resend code in ${formatCountdown(remainingSeconds)}`
-              : "Resend code"}
+              : "Send code"}
           </Button>
         </CardFooter>
       </form>

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 import {
   ArrowRight,
   BarChart3,
@@ -8,6 +9,10 @@ import {
   Store,
 } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
+import {
+  PlansSection,
+  PlansSectionSkeleton,
+} from "@/components/platform/PlansSection";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
@@ -68,7 +73,7 @@ export default function PlatformHomePage() {
               Start a store
             </Link>
             <Link
-              href="/plans"
+              href="#plans"
               className={cn(buttonVariants({ variant: "outline", size: "lg" }))}
             >
               View plans
@@ -94,6 +99,10 @@ export default function PlatformHomePage() {
           </div>
         ))}
       </section>
+
+      <Suspense fallback={<PlansSectionSkeleton />}>
+        <PlansSection />
+      </Suspense>
     </div>
   );
 }
